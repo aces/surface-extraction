@@ -1494,8 +1494,7 @@ public  Real  sq_triangle_triangle_dist(
     Real   b0[],
     Real   b1[],
     Real   b2[],
-    int    *which_case,
-    Real   *dist_sq)
+    int    *which_case )
 {
     int   i, tri_case;
     Real  dist;
@@ -1547,7 +1546,7 @@ public  Real  sq_triangle_triangle_dist(
                 100.0 * (Real) other / (Real) count );
     }
 #endif  /* STATS */
-    if(dist_sq) *dist_sq = dist;
+
     return( dist );
 }
 

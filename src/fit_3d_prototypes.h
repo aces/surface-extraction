@@ -137,8 +137,7 @@ public  Real  sq_triangle_triangle_dist(
     Real   b0[],
     Real   b1[],
     Real   b2[],
-    int    *which_case,
-    Real   *sq_dist);
+    int    *which_case );
 
 public  void  sq_triangle_triangle_dist_deriv(
     Real   a0[],

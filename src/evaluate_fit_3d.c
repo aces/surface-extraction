@@ -34,6 +34,7 @@ private  Real   evaluate_intersect_wm_fit(
     fill_Vector(direction, 0, 1, 1);
 
     for( point=0; point<n_intersected && n_intersected<1000; point++ )
+
     {
       p_index = IJ( intersected[point], 0, 3 );
 
@@ -161,6 +162,7 @@ private  Real   evaluate_laplacian_fit(
   Real        dx, dy, dz, dist;
   Real        deriv, dxyz[3];
   Real        offset = 10;
+  Real        max_deriv = sqrt(to*to*3);
   int         num = 0;
   //clock_t     start, end;
 
@@ -190,12 +192,13 @@ private  Real   evaluate_laplacian_fit(
                                 NULL, NULL, NULL, NULL, NULL, NULL );
 
       //deriv = sqrt(dxyz[0]*dxyz[0] + dxyz[1]*dxyz[1] + dxyz[2]*dxyz[2]);
-      deriv = gradient;
+      deriv = (gradient>max_deriv) ? max_deriv : gradient;
 
       {
         //fit += (to-value) * weight;
         //fit += (value - to*(dist-0)) * weight;
-        fit += weight * (to-value) * (to*2 - deriv);
+        fit += weight * (to-value) * (max_deriv - deriv);
+        //fit += weight * (to*to-value*value) * (to*2 - deriv);
       }
     }
   }
@@ -229,6 +232,7 @@ private  Real   evaluate_laplacian_fit_deriv(
     Real         factor = 1e0;
     Real         max_laplace = (from>to)?from:to;
     int          n_neighs, n, ind, *neigh_ptr, neigh;
+    Real         max_deriv = sqrt(to*to*3);
 
     if( weight > 0 ){
       for_less( point, start_point, end_point )
@@ -254,27 +258,20 @@ private  Real   evaluate_laplacian_fit_deriv(
 
         // if direction<0, inward. if direction>0, outward.
         if( ( (volume_value<=threshold && direction<0) ||
-              (volume_value>=threshold && direction>0) ) && 
-            value1>-0.1 && value1<to )
+             (volume_value>=threshold && direction>0) ) && 
+            value1>=-0.1 && value1<to )
         {
           factor = sqrt(dxyz[0]*dxyz[0] + dxyz[1]*dxyz[1] + dxyz[2]*dxyz[2]);
-          factor = (factor>to) ? 0 : to-factor;
+          /*factor = (factor>to) ? 0 : to-factor;
           //deriv_factor *= ((Real)to-value1) / (to*2);
           deriv[p_index+0] += (-dxyz[0]) * weight * factor * deriv_factor;
           deriv[p_index+1] += (-dxyz[1]) * weight * factor * deriv_factor;
-          deriv[p_index+2] += (-dxyz[2]) * weight * factor * deriv_factor;
-          //deriv[p_index+0] += SIGN(dxyz[0])*(-fabs(fabs(dxyz[0])-to)) * weight * deriv_factor / 2;
-          //deriv[p_index+1] += SIGN(dxyz[1])*(-fabs(fabs(dxyz[1])-to)) * weight * deriv_factor / 2;
-          //deriv[p_index+2] += SIGN(dxyz[2])*(-fabs(fabs(dxyz[2])-to)) * weight * deriv_factor / 2;
-        }
-        else
-        {
-          //deriv[p_index+0] += -SIGN(dxyz[0])*(fabs(dxyz[0])-to) * weight * deriv_factor / (sampling*2);
-          //deriv[p_index+1] += -SIGN(dxyz[1])*(fabs(dxyz[1])-to) * weight * deriv_factor / (sampling*2);
-          //deriv[p_index+2] += -SIGN(dxyz[2])*(fabs(dxyz[2])-to) * weight * deriv_factor / (sampling*2);          
-          //deriv[p_index+0] += (dxyz[0]) * weight * factor;
-          //deriv[p_index+1] += (dxyz[1]) * weight * factor;
-          //deriv[p_index+2] += (dxyz[2]) * weight * factor;
+          deriv[p_index+2] += (-dxyz[2]) * weight * factor * deriv_factor;*/
+
+          factor = (factor>max_deriv) ? max_deriv : factor;
+          deriv[p_index+0] += (-dxyz[0])*(max_deriv-factor)*weight*deriv_factor;
+          deriv[p_index+1] += (-dxyz[1])*(max_deriv-factor)*weight*deriv_factor;
+          deriv[p_index+2] += (-dxyz[2])*(max_deriv-factor)*weight*deriv_factor;
         }
       }
     }
@@ -4941,7 +4938,7 @@ private  Real   evaluate_surf_surf_fit(
                                              parameters_n12,
                                              &parameters2[p2*3],
                                              &parameters2[n21*3],
-                                             &parameters2[n22*3], &which_case,NULL );
+                                             &parameters2[n22*3], &which_case );
 
         if( dist_sq > max_distance_sq )
             continue;

@@ -421,7 +421,7 @@ private  void    recursive_find_close_pairs(
                                              &parameters2[parm_p2],
                                              &parameters2[parm_n21],
                                              &parameters2[parm_n22],
-                                             &which_case,0 );
+                                             &which_case );
 
                 if( dist >= search_distance_sq )
                 {
@@ -931,7 +931,7 @@ public  BOOLEAN   test_surf_surf_candidate(
                                           &parameters1[n12*3],
                                           &parameters2[p2*3],
                                           &parameters2[n21*3],
-                                          &parameters2[n22*3], &which_case,0 );
+                                          &parameters2[n22*3], &which_case );
 
     if( which_case != prev_case )
         ss_lookup->cases[which] = (unsigned char) which_case;

@@ -961,13 +961,13 @@ private  void    recursive_find_close_pairs(
                 }
 
                 which_case = 0;
-                sq_triangle_triangle_dist( &parameters[parm_p1],
+                dist = sq_triangle_triangle_dist( &parameters[parm_p1],
                                                   &parameters[parm_n11],
                                                   &parameters[parm_n12],
                                                   &parameters[parm_p2],
                                                   &parameters[parm_n21],
                                                   &parameters[parm_n22],
-                                                  &which_case,&dist );
+                                                  &which_case );
 
                 if( dist >= search_distance_sq )
                 {
@@ -1328,7 +1328,6 @@ public  BOOLEAN   test_self_intersect_candidate(
     Real                          *dist_sq )
 {
     int   p1, n1, p2, n2, n11, n12, n21, n22, prev_case, which_case;
-    Real dist_sq_1=0;
 
     if( dist_from_computed_self_intersect> 0.0 &&
         (Real) si_lookup->min_line_dists[which] >
@@ -1357,13 +1356,12 @@ public  BOOLEAN   test_self_intersect_candidate(
     }
 
     which_case = prev_case;
-    sq_triangle_triangle_dist( &parameters[p1*3],
+    *dist_sq = sq_triangle_triangle_dist( &parameters[p1*3],
                                           &parameters[n11*3],
                                           &parameters[n12*3],
                                           &parameters[p2*3],
                                           &parameters[n21*3],
-                                          &parameters[n22*3], &which_case,
-			       dist_sq);
+                                          &parameters[n22*3], &which_case );
 
     if( which_case != prev_case )
         si_lookup->cases[which] = (unsigned char) which_case;
