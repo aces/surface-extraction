@@ -99,7 +99,7 @@ Spawn(["minccalc", "-expression", 'if(A[0]>2){out=2;}else if(A[0]<1){out=1;}else
 #Spawn(["make_gradient_volume", $cls_gm, $cls_gm_gradient, "1", "3"]);
 #Spawn(["gradient_volume.sh", $cls_gm, $cls_gm_gradient]);
 gradient_volume($cls_gm, $cls_gm_gradient);
-Spawn(["minccalc", "-clobber", "-expression", 'if(A[0]>0){out=1;}else{out=0;}', $cls_gm_gradient, $cls_gradient_tmp]);
+Spawn(["minccalc", "-clobber", "-expression", 'if(A[0]>0.000001){out=1;}else{out=0;}', $cls_gm_gradient, $cls_gradient_tmp]);
 Spawn(["mincblur", "-clobber", "-fwhm", "1", $cls_gradient_tmp, "${TmpDir}/cls_gm_1"]);
 
 # Make a gradient image of an MRI
