@@ -49,7 +49,7 @@ use MNI::DataDir;
 
     if( !defined( $model ) )
     {
-      $model_data_dir = MNI::DataDir::dir('ASP');
+      $model_data_dir = MNI::DataDir::dir('CLASP');
       MNI::DataDir::check_data($model_data_dir, [qw(white_matter_mask.obj)]);
       $model = "${model_data_dir}/white_matter_mask.obj";
     }

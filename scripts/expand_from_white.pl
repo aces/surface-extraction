@@ -75,7 +75,7 @@ my $output = $input;
     my $n_polygons = `print_n_polygons $white_surface`;
     chop( $n_polygons );
 
-    my $model_data_dir = MNI::DataDir::dir('ASP');
+    my $model_data_dir = MNI::DataDir::dir('CLASP');
     MNI::DataDir::check_data($model_data_dir, ["ellipsoid_${n_polygons}.obj.gz"]);
 
     my $model = $white_surface;

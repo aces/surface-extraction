@@ -4,6 +4,7 @@
 	* scripts/Makefile.am: added classify_correct to installable
 	scripts
 	* fixed header inclusions
+	* changed datadir references in scripts to CLASP from ASP
 
 2004-04-30  June Sic Kim      <luck3d@bic.mni.mcgill.ca>
 

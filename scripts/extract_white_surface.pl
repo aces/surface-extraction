@@ -41,7 +41,7 @@ use MNI::DataDir;
 
     if( !defined( $initial_model2 ) )
     {
-      $model_data_dir = MNI::DataDir::dir('ASP');
+      $model_data_dir = MNI::DataDir::dir('CLASP');
       MNI::DataDir::check_data($model_data_dir, [qw(white_model_320.obj)]);
       $initial_model2 = "${model_data_dir}/white_model_320.obj";
     }
