@@ -203,7 +203,8 @@ use MNI::DataDir;
               " $b2 ".
               " $self2 ";
 
-            $command = "$fit $surf2_info ".
+            $command = "$fit -mode two ".
+                       " $surf2_info ".
                        " -print_deriv " .
                        " -step $si_step " .
                        " -fitting $ni $n_per $tolerance " .

@@ -10,6 +10,7 @@ use MNI::DataDir;
     $output = shift;
     $isovalue = shift;
 
+    $laplacian_file = shift;
     $start_n = shift;
     $end_n = shift;
     $dont_copy = shift;
@@ -62,13 +63,13 @@ use MNI::DataDir;
 
 #size   sw  n_it  inc offo offi  si over   sw   self
 #----- ---- ----  --- ---  ----  -- ----  ----  ----
- 1e1,   0,  250,  50,  1,   1,   .5,  1,  1e1,  .25, 4, 1e-6, -5, 2,
- 1e1,   0,  250,  50,  1,   1,   .5,  1,  1e1,  .25, 4, 1e-6, -4, 2,
- 1e1,   0, 2000,  50,  1,   1,   .5,  1,  1e1,  .25, 4, 1e-6, -2, 2,
+ 1e1,   0, 1000, 100,  1,   1,   .5,  1,  1e1,  .25, 4, -1, -5, 2, 0,1e-5,0,0,1.0, 2.0, 1e-3, 1e3,
+ 1e1,   0, 1500,  50,  1,   1,   .5,  1,  1e1,  .25, 4, -1, -5, 2, 0,1e-5,0,0,1.0, 2.0, 1e-3, 1e4,
+ 1e1,   0,  500,  50,  1,   1,   .5,  1,  1e1,  .25, 4, -1, -5, 2, 0,1e-5,0,0,1.0, 2.0, 1e-3, 1e5,
   );
 
 
-    $sched_size =  14;
+    $sched_size =  22;
  
     if( ! defined($start_n) )
         { $start_n = 0; }
@@ -82,6 +83,8 @@ use MNI::DataDir;
         system_call( "set_object_colour $white_surface ${output} white" );
     }
 
+    $once = 0;
+
     for( $i = 0;  $i < @schedule;  $i += $sched_size )
     {
         $step = $i / $sched_size;
@@ -90,7 +93,11 @@ use MNI::DataDir;
 
         ( $sw, $cw, $n_iters, $iter_inc, $offo, $offi,
           $si_step, $oversample, $self_weight, $self_dist, $desired_dist,
-          $anchor_weight, $min_dist, $max_dist ) =
+          $anchor_weight, $min_dist, $max_dist,
+          $v_weight, $v_max_weight,
+          $adaptive_anchor_ratio, $adaptive_boundary_ratio,
+          $laplacian_sampling, $laplacian_factor, $laplacian_weight,
+          $surf_surf_weight ) =
                      @schedule[$i..$i+$sched_size-1];
 
         $sw *= $stretch_scale;
@@ -128,8 +135,9 @@ use MNI::DataDir;
         $iter_inc *= $break_scale;
         if( $iter_inc <= 0 )  { $iter_inc = $n_iters; }
 
-        $surf2_info = " -surface ${output} ${output} " .
-          " -stretch $sw $model -.9 0 0 0".
+        $surf2_info = " -mode three".
+          " -surface ${output} ${output} $white_surface" .
+          " -stretch $sw $input -1.0 0 0 0".
           " $b2 ".
           " $self2 ";
 
@@ -155,16 +163,46 @@ use MNI::DataDir;
         {
             system( "echo Step: $iter / $n_iters    $sw $cw" );
 
-            $ni = $n_iters - $iter;
-            if( $ni > $iter_inc )  { $ni = $iter_inc; }
+            if( $once > 0 ){
+              $surf2_info = " -mode three".
+                " -surface ${output} ${output} ${white_surface}" .
+                " -equal_lengths".
+                " -stretch $sw ${output} -1.0 0 0 0".
+                " $b2 ".
+                " $self2 ";
+	
+              $ni = $n_iters - $iter;
+              if( $ni > $iter_inc )  { $ni = $iter_inc; }
+              $command = "$fit $surf2_info ".
+                " $anchor " .
+                " -volume $v_weight $v_max_weight $adaptive_anchor_ratio $adaptive_boundary_ratio " .
+                " -laplacian $laplacian_file $laplacian_weight 0 20 $laplacian_factor $laplacian_sampling ".
+                " -surf_surf 0 1 $surf_surf_weight 0.1" .
+                " -print_deriv " .
+                " -step $si_step " .
+                " -fitting $ni $n_per $tolerance " .
+                " -ftol $f_tolerance " .
+                " -stop $stop_threshold $stop_iters ".
+                " -log $logfile ";
+            }
+            else
+            {
+              $ni = $n_iters - $iter;
+              if( $ni > $iter_inc )  { $ni = $iter_inc; }
 
-            $command = "$fit $surf2_info ".
+              $command = "$fit $surf2_info ".
                        " $anchor " .
+                       " -volume $v_weight $v_max_weight $adaptive_anchor_ratio $adaptive_boundary_ratio " .
+                       " -laplacian $laplacian_file $laplacian_weight 0 20 $laplacian_factor $laplacian_sampling ".
+                       #" -surf_surf 0 1 $surf_surf_weight 0.1" .
                        " -print_deriv " .
                        " -step $si_step " .
                        " -fitting $ni $n_per $tolerance " .
                        " -ftol $f_tolerance " .
-                       " -stop $stop_threshold $stop_iters ";
+                       " -stop $stop_threshold $stop_iters ".
+                       " -log $logfile ";
+            }
+            $once = 1;
 
             $ret = system_call( "$command", 1 );
 

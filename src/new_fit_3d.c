@@ -160,6 +160,8 @@ int  main(
     BOOLEAN              use_tri_tri_dist, use_equal_lengths;
     BOOLEAN              print_deriv, print_closest, print_initial;
     BOOLEAN              add_to_flag, timing_flag, did_all_iterations;
+    STRING               two_or_three;
+    int                  surface_total_number = 2;
 
     n_surfaces_read = 0;
     n_volumes_read = 0;
@@ -204,8 +206,43 @@ int  main(
 
     while( get_string_argument( NULL, &arg ) )
     {
-        if( equal_strings( arg, "-surface" ) )
+        if( equal_strings( arg, "-mode" ) )
         {
+          if( !get_string_argument( NULL, &two_or_three ) )
+          {
+            print_error( "Error in -mode arguments.\n" );
+            usage( argv[0] );
+            return( 1 );
+          }
+          if( equal_strings( two_or_three, "TWO" ) || 
+              equal_strings( two_or_three, "two" ) )
+          {
+            surface_total_number = 2;
+          }
+          else if( equal_strings( two_or_three, "THREE" ) || 
+                equal_strings( two_or_three, "three" ) )
+          {
+            surface_total_number = 3;
+          }
+          else
+          {
+            print_error( "Error in -mode arguments.\nDefine the number of surfaces (two or three)\n" );
+            usage( argv[0] );
+            return( 1 );
+          }
+        }
+        else if( equal_strings( arg, "-surface" ) )
+        {
+          if( surface_total_number == 2 ){
+            if( !get_string_argument( NULL, &input_filename ) ||
+                !get_string_argument( NULL, &output_filename ) )
+            {
+                print_error( "Error in -surface arguments.\n" );
+                usage( argv[0] );
+                return( 1 );
+            }
+          }
+          else if( surface_total_number == 3 ){
             if( !get_string_argument( NULL, &input_filename ) ||
                 !get_string_argument( NULL, &output_filename ) ||
                 !get_string_argument( NULL, &surf_surf_filename ) )
@@ -214,7 +251,12 @@ int  main(
                 usage( argv[0] );
                 return( 1 );
             }
-
+          }
+          else{
+            print_error( "Error in -surface arguments.\n" );
+            usage( argv[0] );
+            return( 1 );
+          }
             if( input_surface( input_filename, FALSE,
                                &surface.n_points, &surface.points,
                                &surface.n_polygons,
@@ -245,29 +287,31 @@ int  main(
             ADD_ELEMENT_TO_ARRAY( output_filenames, deform.n_surfaces,
                                   output_filename, 1 );
 
-            if( input_surface( surf_surf_filename, FALSE,
+            if( surface_total_number == 3 )
+            {
+              if( input_surface( surf_surf_filename, FALSE,
                                &surface.n_points, &surface.points,
                                &surface.n_polygons,
                                &surface.n_neighbours, &surface.neighbours )
-                != OK )
-            {
-              return( 1 );
-            }
+                  != OK )
+              {
+                return( 1 );
+              }
 
-            surface.n_midpoints = 0;
-            surf.surface = surface;
-            surf.static_flag = FALSE;
-            surf.n_bound = 0;
-            surf.n_value = 0;
-            surf.n_stretch = 0;
-            surf.n_curvature = 0;
-            surf.n_bend = 0;
-            surf.n_anchors = 0;
-            surf.n_weight_points = 0;
-            surf.n_self_intersects = 0;
-            ADD_ELEMENT_TO_ARRAY( deform.surfaces, deform.n_surfaces,
-                                  surf, 1);
-            
+              surface.n_midpoints = 0;
+              surf.surface = surface;
+              surf.static_flag = FALSE;
+              surf.n_bound = 0;
+              surf.n_value = 0;
+              surf.n_stretch = 0;
+              surf.n_curvature = 0;
+              surf.n_bend = 0;
+              surf.n_anchors = 0;
+              surf.n_weight_points = 0;
+              surf.n_self_intersects = 0;
+              ADD_ELEMENT_TO_ARRAY( deform.surfaces, deform.n_surfaces,
+                                    surf, 1);
+            }
         }
 	else if( equal_strings( arg, "-ban_wm" ) )
 	{
