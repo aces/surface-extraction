@@ -90,7 +90,7 @@ if ( !defined $output_prefix ) {
 my $Filled = "${TmpDir}/Filled.mnc";
 if ( !defined $objMask ) {
     $Mask = "${TmpDir}/cortical_mask.mnc";
-    Spawn(["cortical_surface", $input_volume, "${output_prefix}_cortex.obj"]);
+    Spawn(["cortical_surface", $input_volume, "${output_prefix}_cortex.obj", "1.5"]);
     Spawn(["minccalc", "-expression", 'out=1;', $input_volume, $Filled]);
     Spawn(["surface_mask2", "-binary_mask", $Filled, "${output_prefix}_cortex.obj", $Mask]);
     Spawn(["dilate_volume", $Mask, "${TmpDir}/cortical_mask_tmp.mnc", "1", "26", "3"]);

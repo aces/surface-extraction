@@ -53,7 +53,7 @@ die "$usage\n" unless @ARGV >= 4;
     my $white_surface = shift;
     my $input = shift;
     my $laplacian_file = shift;
-#my $output = shift;
+
     my $refine = shift;
 
     my $logfile = shift;
@@ -107,7 +107,7 @@ my $output = $input;
         { $refine = 0; }
 
     my @schedule;
-    if( $refine == 0 )
+    if( $refine <= 81920 )
     {
       @schedule = (
 #size   sw        n_it  inc  si over   sw   self   l_s  l_d   l_w
@@ -124,10 +124,11 @@ my $output = $input;
       @schedule = (
 #size   sw        n_it  inc  si over   sw   self   l_s  l_d   l_w
 #----- ----       ----  ---  -- ----  ----  ----   ---  ---  ----
- 81920, 1e1,   0,  200,  50,  .5,  1,  1e1,  .25, , 1.0, 0.0, 5e-6, 
- 81920, 1e1,   0,  200,  50,  .5,  1,  1e1,  .25, , 1.0, 0.0, 2e-4, 
- 81920, 1e1,   0,  300,  50,  .5,  1,  1e1,  .25, , 1.0, 0.0, 1e-3, 
-327680, 1e1,   0,  800,  50,  .5,  1,  1e1,  .25, , 1.0, 1.0, 1e-2, 
+327680, 1e1,   0,  200,  50,  .5,  1,  1e1,  .25, , 1.0, 0.0, 5e-6, 
+327680, 1e1,   0,  200,  50,  .5,  1,  1e1,  .25, , 1.0, 0.0, 1e-5, 
+327680, 1e1,   0,  300,  50,  .5,  1,  1e1,  .25, , 1.0, 0.0, 1e-4, 
+327680, 1e1,   0,  800,  50,  .5,  1,  1e1,  .25, , 1.0, 1.0, 1e-3,
+327680, 1e1,   0,  500,  50,  .5,  1,  1e1,  .25, , 1.0, 1.0, 2e-3,
   );
     }
 
