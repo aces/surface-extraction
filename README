@@ -1,4 +1,11 @@
 The ASP package: Anatomic Segmentation using Proximities
 
 Note: in order to install this package, the mni-acmacros have to be
-checked out to the m4 directory.
+checked out to the m4 directory. They are available under the
+/software/source/libraries repository.
+
+VERSIONS
+--------
+
+CVS Tag "rel_1" - the software as David MacDonald had left it with
+only a very few minor bug fixes.
