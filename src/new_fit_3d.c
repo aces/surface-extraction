@@ -3507,7 +3507,7 @@ private  BOOLEAN   fit_polygons(
                 realloc_quadratic_cross_terms_real( n_parameters, n_cross_terms,
                                                &cross_parms, &cross_terms );
             }
-            printf("hahaha\n");
+
         }
 
         get_line_lookup( &line_lookup, deform, n_parameters,
