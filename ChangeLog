@@ -1,3 +1,10 @@
+2004-04-30  June Sic Kim      <luck3d@bic.mni.mcgill.ca>
+
+	* delete some redundant code in 'evaluate_laplacian_fit' & 
+        'evaluate_volume_fit'
+        * fixed include statement in fit_3d.h
+	* scripts/expand_from_white: add gradient file of laplacian map.
+
 2003-09-10  Jason Lerch	      <jason@bic.mni.mcgill.ca>
 
 	* added src/skeletonization.{c,h} to the repository

@@ -112,7 +112,8 @@ int  main(
     STRING               input_filename, output_filename;
     STRING               wm_obj_filename;
     STRING               *input_filenames, *output_filenames, filename;
-    STRING               depth_filename, laplacian_filename;
+    STRING               depth_filename;
+    STRING               laplacian_filename, laplacian_gradient_filename;
     STRING               stretch_factor_name, curvature_factor_name;
     STRING               bend_factor_name, midpoint_filename;
     int                  n_bend, p1, p2, midpoint, n_weight_steps;
@@ -155,6 +156,7 @@ int  main(
     weight_struct        w;
     self_intersect_struct  *self;
     surf_surf_struct     *ss;
+    intersect_wm_struct  intersect_wm;
     volume_info_struct   volume_s;
     laplacian_struct     laplacian;
     BOOLEAN              use_tri_tri_dist, use_equal_lengths;
@@ -162,6 +164,7 @@ int  main(
     BOOLEAN              add_to_flag, timing_flag, did_all_iterations;
     STRING               two_or_three;
     int                  surface_total_number = 2;
+    STRING               wm_masked_filename;
 
     n_surfaces_read = 0;
     n_volumes_read = 0;
@@ -224,6 +227,12 @@ int  main(
           {
             surface_total_number = 3;
           }
+          // For the WM surface extraction
+          else if( equal_strings( two_or_three, "WHITE" ) ||
+                equal_strings( two_or_three, "white" ) )
+          {
+            surface_total_number = 1;
+          }
           else
           {
             print_error( "Error in -mode arguments.\nDefine the number of surfaces (two or three)\n" );
@@ -233,7 +242,7 @@ int  main(
         }
         else if( equal_strings( arg, "-surface" ) )
         {
-          if( surface_total_number == 2 ){
+          if( surface_total_number <= 2 ){
             if( !get_string_argument( NULL, &input_filename ) ||
                 !get_string_argument( NULL, &output_filename ) )
             {
@@ -316,50 +325,37 @@ int  main(
 	else if( equal_strings( arg, "-ban_wm" ) )
 	{
 	  if( !get_string_argument( NULL, &wm_obj_filename ) ||
-	      !get_real_argument( 0.0, &weight) ||
-	      !get_real_argument( 0.0, &min_distance ))
+          !get_string_argument( NULL, &wm_masked_filename ) ||
+	      !get_real_argument( 0.0, &intersect_wm.weight) )
 	  {
-	    print_error( "Error in -surface arguments.\n" );
+	    print_error( "Error in -ban_wm arguments.\n" );
 	    usage( argv[0] );
 	    return( 1 );
 	  }
 
-	  if( input_surface( wm_obj_filename, FALSE,
-			    &surface.n_points, &surface.points,
-			    &surface.n_polygons,
-			    &surface.n_neighbours, &surface.neighbours )
-	     != OK )
+	  if( input_graphics_file( wm_obj_filename, &format,
+          &intersect_wm.n_objects, &intersect_wm.objects ) != OK  || 
+          intersect_wm.n_objects != 1 )
 	  {
+        print_error( "Error in -ban_wm.\n" );
 	    return( 1 );
 	  }
 
-	  surface.n_midpoints = 0;
-	  surf.surface = surface;
-	  surf.static_flag = FALSE;
-	  surf.n_bound = 0;
-	  surf.n_value = 0;
-	  surf.n_stretch = 0;
-	  surf.n_curvature = 0;
-	  surf.n_bend = 0;
-	  surf.n_anchors = 0;
-	  surf.n_weight_points = 0;
-	  surf.n_self_intersects = 0;
-	  ADD_ELEMENT_TO_ARRAY( deform.surfaces, deform.n_surfaces,
-			       surf, 1 );
-	  SET_ARRAY_SIZE( deform.surf_surfs, deform.n_surf_surfs,
-			 deform.n_surf_surfs+1,DEFAULT_CHUNK_SIZE);
-	  deform.surf_surfs[deform.n_surf_surfs].surface_index1 = 2;
-	  deform.surf_surfs[deform.n_surf_surfs].surface_index2 = 1;
-	  deform.surf_surfs[deform.n_surf_surfs].n_weights = 0;
-	  ++deform.n_surf_surfs;
-	  ss = &deform.surf_surfs[deform.n_surf_surfs-1];
-	  SET_ARRAY_SIZE( ss->weights, ss->n_weights,
-			 ss->n_weights+1, 1);
-	  SET_ARRAY_SIZE( ss->min_distances, ss->n_weights,
-			 ss->n_weights+1, 1);
-	  ss->weights[ss->n_weights] = weight;
-	  ss->min_distances[ss->n_weights] = min_distance;
-	  ++ss->n_weights;
+      if( lookup_volume( wm_masked_filename, &intersect_wm.wm_masked,
+                         &intersect_wm.voxel_lookup ) != OK )
+      {
+        return( 1 );
+      }
+
+      SET_ARRAY_SIZE( intersect_wm.intersected, intersect_wm.n_intersected,
+                      40960, DEFAULT_CHUNK_SIZE );
+      intersect_wm.n_intersected = 0;
+      intersect_wm.direction = (surface_total_number==1) ? -1 : 1;
+
+      ADD_ELEMENT_TO_ARRAY( deform.intersect_wm, 
+                            deform.n_intersect_wm, intersect_wm, 1 );
+
+      //delete_object_list( n_objects, object_list );
 	}
         else if( equal_strings( arg, "-static" ) )
         {
@@ -409,6 +405,7 @@ int  main(
         else if( equal_strings( arg, "-laplacian" ) )
         {
           if( !get_string_argument( NULL, &laplacian_filename ) ||
+              !get_string_argument( NULL, &laplacian_gradient_filename ) ||
               !get_real_argument( 0.0, &laplacian.weight ) ||
               !get_real_argument( 0.0, &laplacian.from_value ) ||
               !get_real_argument( 0.0, &laplacian.to_value ) ||
@@ -419,11 +416,18 @@ int  main(
             usage( argv[0] );
             return( 1 );
           }
+          if( lookup_volume( laplacian_gradient_filename, 
+                             &laplacian.gradient_volume,
+                             &laplacian.voxel_lookup ) != OK )
+          {
+            return( 1 );
+          }
           if( lookup_volume( laplacian_filename, &laplacian.volume,
                              &laplacian.voxel_lookup ) != OK )
           {
             return( 1 );
           }
+          laplacian.direction = (surface_total_number==1) ? -1 : 1;
           ADD_ELEMENT_TO_ARRAY(
               deform.surfaces[0].laplacian,
               deform.surfaces[0].n_laplacian, laplacian, 1 );
@@ -439,6 +443,7 @@ int  main(
             usage( argv[0] );
             return( 1 );
           }
+          volume_s.direction = (surface_total_number==1) ? -1 : 1;
           ADD_ELEMENT_TO_ARRAY( deform.surfaces[0/*deform.n_surfaces-1*/].
                                 volume,
                                 deform.surfaces[0/*deform.n_surfaces-1*/].

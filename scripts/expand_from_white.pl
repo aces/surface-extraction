@@ -1,9 +1,7 @@
-#!xPERLx -w
+@#!xPERLx -w
 
 require "xINCDIRx/deform_utils.pl";
 use MNI::DataDir;
-
-#    &print_out_script_info();
 
     $volume = shift;
     $white_surface = shift;
@@ -11,19 +9,22 @@ use MNI::DataDir;
     $isovalue = shift;
 
     $laplacian_file = shift;
+    $logfile = shift;
     $start_n = shift;
     $end_n = shift;
     $dont_copy = shift;
-    $output = $input;
-
-    if( ! defined($isovalue) )
+$output = $input;
+    if( ! defined($laplacian_file) )
     {
-        die "Usage: $0  input.mnc white.obj input_gray.obj output1_pref [log_file] [start] [end] [dont copy]\n";
+        die "Usage: $0  input.mnc white.obj input_gray.obj output1_pref field.mnc [log_file] [start] [end] [dont copy]\n";
     }
 
 #---------
 
     $fit = "new_fit_3d ";
+
+    $laplacian_gradient_file = "/tmp/laplacian_grad_${$}.mnc";
+    system_call( "make_gradient_volume $laplacian_file $laplacian_gradient_file 1 3" );
 
     $oversample_reference = 20480;
     $n_polygons = `print_n_polygons $white_surface`;
@@ -64,13 +65,18 @@ use MNI::DataDir;
 
 #size   sw  n_it  inc offo offi  si over   sw   self                 v_w   v_mw
 #----- ---- ----  --- ---  ----  -- ----  ----  ----                 ---   ----
- 1e1,   0, 1000, 100,  1,   1,   .5,  1,  1e1,  .25, 4, -1, -5, 2, 0,1e-5,0,0,1.0, 2.0, 1e-3, 1e3,
- 1e1,   0, 1500,  50,  1,   1,   .5,  1,  1e1,  .25, 4, -1, -5, 2, 0,1e-5,0,0,1.0, 2.0, 1e-3, 1e4,
- 1e1,   0,  500,  50,  1,   1,   .5,  1,  1e1,  .25, 4, -1, -5, 2, 0,1e-5,0,0,1.0, 2.0, 1e-3, 1e5,
+ 1e1,   0,  100,  50,  1,   1,   .5,  1,  1e1,  .25, 4, -1, -5, 2, 1e-4,1e-5,0,0,1.0, 1.0, 1e-4, 1e0,
+ 1e1,   0, 1400,  50,  1,   1,   .5,  1,  1e1,  .25, 4, -1, -5, 2, 1e-4,1e-5,0,0,1.0, 2.0, 1e-4, 1e0,
+ 1e1,   0, 1000,  50,  1,   1,   .5,  1,  1e1,  .25, 4, -1, -5, 2, 1e-4,1e-5,0,0,1.0, 2.0, 2e-4, 1e1,
+ 1e1,   0,  500,  50,  1,   1,   .5,  1,  1e1,  .25, 4, -1, -5, 2, 1e-4,1e-5,0,0,1.0, 2.0, 2e-4, 1e2,
   );
 
 
     $sched_size =  22;
+
+    $log = "";
+    if( defined($logfile) )
+        { $log = " -log $logfile"; }
 
     if( ! defined($start_n) )
         { $start_n = 0; }
@@ -143,10 +149,10 @@ $once = 0;
         {
             $tmp_anchor = "/tmp/anchor_${$}.txt";
 
-            register_tmp_files( $tmp_anchor );
+            #register_tmp_files( $tmp_anchor );
 
-            system_call( "create_anchor_constraints " .
-                         " $white_surface $tmp_anchor $desired_dist"  );
+            #system_call( "create_anchor_constraints " .
+            #             " $white_surface $tmp_anchor $desired_dist"  );
             $anchor = "-anchor $anchor_weight $tmp_anchor ".
                       #"1e4 $min_dist $max_dist $depthfile";
                       "0 $min_dist $max_dist";
@@ -167,39 +173,23 @@ $once = 0;
           " -stretch $sw ${output} -1.0 0 0 0".
           " $b2 ".
           " $self2 ";
+    }
 	
             $ni = $n_iters - $iter;
             if( $ni > $iter_inc )  { $ni = $iter_inc; }
 system( "echo second");
             $command = "$fit -mode three $surf2_info ".
-                       " $anchor " .
                        " -volume $v_weight $v_max_weight $adaptive_anchor_ratio $adaptive_boundary_ratio " .
-                       " -laplacian $laplacian_file $laplacian_weight 0 20 $laplacian_factor $laplacian_sampling ".
-                       " -surf_surf 0 1 $surf_surf_weight 0.1" .
+                       " -laplacian $laplacian_file $laplacian_gradient_file $laplacian_weight 0 10 $laplacian_factor $laplacian_sampling ".
                        " -print_deriv " .
                        " -step $si_step " .
                        " -fitting $ni $n_per $tolerance " .
                        " -ftol $f_tolerance " .
-                       " -stop $stop_threshold $stop_iters ";
-      }
-      else
-      {
-            $ni = $n_iters - $iter;
-            if( $ni > $iter_inc )  { $ni = $iter_inc; }
+                       " -stop $stop_threshold $stop_iters ".
+                       " $log ";
 
-            $command = "$fit -mode three $surf2_info ".
-                       " $anchor " .
-                       " -volume $v_weight $v_max_weight $adaptive_anchor_ratio $adaptive_boundary_ratio " .
-                       " -laplacian $laplacian_file $laplacian_weight 0 20 $laplacian_factor $laplacian_sampling ".
-                       #" -surf_surf 0 1 $surf_surf_weight 0.1" .
-                       " -print_deriv " .
-                       " -step $si_step " .
-                       " -fitting $ni $n_per $tolerance " .
-                       " -ftol $f_tolerance " .
-                       " -stop $stop_threshold $stop_iters ";
-      }
             $ret = system_call( "$command", 1 );
-            $once = 1;
+$once = 1;
             system_call( "measure_surface_area $output" );
 
             if( $ret == 1 )
@@ -221,6 +211,15 @@ system( "echo second");
         }
     }
 
+    system_call( "rm -f $laplacian_gradient_file" );
     print( "Surface extraction finished.\n" );
 
     clean_up();
+
+
+
+
+
+
+
+

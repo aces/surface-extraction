@@ -1,3 +1,4 @@
+#include <time.h>
 #include  <fit_3d.h>
 #define ADAPTIVE_RATIO 1
 //#define ADAPTIVE_RATIO_ANCHOR 0
@@ -10,27 +11,160 @@
 //int inside_points[20];
 //int n_inside_points=0;
 
+private  Real   evaluate_intersect_wm_fit(
+    object_struct **objects,
+    Real          weight,
+    Real          parameter[],
+    int           *intersected,
+    int           n_intersected,
+    int           start_point,
+    int           end_point
+)
+{
+  Real         fit = 0.0f;
+  int          n_intersections;
+  Point        origin;
+  Vector       direction;
+  Real         dist, *distances;
+  int          obj_index, point, p_index;
+  int          i;
+
+  if( weight > 0 )
+  {
+    fill_Vector(direction, 0, 1, 1);
+
+    for( point=0; point<n_intersected && n_intersected<1000; point++ )
+    {
+      p_index = IJ( intersected[point], 0, 3 );
+
+      fill_Point( origin, parameter[p_index+0], 
+                  parameter[p_index+1], parameter[p_index+2] );
+
+      n_intersections = intersect_ray_with_object( &origin, &direction,
+                                               objects[0], &obj_index, &dist,
+                                               &distances );
+
+      // inside of the wm surface if number of intersections is odd
+      if( n_intersections % 2 != 0 )
+      {
+        fit += 1 * weight;
+      }
+
+      FREE( distances );
+    }
+  }
+
+  return fit;
+}
+
+private  Real   evaluate_intersect_wm_fit_deriv(
+    object_struct **objects,
+    Real          weight,
+    Real          parameter[],
+    Volume        wm_masked,
+    int           *intersected,
+    int           *n_intersected,
+    int           n_neighbours[],
+    int           *neighbours[],
+    int           start_point,
+    int           end_point,
+    Real          deriv[]
+)
+{
+  int             point, p_index;
+  int             neigh, n, obj_index, n_intersections, max_neighbours;
+  Point           *neigh_points, origin;
+  Vector          normal, direction;
+  Real            dist, *distances;
+  Real            mask_value;
+
+  if( weight > 0 )
+  {
+    *n_intersected = 0;
+    max_neighbours = 0;
+    for_less( n, start_point, end_point ){
+      max_neighbours = MAX( max_neighbours, n_neighbours[n] );
+    }
+    ALLOC( neigh_points, max_neighbours);
+
+    fill_Vector(direction, 1, 0, 0);
+
+    for_less( point, start_point, end_point )
+    {
+      p_index = IJ( point, 0, 3 );
+
+      evaluate_volume_in_world( wm_masked,
+                                parameter[p_index+0],
+                                parameter[p_index+1],
+                                parameter[p_index+2],
+                                0, FALSE,
+                                0.0, &mask_value,
+                                NULL, NULL, NULL,
+                                NULL, NULL, NULL, NULL, NULL, NULL );
+
+      // When the vertex is suspected to be in the wm surface
+      if( mask_value > 0 )
+      {
+        fill_Point( origin, parameter[p_index+0], 
+                    parameter[p_index+1], parameter[p_index+2] );
+
+        n_intersections = intersect_ray_with_object( &origin, &direction,
+                                               objects[0], &obj_index, &dist,
+                                               &distances );
+
+        // if n_intersections is odd, that point is inside of the polygon
+        if( n_intersections%2 != 0 )
+        {
+          for_less( n, 0, n_neighbours[point] ){
+            neigh = neighbours[point][n];
+            fill_Point( neigh_points[n],
+                      parameter[IJ(neigh,0,3)],
+                      parameter[IJ(neigh,1,3)],
+                      parameter[IJ(neigh,2,3)] );
+          }
+          find_polygon_normal( n_neighbours[point], neigh_points, &normal);
+
+          deriv[p_index+0] += -normal.coords[0] * weight;
+          deriv[p_index+1] += -normal.coords[1] * weight;
+          deriv[p_index+2] += -normal.coords[2] * weight;
+
+          intersected[(*n_intersected)++] = point;
+          //printf("%d: (%g,%g,%g) L_value=%g\n",point,parameter[p_index+0],parameter[p_index+1], parameter[p_index+2],laplace_value);
+        }
+
+        if( n_intersections > 0 )
+        {
+          FREE( distances );
+        }
+      }
+    }
+
+    FREE( neigh_points );
+  }
+}
+
 private  Real   evaluate_laplacian_fit(
     Real         weight,
+    int          direction,
     Volume       laplacian_map,
-    Volume       volume,
+    Volume       laplacian_gradient,
+    Real         threshold,
     Real         from,
     Real         to,
-    int          n_anchor_points,
-    anchor_point_struct anchor_points[],
     Real         parameter[],
     int          start_point,
     int          end_point)
 {
   int         point, p_index;
   Real        fit=0.0f;
-  Real        value, volume_value;
-  anchor_point_struct *a;
+  Real        value, gradient;
   Real        dx, dy, dz, dist;
   Real        deriv, dxyz[3];
   Real        offset = 10;
+  int         num = 0;
+  //clock_t     start, end;
 
-  int num=0;
+  //start = clock();
   if( weight > 0 )
   {
     for_less( point, start_point, end_point )
@@ -41,61 +175,42 @@ private  Real   evaluate_laplacian_fit(
                                 parameter[p_index+0],
                                 parameter[p_index+1],
                                 parameter[p_index+2],
-                                1, FALSE,
+                                0, FALSE,
                                 0.0, &value,
-                                //NULL, NULL, NULL,
-                                dxyz, dxyz+1, dxyz+2,
+                                NULL, NULL, NULL,
+                                //dxyz, dxyz+1, dxyz+2,
                                 NULL, NULL, NULL, NULL, NULL, NULL );
-      evaluate_volume_in_world( volume,
+      evaluate_volume_in_world( laplacian_gradient,
                                 parameter[p_index+0],
                                 parameter[p_index+1],
                                 parameter[p_index+2],
                                 0, FALSE,
-                                0.0, &volume_value,
+                                0.0, &gradient,
                                 NULL, NULL, NULL,
                                 NULL, NULL, NULL, NULL, NULL, NULL );
 
-      a = &anchor_points[point];
-      dx = RPoint_x(a->anchor_point) - parameter[p_index+0];
-      dy = RPoint_y(a->anchor_point) - parameter[p_index+1];
-      dz = RPoint_z(a->anchor_point) - parameter[p_index+2];
-      dist = sqrt(dx*dx + dy*dy + dz*dz);
-      //dist = fabs(dx) + fabs(dy) + fabs(dz);
       //deriv = sqrt(dxyz[0]*dxyz[0] + dxyz[1]*dxyz[1] + dxyz[2]*dxyz[2]);
+      deriv = gradient;
 
-      //if( value < to )
-      if( volume_value >= 1.5 && value>-0.1 )
       {
         //fit += (to-value) * weight;
-        fit += (value - to*(dist-0)) * weight;
-        //fit += weight * (to-value) * (to*2 - deriv);
-        //if( deriv==0 && value==0 ){
-        //  dx = RPoint_x(a->anchor_point) - parameter[p_index+0];
-        //  dy = RPoint_y(a->anchor_point) - parameter[p_index+1];
-        //  dz = RPoint_z(a->anchor_point) - parameter[p_index+2];
-        //  dist = sqrt(dx*dx + dy*dy + dz*dz);
-        //  fit += 1e-2/(dist+1);
-        //}
-        //else if( deriv==0 && value<to){
-        //  num++;
-        //}
-      }
-      else
-      {
-        //fit += (to-value) * weight;
-        fit += (value - to*(dist-0)) * weight;
-        //fit += weight * (to-value) * (to*2 - deriv);
+        //fit += (value - to*(dist-0)) * weight;
+        fit += weight * (to-value) * (to*2 - deriv);
       }
     }
   }
-  //if(num>0)printf("stuck = %d\t",num);
+
+  //end = clock();
+  //printf("lap=%f,%f ",((double)(end - start))/CLOCKS_PER_SEC, fit);
   return fit;
 }
 
 private  Real   evaluate_laplacian_fit_deriv(
     Real         weight,
+    int          direction,
     Volume       laplacian_map,
     Volume       volume,
+    Real         threshold,
     Real         from,
     Real         to,
     Real         deriv_factor,
@@ -119,81 +234,7 @@ private  Real   evaluate_laplacian_fit_deriv(
       for_less( point, start_point, end_point )
       {
         p_index = IJ( point, 0, 3 );
-        // central difference approximation
-/*        for( a=0;a<3;a++ )
-        {
-          x=0;y=0;z=0;
-          if(a==0) x=1;
-          else if(a==1) y=1;
-          else if(a==2) z=1;
-          evaluate_volume_in_world( laplacian_map,
-                                parameter[p_index+0]-x*sampling,
-                                parameter[p_index+1]-y*sampling,
-                                parameter[p_index+2]-z*sampling,
-                                0, FALSE,
-                                0.0, &value1,
-                                NULL, NULL, NULL,
-                                NULL, NULL, NULL, NULL, NULL, NULL );
-          evaluate_volume_in_world( laplacian_map,
-                                parameter[p_index+0]+x*sampling,
-                                parameter[p_index+1]+y*sampling,
-                                parameter[p_index+2]+z*sampling,
-                                0, FALSE,
-                                0.0, &value2,
-                                NULL, NULL, NULL,
-                                NULL, NULL, NULL, NULL, NULL, NULL );
-          dxyz[a] = value2 - value1;
-          if( value1 >= to || value2 >= to )
-          {
-            dxyz[a] = 0;
-          }
-          // If a vertex is on the boundary of GM/CSF, it should not be moved toward the laplacian direction
-          evaluate_volume_in_world( volume,
-                                parameter[p_index+0]-x*sampling,
-                                parameter[p_index+1]-y*sampling,
-                                parameter[p_index+2]-z*sampling,
-                                0, FALSE,
-                                0.0, &value1,
-                                NULL, NULL, NULL,
-                                NULL, NULL, NULL, NULL, NULL, NULL );
-          evaluate_volume_in_world( volume,
-                                parameter[p_index+0]+x*sampling,
-                                parameter[p_index+1]+y*sampling,
-                                parameter[p_index+2]+z*sampling,
-                                0, FALSE,
-                                0.0, &value2,
-                                NULL, NULL, NULL,
-                                NULL, NULL, NULL, NULL, NULL, NULL );
-          if( value1 < 2 || value2 < 2 )
-          {
-            dxyz[a] *= 0.1;
-          }
-          if(sampling >= 1)
-          {
-            evaluate_volume_in_world( laplacian_map,
-                                parameter[p_index+0]-x*sampling/2,
-                                parameter[p_index+1]-y*sampling/2,
-                                parameter[p_index+2]-z*sampling/2,
-                                0, FALSE,
-                                0.0, &value1,
-                                NULL, NULL, NULL,
-                                NULL, NULL, NULL, NULL, NULL, NULL );
-            evaluate_volume_in_world( laplacian_map,
-                                parameter[p_index+0]+x*sampling/2,
-                                parameter[p_index+1]+y*sampling/2,
-                                parameter[p_index+2]+z*sampling/2,
-                                0, FALSE,
-                                0.0, &value2,
-                                NULL, NULL, NULL,
-                                NULL, NULL, NULL, NULL, NULL, NULL );
-            dxyz[a] += (value2 - value1)*2;
-            if(value1 >= to || value2 >= to )
-            {
-              dxyz[a] = 0;
-            }
-          }            
-        }
-*/
+
         evaluate_volume_in_world( laplacian_map,
                                   parameter[p_index+0],
                                   parameter[p_index+1],
@@ -210,21 +251,18 @@ private  Real   evaluate_laplacian_fit_deriv(
                                 0.0, &volume_value,
                                 NULL, NULL, NULL,
                                 NULL, NULL, NULL, NULL, NULL, NULL );
-        //evaluate_volume_in_world( laplacian_map,
-        //                        parameter[p_index+0],
-        //                        parameter[p_index+1],
-        //                        parameter[p_index+2],
-        //                        0, FALSE,
-        //                        0.0, &value1,
-        //                        NULL, NULL, NULL,
-        //                        NULL, NULL, NULL, NULL, NULL, NULL );
-        //if( value1 < to )
-        if( volume_value >= 1.5 && value1>-0.1 )
+
+        // if direction<0, inward. if direction>0, outward.
+        if( ( (volume_value<=threshold && direction<0) ||
+              (volume_value>=threshold && direction>0) ) && 
+            value1>-0.1 && value1<to )
         {
           factor = sqrt(dxyz[0]*dxyz[0] + dxyz[1]*dxyz[1] + dxyz[2]*dxyz[2]);
-          deriv[p_index+0] += (-dxyz[0]) * weight * (to*2 - factor) * deriv_factor;
-          deriv[p_index+1] += (-dxyz[1]) * weight * (to*2 - factor) * deriv_factor;
-          deriv[p_index+2] += (-dxyz[2]) * weight * (to*2 - factor) * deriv_factor;
+          factor = (factor>to) ? 0 : to-factor;
+          //deriv_factor *= ((Real)to-value1) / (to*2);
+          deriv[p_index+0] += (-dxyz[0]) * weight * factor * deriv_factor;
+          deriv[p_index+1] += (-dxyz[1]) * weight * factor * deriv_factor;
+          deriv[p_index+2] += (-dxyz[2]) * weight * factor * deriv_factor;
           //deriv[p_index+0] += SIGN(dxyz[0])*(-fabs(fabs(dxyz[0])-to)) * weight * deriv_factor / 2;
           //deriv[p_index+1] += SIGN(dxyz[1])*(-fabs(fabs(dxyz[1])-to)) * weight * deriv_factor / 2;
           //deriv[p_index+2] += SIGN(dxyz[2])*(-fabs(fabs(dxyz[2])-to)) * weight * deriv_factor / 2;
@@ -245,10 +283,10 @@ private  Real   evaluate_laplacian_fit_deriv(
 private  Real   evaluate_volume_fit(
     Real         weight,
     Real         max_weight,
-    Volume       masked_wm_volume,
+    int          direction,
     Volume       volume,
-    int          n_anchor_points,
-    anchor_point_struct anchor_points[],
+    Volume       laplacian,
+    Real         threshold,
     Real         parameter[],
     int          start_point,
     int          end_point,
@@ -256,20 +294,20 @@ private  Real   evaluate_volume_fit(
 {
     int          point;
     int          p_index;
-    Real         value, wm_value;
+    Real         value;
     Real         fit1=0.0, fit2=0.0;
-    Real         dx, dy, dz, dist, diff;
-    anchor_point_struct *a;
-    Real         dxyz[3];
-    //int          order_points=0;
+    //clock_t      start, end, s_start, s_end;
 
+    //start = clock();
     if( weight > 0 || max_weight > 0 )
     {
       for_less( point, start_point, end_point )
       {
-        a = &anchor_points[point];
         p_index = IJ( point, 0, 3 );
-        evaluate_volume_in_world( volume,
+        // for the WM surface
+        if( direction < 0 )
+        {
+          evaluate_volume_in_world( volume,
                                 parameter[p_index+0],
                                 parameter[p_index+1],
                                 parameter[p_index+2],
@@ -277,63 +315,49 @@ private  Real   evaluate_volume_fit(
                                 0.0, &value,
                                 NULL, NULL, NULL,
                                 NULL, NULL, NULL, NULL, NULL, NULL );
-        evaluate_volume_in_world( masked_wm_volume,
-                                  parameter[p_index+0],
-                                  parameter[p_index+1],
-                                  parameter[p_index+2],
-                                  1, FALSE,
-                                  0.0, &wm_value,
-                                  dxyz, dxyz+1, dxyz+2,
-                                  NULL, NULL, NULL, NULL, NULL, NULL );
-        // If the vertex is in the WM region
-        if( wm_value==-0.1 )
-        {
-          dx = RPoint_x(a->anchor_point) - parameter[p_index+0];
-          dy = RPoint_y(a->anchor_point) - parameter[p_index+1];
-          dz = RPoint_z(a->anchor_point) - parameter[p_index+2];
-          dist = sqrt(dx*dx + dy*dy + dz*dz);
-          fit2 += dist * weight;
+          fit1 += value/6 * max_weight;
         }
-        /*if( dxyz[0]==0 && dxyz[1]==0 && dxyz[2]==0 && old_params!=NULL && wm_value<20 && wm_value>-0.1 )
-        //if( order_points < n_inside_points )
-          //if(inside_points[order_points] )
+        // for the GM surface
+        else
+          // If the vertex is in the CSF region
+          //if( (value <= threshold && wm_value>0 ) )
+          //if( (value>=threshold && direction<0) || (value<=threshold && direction>0) )
         {
-          dx = old_params[p_index+0] - parameter[p_index+0];
-          dy = old_params[p_index+1] - parameter[p_index+1];
-          dz = old_params[p_index+2] - parameter[p_index+2];
-          dist = sqrt( dx*dx + dy*dy + dz*dz );
-          //diff = -1 / (dist+1);
-          diff = dist;
-          fit2 += diff * weight;
-          //order_points++;
-        }*/
-        // If the vertex is in the CSF region
-        if( (value <= 1.5 && wm_value>0 ) )
-        {
-          dx = RPoint_x(a->anchor_point) - parameter[p_index+0];
-          dy = RPoint_y(a->anchor_point) - parameter[p_index+1];
-          dz = RPoint_z(a->anchor_point) - parameter[p_index+2];
-          //dx = old_params[p_index+0] - parameter[p_index+0];
-          //dy = old_params[p_index+1] - parameter[p_index+1];
-          //dz = old_params[p_index+2] - parameter[p_index+2];
+          //dx = RPoint_x(a->anchor_point) - parameter[p_index+0];
+          //dy = RPoint_y(a->anchor_point) - parameter[p_index+1];
+          //dz = RPoint_z(a->anchor_point) - parameter[p_index+2];
+          /*dx = RPoint_x(anchor_points[point]) - parameter[p_index+0];
+          dy = RPoint_y(anchor_points[point]) - parameter[p_index+1];
+          dz = RPoint_z(anchor_points[point]) - parameter[p_index+2];
           dist = sqrt(dx*dx + dy*dy + dz*dz);
-          //diff = 1 / (dist+1);
-          diff = dist;
-          fit1 += diff * max_weight;
+          fit1 += dist * max_weight;*/
+          evaluate_volume_in_world( laplacian,
+                                parameter[p_index+0],
+                                parameter[p_index+1],
+                                parameter[p_index+2],
+                                0, FALSE,
+                                0.0, &value,
+                                NULL, NULL, NULL,
+                                NULL, NULL, NULL, NULL, NULL, NULL );
+          if(value<0){
+            fit1 += -value/2 * max_weight;
+          }
         }
       }
     }
-    //printf("R = %g\n",fit2);
+    //end = clock();
+    //printf("vol=%f,%f\n",((double)(end - start))/CLOCKS_PER_SEC, fit1);
+
     return fit1 + fit2;
 }
 
 private  Real   evaluate_volume_fit_deriv(
     Real         weight,
     Real         max_weight,
-    Volume       masked_wm_volume,
+    int          direction,
     Volume       volume,
-    int          n_anchor_points,
-    anchor_point_struct anchor_points[],
+    Volume       laplacian,
+    Real         threshold,
     Real         parameter[],
     int          n_neighbours[],
     int          *neighbours[],
@@ -348,7 +372,7 @@ private  Real   evaluate_volume_fit_deriv(
     anchor_point_struct *a;
     Real         dx, dy, dz, dist;
     Real         diff;
-    Real         factor=0.1;
+    Real         factor=1;
     int          neigh, n, max_neighbours;
     Point        *neigh_points;
     Vector       normal;
@@ -361,11 +385,14 @@ private  Real   evaluate_volume_fit_deriv(
         max_neighbours = MAX( max_neighbours, n_neighbours[n] );
       }
       ALLOC( neigh_points, max_neighbours);
+
       for_less( point, start_point, end_point )
       {
-        a = &anchor_points[point];
+        //a = &anchor_points[point];
         p_index = IJ( point, 0, 3 );
-        evaluate_volume_in_world( volume,
+        if( direction < 0 )
+        {
+          evaluate_volume_in_world( volume,
                                 parameter[p_index+0],
                                 parameter[p_index+1],
                                 parameter[p_index+2],
@@ -373,68 +400,45 @@ private  Real   evaluate_volume_fit_deriv(
                                 0.0, &value,
                                 NULL, NULL, NULL,
                                 NULL, NULL, NULL, NULL, NULL, NULL );
-        evaluate_volume_in_world( masked_wm_volume,
-                                parameter[p_index+0],
-                                parameter[p_index+1],
-                                parameter[p_index+2],
-                                1, FALSE,
-                                0.0, &wm_value,
-                                dxyz, dxyz+1, dxyz+2,
-                                NULL, NULL, NULL, NULL, NULL, NULL );
-        if( wm_value==-0.1 )
-        {
-          dx = parameter[p_index+0] - RPoint_x(a->anchor_point);
-          dy = parameter[p_index+1] - RPoint_y(a->anchor_point);
-          dz = parameter[p_index+2] - RPoint_z(a->anchor_point);
-          dist = sqrt(dx*dx + dy*dy + dz*dz);
-        //dist = sqrt(dist);
-        //diff = dist-0;
-          if(dist>0){
-            deriv[p_index+0] += dx / dist * weight;
-            deriv[p_index+1] += dy / dist * weight;
-            deriv[p_index+2] += dz / dist * weight;
+          if( value <= threshold )
+          {
+            for_less( n, 0, n_neighbours[point] ){
+              neigh = neighbours[point][n];
+              fill_Point( neigh_points[n],
+                          parameter[IJ(neigh,0,3)],
+                          parameter[IJ(neigh,1,3)],
+                          parameter[IJ(neigh,2,3)] );
+            }
+            find_polygon_normal( n_neighbours[point], neigh_points, &normal);
+            deriv[p_index+0] +=  -normal.coords[0] * max_weight * factor;
+            deriv[p_index+1] +=  -normal.coords[1] * max_weight * factor;
+            deriv[p_index+2] +=  -normal.coords[2] * max_weight * factor;
           }
         }
-        /*if( dxyz[0]==0 && dxyz[1]==0 && dxyz[2]==0 && wm_value<20 ){
-          for_less( n, 0, n_neighbours[point] ){
-            neigh = neighbours[point][n];
-            fill_Point( neigh_points[n],
-                        parameter[IJ(neigh,0,3)],
-                        parameter[IJ(neigh,1,3)],
-                        parameter[IJ(neigh,2,3)] );
-          }
-          find_polygon_normal( n_neighbours[point], neigh_points, &normal);
-          //printf("P(%g,%g,%g)=N(%g,%g,%g)\n", parameter[p_index+0],
-          //       parameter[p_index+1],parameter[p_index+2],
-          //       normal.coords[0],normal.coords[1],normal.coords[2]);
-          deriv[p_index+0] += -normal.coords[0] * weight * factor;
-          deriv[p_index+1] += -normal.coords[1] * weight * factor;
-          deriv[p_index+2] += -normal.coords[2] * weight * factor;
-          //inside_points[n_inside_points++] = point;
-        }*/
-        if( value<=1.5 && wm_value>0 )
+        else
+        //if( ((value>=threshold && direction<0) || (value<=threshold && direction>0)) && wm_value==0 )
         {
-          //for_less( n, 0, n_neighbours[point] ){
-          //  neigh = neighbours[point][n];
-          //  fill_Point( neigh_points[n],
-          //              parameter[IJ(neigh,0,3)],
-          //              parameter[IJ(neigh,1,3)],
-          //              parameter[IJ(neigh,2,3)] );
-          //}
-          //find_polygon_normal( n_neighbours[point], neigh_points, &normal);
-          //deriv[p_index+0] +=  normal.coords[0] * max_weight * factor;
-          //deriv[p_index+1] +=  normal.coords[1] * max_weight * factor;
-          //deriv[p_index+2] +=  normal.coords[2] * max_weight * factor;
-          dx = parameter[p_index+0] - RPoint_x(a->anchor_point);
-          dy = parameter[p_index+1] - RPoint_y(a->anchor_point);
-          dz = parameter[p_index+2] - RPoint_z(a->anchor_point);
-          dist = sqrt(dx*dx + dy*dy + dz*dz);
-        //dist = sqrt(dist);
-        //diff = dist-0;
-          if(dist>0){
-            deriv[p_index+0] += dx / dist * max_weight;
-            deriv[p_index+1] += dy / dist * max_weight;
-            deriv[p_index+2] += dz / dist * max_weight;
+          evaluate_volume_in_world( laplacian,
+                                    parameter[p_index+0],
+                                    parameter[p_index+1],
+                                    parameter[p_index+2],
+                                    0, FALSE,
+                                    0.0, &value,
+                                    NULL, NULL, NULL,
+                                    NULL, NULL, NULL, NULL, NULL, NULL );
+          if( value < 0 )
+          {
+            for_less( n, 0, n_neighbours[point] ){
+              neigh = neighbours[point][n];
+              fill_Point( neigh_points[n],
+                          parameter[IJ(neigh,0,3)],
+                          parameter[IJ(neigh,1,3)],
+                          parameter[IJ(neigh,2,3)] );
+            }
+            find_polygon_normal( n_neighbours[point], neigh_points, &normal);
+            deriv[p_index+0] +=  normal.coords[0] * max_weight * factor;
+            deriv[p_index+1] +=  normal.coords[1] * max_weight * factor;
+            deriv[p_index+2] +=  normal.coords[2] * max_weight * factor;
           }
         }
       }
@@ -4598,6 +4602,8 @@ private  Real   evaluate_surf_surf_fit(
     Real    *parameters_p1, *parameters_n11, *parameters_n12;
     int     prev_p1s, p1s;
     piecewise_weight_struct  *sorted, tmp;
+    Real    intersect_dist, tmp_dist;
+    int     intersect_num = 0;
 
     closest = -1.0;
 
@@ -4718,12 +4724,31 @@ private  Real   evaluate_surf_surf_fit(
         }
         else
         {
-            fit += 2.0e-3;
+          //fit += 1e-4;//2e-3;
+          intersect_dist = 0;
+          tmp_dist = sq_triangle_point_dist(&parameters2[p2*3],
+                                            &parameters2[n21*3],
+                                            &parameters2[n22*3], 
+                                            parameters_p1 );
+          intersect_dist = (tmp_dist>intersect_dist)?tmp_dist:intersect_dist;
+          /*tmp_dist = sq_triangle_point_dist(&parameters2[p2*3],
+                                            &parameters2[n21*3],
+                                            &parameters2[n22*3], 
+                                            parameters_n11 );
+          intersect_dist = (tmp_dist>intersect_dist)?tmp_dist:intersect_dist;
+          tmp_dist = sq_triangle_point_dist(&parameters2[p2*3],
+                                            &parameters2[n21*3],
+                                            &parameters2[n22*3], 
+                                            parameters_n12 );
+          intersect_dist = (tmp_dist>intersect_dist)?tmp_dist:intersect_dist;
+          if(intersect_dist!=0)printf("%g\t", intersect_dist);*/
+          fit += intersect_dist*1e0;
+          intersect_num++;
         }
     }
 
     FREE( sorted );
-
+    //printf("intersect num = %d\n",intersect_num);
     if( closest > 0.0 )
         closest = sqrt( closest );
 
@@ -5024,20 +5049,38 @@ private  int   private_evaluate_fit(
         }
 
         //////////////////////////////////////////////////////////////////
+        // prevent from intersecting with the WM surface
+        for_less( i, 0, deform->n_intersect_wm )
+        {
+          if( which == -2 || which == count )
+          {
+            f = evaluate_intersect_wm_fit( deform->intersect_wm->objects,
+                           deform->intersect_wm->weight, this_parms,
+                           deform->intersect_wm->intersected,
+                           deform->intersect_wm->n_intersected,
+                           0, deform->surfaces[surface].surface.n_points);
+            eval->surf_surf_fit += f;
+            *fit += f;
+            ++count;
+          }
+        }
+
+        //////////////////////////////////////////////////////////////////
         // LAPLACIAN constraint
         for_less( i, 0, deform->surfaces[surface].n_laplacian )
         {
-          anchor = &deform->surfaces[surface].anchors[0];
+          //anchor = &deform->surfaces[surface].anchors[0];
+          
           if( which == -2 || which == count )
           {
             f = evaluate_laplacian_fit(
                            deform->surfaces[surface].laplacian->weight,
+                           deform->surfaces[surface].laplacian->direction,
                            deform->surfaces[surface].laplacian->volume,
-                           deform->surfaces[surface].bound->volume,
+                           deform->surfaces[surface].laplacian->gradient_volume,
+                           deform->surfaces[surface].bound->threshold,
                            deform->surfaces[surface].laplacian->from_value,
                            deform->surfaces[surface].laplacian->to_value,
-                           anchor->n_anchor_points, 
-                           anchor->anchor_points,
                            this_parms,
                            0,
                            deform->surfaces[surface].surface.n_points);
@@ -5047,18 +5090,19 @@ private  int   private_evaluate_fit(
           }
         }
 
-        for_less( i, 0, deform->surfaces[surface].n_anchors )
+        for_less( i, 0, deform->surfaces[surface].n_volume )
         {
-            anchor = &deform->surfaces[surface].anchors[0];
+          //anchor = &deform->surfaces[surface].anchors[0];
             bound = &deform->surfaces[surface].bound[0];
             f=0;
             fv=0;
             if( which == -2 || which == count )
             {
               fv = evaluate_volume_fit( deform->surfaces[surface].volume->weight, deform->surfaces[surface].volume->max_weight,
-                             deform->surfaces[surface].laplacian->volume, 
+                             deform->surfaces[surface].volume->direction,
                              bound->volume,
-                             anchor->n_anchor_points, anchor->anchor_points,
+                             deform->surfaces[surface].laplacian->volume,
+                             bound->threshold,
                              this_parms,
                              0,
                              deform->surfaces[surface].surface.n_points,
@@ -5081,7 +5125,7 @@ private  int   private_evaluate_fit(
               /////////////////////////////////////////////////////////
               /////// Modified by June ////////////////////////////////
         if(NO_ANCHOR != 1){
-          f = evaluate_anchor_fit( deform->surfaces[surface].volume->adaptive_anchor_ratio,
+          f = evaluate_anchor_fit( 0,
                        anchor->weight*1, anchor->max_dist_weight*1,
                        anchor->n_anchor_points, anchor->anchor_points,
                        this_parms, this_active, anchor->max_weight_value );
@@ -5678,6 +5722,38 @@ public  void   evaluate_fit_deriv(
     }
 
     //////////////////////////////////////////////////////////////////
+    // Added by June
+    // constraint for WM surface intersection
+    for_less( surface, 0, 1/*deform->n_surfaces*/ )
+    {
+      this_parms = &parameters[start_parameter[surface]];
+      this_deriv = &derivative[start_parameter[surface]];
+
+      for_less( i, 0, deform->n_intersect_wm )
+      {
+        evaluate_intersect_wm_fit_deriv(
+                  deform->intersect_wm->objects,
+                  deform->intersect_wm->weight,
+                  this_parms,
+                  deform->intersect_wm->wm_masked,
+                  deform->intersect_wm->intersected,
+                  &(deform->intersect_wm->n_intersected),
+                  deform->surfaces[surface].surface.n_neighbours,
+                  deform->surfaces[surface].surface.neighbours,
+                  0,
+                  deform->surfaces[surface].surface.n_points,
+                  this_deriv );
+      }
+    }
+    eval.surf_surf_fit += compute_deriv_mag( n_parameters, derivative );
+
+    for_less( p, 0, n_parameters )
+    {
+      full_deriv[p] += derivative[p];
+      derivative[p] = 0.0;
+    }
+
+    //////////////////////////////////////////////////////////////////
     // Added by JUNE
     for_less( surface, 0, 1/*deform->n_surfaces*/ )
     {
@@ -5688,8 +5764,10 @@ public  void   evaluate_fit_deriv(
       {
         evaluate_laplacian_fit_deriv(
                            deform->surfaces[surface].laplacian->weight,
+                           deform->surfaces[surface].laplacian->direction,
                            deform->surfaces[surface].laplacian->volume,
                            deform->surfaces[surface].bound->volume,
+                           bound->threshold,
                            deform->surfaces[surface].laplacian->from_value,
                            deform->surfaces[surface].laplacian->to_value,
                            deform->surfaces[surface].laplacian->deriv_factor,
@@ -5717,7 +5795,7 @@ public  void   evaluate_fit_deriv(
         this_parms = &parameters[start_parameter[surface]];
         this_deriv = &derivative[start_parameter[surface]];
 
-        for_less( i, 0, deform->surfaces[surface].n_anchors )
+        for_less( i, 0, deform->surfaces[surface].n_volume )
         {
             bound = &deform->surfaces[surface].bound[i];
             anchor = &deform->surfaces[surface].anchors[i];
@@ -5727,9 +5805,10 @@ public  void   evaluate_fit_deriv(
                         //VOLUME_WEIGHT, VOLUME_MAX_WEIGHT,
                           deform->surfaces[surface].volume->weight,
                           deform->surfaces[surface].volume->max_weight,
-                          deform->surfaces[surface].laplacian->volume,
+                          deform->surfaces[surface].volume->direction,
                           bound->volume,
-                          anchor->n_anchor_points, anchor->anchor_points,
+                          deform->surfaces[surface].laplacian->volume,
+                          bound->threshold,
                           this_parms,
                           deform->surfaces[surface].surface.n_neighbours,
                           deform->surfaces[surface].surface.neighbours,
@@ -5861,7 +5940,7 @@ public  void   evaluate_fit_deriv(
         {
             anchor = &deform->surfaces[surface].anchors[i];
 
-            evaluate_anchor_fit_deriv(deform->surfaces[surface].volume->adaptive_anchor_ratio,
+            evaluate_anchor_fit_deriv(0,
                        anchor->weight, anchor->max_dist_weight,
                        anchor->n_anchor_points, anchor->anchor_points,
                        this_parms, anchor->max_weight_value, this_deriv );
@@ -5961,7 +6040,7 @@ public  void   evaluate_fit_deriv(
                    &derivative[start_parameter[surf->surface_index2]] );
     }
 
-    eval.surf_surf_fit = compute_deriv_mag( n_parameters, derivative );
+    eval.surf_surf_fit += compute_deriv_mag( n_parameters, derivative );
 
     for_less( p, 0, n_parameters )
     {

@@ -1,7 +1,7 @@
 #ifndef  _DEF_FIT_3D_H
 #define  _DEF_FIT_3D_H
 
-#include  <volume_io/internal_volume_io.h>
+#include  <internal_volume_io.h>
 #include  <bicpl.h>
 #include  <conjugate.h>
 
@@ -250,19 +250,33 @@ typedef  struct
     Real                   max_weight;
     Real                   adaptive_anchor_ratio;
     Real                   adaptive_boundary_ratio;
+    int                    direction; // -1: inward, 1: outward
 }volume_info_struct;
 
 typedef  struct
 {
     Real                   weight;
     Volume                 volume;
-    Volume                 grad_vol;
+    Volume                 gradient_volume;
     voxel_coef_struct      *voxel_lookup;
     Real                   from_value;
     Real                   to_value;
     Real                   deriv_factor;
     Real                   oversample;
+    int                    direction; // -1: inward, 1: outward
 }laplacian_struct;
+
+typedef  struct
+{
+    object_struct          **objects;
+    int                    n_objects;
+    int                    *intersected;
+    int                    n_intersected;
+    Volume                 wm_masked;
+    voxel_coef_struct      *voxel_lookup;
+    Real                   weight;
+    int                    direction; // -1: inward, 1: outward
+}intersect_wm_struct;
 
 typedef  struct
 {
@@ -298,6 +312,9 @@ typedef  struct
     inter_surface_struct   *inter_surfaces;
     int                    n_surf_surfs;
     surf_surf_struct       *surf_surfs;
+  // Added by June
+    intersect_wm_struct    *intersect_wm;
+    int                    n_intersect_wm;
 } Deform_struct;
 
 typedef struct
