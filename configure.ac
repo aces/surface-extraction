@@ -25,3 +25,6 @@ AC_PATH_PROGS(PERL, perl5 perl)
 
 AC_CONFIG_FILES([Makefile src/Makefile scripts/Makefile models/Makefile])
 AC_OUTPUT
+
+AC_MSG_RESULT([====================])
+AC_MSG_RESULT([Once the program has built make sure that the model files are accessible through the MNI_DATAPATH variable])
