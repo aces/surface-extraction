@@ -207,8 +207,8 @@ int  main(
         if( equal_strings( arg, "-surface" ) )
         {
             if( !get_string_argument( NULL, &input_filename ) ||
-                !get_string_argument( NULL, &output_filename ) )
-                //!get_string_argument( NULL, &surf_surf_filename ) )
+                !get_string_argument( NULL, &output_filename ) ||
+                !get_string_argument( NULL, &surf_surf_filename ) )
             {
                 print_error( "Error in -surface arguments.\n" );
                 usage( argv[0] );
@@ -244,7 +244,8 @@ int  main(
             --deform.n_surfaces;
             ADD_ELEMENT_TO_ARRAY( output_filenames, deform.n_surfaces,
                                   output_filename, 1 );
-            /*if( input_surface( surf_surf_filename, FALSE,
+
+            if( input_surface( surf_surf_filename, FALSE,
                                &surface.n_points, &surface.points,
                                &surface.n_polygons,
                                &surface.n_neighbours, &surface.neighbours )
@@ -266,7 +267,7 @@ int  main(
             surf.n_self_intersects = 0;
             ADD_ELEMENT_TO_ARRAY( deform.surfaces, deform.n_surfaces,
                                   surf, 1);
-            */
+            
         }
 	else if( equal_strings( arg, "-ban_wm" ) )
 	{
@@ -380,8 +381,8 @@ int  main(
             return( 1 );
           }
           ADD_ELEMENT_TO_ARRAY(
-              deform.surfaces[deform.n_surfaces-1].laplacian,
-              deform.surfaces[deform.n_surfaces-1].n_laplacian, laplacian, 1 );
+              deform.surfaces[0].laplacian,
+              deform.surfaces[0].n_laplacian, laplacian, 1 );
         }
         else if( equal_strings( arg, "-volume" ) )
         {
@@ -394,9 +395,9 @@ int  main(
             usage( argv[0] );
             return( 1 );
           }
-          ADD_ELEMENT_TO_ARRAY( deform.surfaces[deform.n_surfaces-1].
+          ADD_ELEMENT_TO_ARRAY( deform.surfaces[0/*deform.n_surfaces-1*/].
                                 volume,
-                                deform.surfaces[deform.n_surfaces-1].
+                                deform.surfaces[0/*deform.n_surfaces-1*/].
                                 n_volume, volume_s, DEFAULT_CHUNK_SIZE );
         }
         else if( equal_strings( arg, "-boundary" ) )
@@ -463,8 +464,8 @@ int  main(
 
 
             ADD_ELEMENT_TO_ARRAY(
-                deform.surfaces[deform.n_surfaces-1].bound,
-                deform.surfaces[deform.n_surfaces-1].n_bound, bound, 1 );
+                deform.surfaces[0/*deform.n_surfaces-1*/].bound,
+                deform.surfaces[0/*deform.n_surfaces-1*/].n_bound, bound, 1 );
         }
         else if( equal_strings( arg, "-boundary_offset" ) )
         {
@@ -709,8 +710,8 @@ int  main(
             else
             {
                 ADD_ELEMENT_TO_ARRAY(
-                    deform.surfaces[deform.n_surfaces-1].stretch,
-                    deform.surfaces[deform.n_surfaces-1].n_stretch, stretch, 1);
+                      deform.surfaces[0/*deform.n_surfaces-1*/].stretch,
+                      deform.surfaces[0/*deform.n_surfaces-1*/].n_stretch, stretch, 1);
             }
         }
         else if( equal_strings( arg, "-curvature" ) )
@@ -1173,8 +1174,8 @@ int  main(
             (void) close_file( file );
             //(void) close_file( file1 );
 
-            ADD_ELEMENT_TO_ARRAY( deform.surfaces[deform.n_surfaces-1].anchors,
-                                 deform.surfaces[deform.n_surfaces-1].n_anchors,
+            ADD_ELEMENT_TO_ARRAY( deform.surfaces[0/*deform.n_surfaces-1*/].anchors,
+                                  deform.surfaces[0/*deform.n_surfaces-1*/].n_anchors,
                                  anchor, 1 );
         }
         else if( equal_strings( arg, "-weight_point" ) )
@@ -1256,18 +1257,18 @@ int  main(
                 return( 1 );
             }
 
-            if( deform.surfaces[deform.n_surfaces-1].n_self_intersects == 0 )
+            if( deform.surfaces[0/*deform.n_surfaces-1*/].n_self_intersects == 0 )
             {
-                ALLOC( deform.surfaces[deform.n_surfaces-1].self_intersects, 1);
-                deform.surfaces[deform.n_surfaces-1].n_self_intersects = 1;
+              ALLOC( deform.surfaces[0/*deform.n_surfaces-1*/].self_intersects, 1);
+                deform.surfaces[0/*deform.n_surfaces-1*/].n_self_intersects = 1;
 
-                deform.surfaces[deform.n_surfaces-1].self_intersects[0].
+                deform.surfaces[0/*deform.n_surfaces-1*/].self_intersects[0].
                                      n_weights = 0;
-                deform.surfaces[deform.n_surfaces-1].self_intersects[0].
+                deform.surfaces[0/*deform.n_surfaces-1*/].self_intersects[0].
                                      use_tri_tri_dist = use_tri_tri_dist;
             }
 
-            self = &deform.surfaces[deform.n_surfaces-1].self_intersects[0];
+            self = &deform.surfaces[0/*deform.n_surfaces-1*/].self_intersects[0];
 
             self->square_flag = TRUE;
             if( weight < 0.0 )
@@ -1483,7 +1484,8 @@ int  main(
     for_less( s, 0, deform.n_surfaces )
         surface_points[s] = deform.surfaces[s].surface.points;
 
-    for_less( s, 0, deform.n_surfaces )
+    // modified by June at 14/08/2003
+    for_less( s, 0, 1/*deform.n_surfaces*/ )
     {
         for_less( i, 0, deform.surfaces[s].n_bound )
         {
@@ -1587,7 +1589,7 @@ int  main(
     if( deform.n_inter_surfaces > 0 )
         FREE( deform.inter_surfaces );
 
-    for_less( s, 0, deform.n_surfaces )
+    for_less( s, 0, 1/*deform.n_surfaces*/ )
     {
         if( deform.surfaces[s].static_flag )
             continue;
@@ -3449,7 +3451,9 @@ private  BOOLEAN   fit_polygons(
 
         recomputed = FALSE;
 
-        if( recompute_every > 0 && n_since_recompute >= recompute_every )
+        // Modified by June 15/08/2003
+        if( recompute_every > 0 && n_since_recompute >= recompute_every  && 
+            (deform->surfaces[0].bound->max_outward!=0 || deform->surfaces[0].bound->max_inward!=0 || deform->surfaces[0].bound->max_dist_weight!=0) )
         {
             n_since_recompute = 0;
 
@@ -3845,7 +3849,7 @@ int write_file_info( FILE *log_file, fit_eval_struct *fit_info )
     if( log_file != NULL )
     {
         sprintf(fbuf,
-            "%11.4f\t%8.4f\t%10.4f\t%8.4f\t%8.4f\t%10.4f\t%8.4f\t%8.4f\t%10.4f\t%9.4f\n",
+            "%11.4f\t%8.4f\t%10.4f\t%8.4f\t%8.4f\t%10.4f\t%8.4f\t%7.3f\t%10.4f\t%10.4f\n",
             fit_info->boundary_fit, fit_info->volume_fit, fit_info->stretch_fit,
             fit_info->curvature_fit, fit_info->bend_fit, 
             fit_info->self_intersect_fit, fit_info->surf_surf_fit,
