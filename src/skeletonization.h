@@ -1,12 +1,16 @@
+
+
+//maximum number of subiterations to do for each iteration of algorithm
 #define MAX_SUB 2
 
+#define VALUE_0 0
+#define VALUE_1 1
 
+//typedefs used to rotate voxel coordinate system to check symmetric
+//conditions
 typedef enum { NONE, X90, X180, XN90, Y90, Y180, YN90,
 	       Z90, Z180, ZN90, XN90_Z90, XN90_ZN90, XN90_Z180,
 	       Z90_X90, Z90_XN90, Z90_X180 } rotation;
-
-Real value_0, value_1;
-Real voxel_0, voxel_1;
 
 int sub_reducer(Volume vol1, Volume vol2, int sub_it);
 
