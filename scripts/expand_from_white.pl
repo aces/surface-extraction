@@ -15,7 +15,7 @@ MNI::Spawn::RegisterPrograms
      mincmorph
      minccalc
      subdivide_polygons
-     new_fit_3d_1
+     new_fit_3d
      make_gradient_volume
      set_object_colour/ ] )
   or exit 1;
