@@ -1,7 +1,7 @@
 #ifndef  _DEF_FIT_3D_H
 #define  _DEF_FIT_3D_H
 
-#include  <internal_volume_io.h>
+#include  <volume_io/internal_volume_io.h>
 #include  <bicpl.h>
 #include  <conjugate.h>
 

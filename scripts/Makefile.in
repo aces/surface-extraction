@@ -139,11 +139,12 @@ checked_libs = $(unchecked_libs:.plib=.pl)
 perllib_DATA = deform_utils.pl utils.pl
 bin_SCRIPTS = asp expand_from_white extract_white_surface \
 			  mask_cortical_white_matter make_asp_grid \
-                          clasp1 clasp2 calibrate_white
+              clasp1 clasp2 calibrate_white classify_correct
 
 EXTRA_DIST = asp.pl expand_from_white.pl extract_white_surface.pl \
 			  mask_cortical_white_matter.pl deform_utils.plib utils.plib \
-              make_asp_grid.pl clasp1.pl clasp2.pl calibrate_white.pl
+              make_asp_grid.pl clasp1.pl clasp2.pl calibrate_white.pl \
+              classify_correct.pl
 
 SUFFIXES = .pl
 CLEANFILES = asp expand_from_white extract_white_surface \
