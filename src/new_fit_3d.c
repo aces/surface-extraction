@@ -114,6 +114,7 @@ int  main(
     STRING               *input_filenames, *output_filenames, filename;
     STRING               depth_filename;
     STRING               laplacian_filename, laplacian_gradient_filename;
+    STRING               chamfer_filename;
     STRING               stretch_factor_name, curvature_factor_name;
     STRING               bend_factor_name, midpoint_filename;
     int                  n_bend, p1, p2, midpoint, n_weight_steps;
@@ -413,7 +414,6 @@ int  main(
         else if( equal_strings( arg, "-laplacian" ) )
         {
           if( !get_string_argument( NULL, &laplacian_filename ) ||
-              !get_string_argument( NULL, &laplacian_gradient_filename ) ||
               !get_real_argument( 0.0, &laplacian.weight ) ||
               !get_real_argument( 0.0, &laplacian.from_value ) ||
               !get_real_argument( 0.0, &laplacian.to_value ) ||
@@ -422,12 +422,6 @@ int  main(
           {
             print_error( "Error in -laplacian arguments.\n" );
             usage( argv[0] );
-            return( 1 );
-          }
-          if( lookup_volume( laplacian_gradient_filename, 
-                             &laplacian.gradient_volume,
-                             &laplacian.voxel_lookup ) != OK )
-          {
             return( 1 );
           }
           if( lookup_volume( laplacian_filename, &laplacian.volume,
@@ -479,7 +473,7 @@ int  main(
             if( lookup_volume( volume_filename, &bound.volume,
                                &bound.voxel_lookup ) != OK )
             {
-                return( 1 );
+              return( 1 );
             }
 
             if( surface_direction[0] == '-' )

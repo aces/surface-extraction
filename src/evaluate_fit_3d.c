@@ -148,8 +148,7 @@ private  Real   evaluate_laplacian_fit(
     Real         weight,
     int          direction,
     Volume       laplacian_map,
-    Volume       laplacian_gradient,
-    Real         threshold,
+    Real         deriv_factor,
     Real         from,
     Real         to,
     Real         parameter[],
@@ -162,7 +161,7 @@ private  Real   evaluate_laplacian_fit(
   Real        dx, dy, dz, dist;
   Real        deriv, dxyz[3];
   Real        offset = 10;
-  Real        max_deriv = sqrt(to*to*3);
+  Real        max_deriv = sqrt(3*to*to);
   int         num = 0;
   //clock_t     start, end;
 
@@ -182,23 +181,25 @@ private  Real   evaluate_laplacian_fit(
                                 NULL, NULL, NULL,
                                 //dxyz, dxyz+1, dxyz+2,
                                 NULL, NULL, NULL, NULL, NULL, NULL );
-      evaluate_volume_in_world( laplacian_gradient,
-                                parameter[p_index+0],
-                                parameter[p_index+1],
-                                parameter[p_index+2],
-                                0, FALSE,
-                                0.0, &gradient,
-                                NULL, NULL, NULL,
-                                NULL, NULL, NULL, NULL, NULL, NULL );
+
+        gradient = 1;
 
       //deriv = sqrt(dxyz[0]*dxyz[0] + dxyz[1]*dxyz[1] + dxyz[2]*dxyz[2]);
-      deriv = (gradient>max_deriv) ? max_deriv : gradient;
 
+      if( value >= to )
       {
-        //fit += (to-value) * weight;
-        //fit += (value - to*(dist-0)) * weight;
-        fit += weight * (to-value) * (max_deriv - deriv);
-        //fit += weight * (to*to-value*value) * (to*2 - deriv);
+        //deriv = (gradient>4) ? (max_deriv-gradient)/(max_deriv-4) : 5-gradient;
+        fit += weight * (0.1+value-to);//* (deriv);
+      }
+      else if( deriv_factor==0 )
+      {
+        //deriv = (gradient>5) ? 5 : gradient;
+        fit += weight*(exp(to-value)-1);//*(0.2*(5-deriv));
+      }
+      else if( deriv_factor>0 )
+      {
+        //deriv = (gradient>4) ? (max_deriv-gradient)/(max_deriv-4) : 5-gradient;
+        fit += weight * (to-value);// * (deriv);
       }
     }
   }
@@ -256,22 +257,34 @@ private  Real   evaluate_laplacian_fit_deriv(
                                 NULL, NULL, NULL,
                                 NULL, NULL, NULL, NULL, NULL, NULL );
 
+        factor = sqrt(dxyz[0]*dxyz[0] + dxyz[1]*dxyz[1] + dxyz[2]*dxyz[2]);
         // if direction<0, inward. if direction>0, outward.
-        if( ( (volume_value<=threshold && direction<0) ||
-             (volume_value>=threshold && direction>0) ) && 
-            value1>=-0.1 && value1<to )
+        if( volume_value>threshold && deriv_factor == 0 )
         {
-          factor = sqrt(dxyz[0]*dxyz[0] + dxyz[1]*dxyz[1] + dxyz[2]*dxyz[2]);
           /*factor = (factor>to) ? 0 : to-factor;
           //deriv_factor *= ((Real)to-value1) / (to*2);
           deriv[p_index+0] += (-dxyz[0]) * weight * factor * deriv_factor;
           deriv[p_index+1] += (-dxyz[1]) * weight * factor * deriv_factor;
           deriv[p_index+2] += (-dxyz[2]) * weight * factor * deriv_factor;*/
 
-          factor = (factor>max_deriv) ? max_deriv : factor;
-          deriv[p_index+0] += (-dxyz[0])*(max_deriv-factor)*weight*deriv_factor;
-          deriv[p_index+1] += (-dxyz[1])*(max_deriv-factor)*weight*deriv_factor;
-          deriv[p_index+2] += (-dxyz[2])*(max_deriv-factor)*weight*deriv_factor;
+          factor = (factor>5) ? 5 : factor;
+          deriv[p_index+0] += (-dxyz[0])*(exp(to-value1+deriv_factor)-1)*(5-factor)*weight;
+          deriv[p_index+1] += (-dxyz[1])*(exp(to-value1+deriv_factor)-1)*(5-factor)*weight;
+          deriv[p_index+2] += (-dxyz[2])*(exp(to-value1+deriv_factor)-1)*(5-factor)*weight;
+        }
+        else if( volume_value>threshold && deriv_factor > 0)
+        {
+          factor = (factor>4) ? (max_deriv-factor)/(max_deriv-4) : 5-factor;
+          deriv[p_index+0] +=(-dxyz[0])*(factor)*weight*deriv_factor;
+          deriv[p_index+1] +=(-dxyz[1])*(factor)*weight*deriv_factor;
+          deriv[p_index+2] +=(-dxyz[2])*(factor)*weight*deriv_factor;
+        }
+        else if( value1 >= to )
+        {
+          factor = (factor>4) ? (max_deriv-factor)/(max_deriv-4) : 5-factor;
+          deriv[p_index+0] +=(dxyz[0])*(factor)*weight;
+          deriv[p_index+1] +=(dxyz[1])*(factor)*weight;
+          deriv[p_index+2] +=(dxyz[2])*(factor)*weight;
         }
       }
     }
@@ -1138,7 +1151,7 @@ private  Real   evaluate_gradient_fit(
         // modified by June S. Kim at 7/MAY/2004
         diff = (value<threshold)?value - threshold:0;
 
-        fit1 += diff * diff;
+        fit1 += diff * diff * image_weight;
         //if( !checking_differential || diff >= min_diff && diff <= max_diff )
         //    continue;
 
@@ -1147,7 +1160,10 @@ private  Real   evaluate_gradient_fit(
         //                              ln_start_weight );
         ////////////////////////////////////////////////////////////////
     }
+
+    return fit1+fit2;
 }
+
 private  Real   evaluate_image_value_fit(
     Volume               volume,
     voxel_coef_struct    *lookup,
@@ -5310,8 +5326,7 @@ private  int   private_evaluate_fit(
                            deform->surfaces[surface].laplacian->weight,
                            deform->surfaces[surface].laplacian->direction,
                            deform->surfaces[surface].laplacian->volume,
-                           deform->surfaces[surface].laplacian->gradient_volume,
-                           deform->surfaces[surface].bound->threshold,
+                           deform->surfaces[surface].laplacian->deriv_factor,
                            deform->surfaces[surface].laplacian->from_value,
                            deform->surfaces[surface].laplacian->to_value,
                            this_parms,
@@ -5892,7 +5907,13 @@ public  void   evaluate_fit_deriv(
         }
     }
 
-    eval.value_fit = compute_deriv_mag( n_parameters, derivative );
+    eval.gradient_fit = compute_deriv_mag( n_parameters, derivative );
+
+    for_less( p, 0, n_parameters )
+    {
+        full_deriv[p] += derivative[p];
+        derivative[p] = 0.0;
+    }
 
     for_less( surface, 0, deform->n_surfaces )
     {
@@ -6061,7 +6082,7 @@ public  void   evaluate_fit_deriv(
                            deform->surfaces[surface].laplacian->direction,
                            deform->surfaces[surface].laplacian->volume,
                            deform->surfaces[surface].bound->volume,
-                           bound->threshold,
+                           deform->surfaces[surface].bound->threshold,
                            deform->surfaces[surface].laplacian->from_value,
                            deform->surfaces[surface].laplacian->to_value,
                            deform->surfaces[surface].laplacian->deriv_factor,
