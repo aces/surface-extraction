@@ -19,8 +19,9 @@ use MNI::FileUtilities qw(check_output_dirs);
 my ($usage, $help);
 my ($skelCSF, $cls, $wmSurface, $grid, $laplace, $output);
 my ($expression);
-my ($objMask, $unmasked);
+my ($objMask, $unmasked, $minc_model);
 my ($clsMasked, $wmLine, $wmMask, $wmMask2, $filledImage, $rslCSF);
+my ($in_chamfer, $out_chamfer);
 
 # ===== Defaults =====
 $unmasked = 0;
@@ -41,6 +42,8 @@ my @argTbl =
      ["-unmasked", "boolean", undef, \$unmasked,
       "Create a mask and apply it to the classified image. By default the " .
       "classified file is already masked."],
+     ["-like", "string", 1, \$minc_model,
+      "Reference file for resolution of a Laplacian field"],
      );
 GetOptions(\@argTbl, \@ARGV, \@leftOverArgs) or die "\n";
 
@@ -51,7 +54,8 @@ $output = shift @leftOverArgs or die $usage;
 
 # register the programs
 RegisterPrograms(["minccalc", "mincresample", "scan_object_to_volume",
-                  "surface_mask2", "cortical_surface", "laplacian_thickness"]);
+                  "surface_mask2", "cortical_surface", "laplacian_thickness",
+                  "mincmath", "mv", "mincchamfer"]);
 
 if ($Clobber) {
     AddDefaultArgs("minccalc", ["-clobber"]);
@@ -75,11 +79,18 @@ else {
     # the default assumption that the input classified file is already masked
     $clsMasked = $cls;
 }
+if (! defined($minc_model)){
+    $minc_model = $clsMasked;
+}
+else {
+    Spawn(["mincresample", "-like", $minc_model, $clsMasked, "${TmpDir}/cls_resampled.mnc"]);
+    $clsMasked = "${TmpDir}/cls_resampled.mnc";
+}
 
 # compute the WM lines
 # first, create a filled image
 $filledImage = "${TmpDir}/filled.mnc";
-Spawn(["minccalc", "-expression", 'out = 0;', $clsMasked, $filledImage]);
+Spawn(["minccalc", "-expression", 'out = 0;', $minc_model, $filledImage]);
 
 # now add the lines to the filled image
 $wmLine = "${TmpDir}/wm_lines.mnc";
@@ -88,8 +99,8 @@ Spawn(["scan_object_to_volume", $filledImage, $wmSurface, $wmLine]);
 # create a binary white matter mask
 $wmMask = "${TmpDir}/wm_mask.mnc";
 $wmMask2 = "${TmpDir}/wm_mask2.mnc";
-Spawn(["surface_mask2", "-binary_mask", $cls, $wmSurface, $wmMask2]);
-Spawn(["mincresample", "-like", ,$cls, $wmMask2, $wmMask]);
+Spawn(["surface_mask2", "-binary_mask", $clsMasked, $wmSurface, $wmMask2]);
+Spawn(["mincresample", "-like", ,$clsMasked, $wmMask2, $wmMask]);
 
 # resample the CSF skel map to be like the classified map
 $rslCSF = "${TmpDir}/csf_rsl.mnc";
@@ -97,16 +108,27 @@ Spawn(["mincresample", "-nearest_neighbour", "-like",
        $clsMasked, $skelCSF, $rslCSF]);
 
 # create the grid itself
-$expression = 'if(A[2]>0 && A[3]==0){out=0;}else if(A[0]>0 && A[3]==0){out=10;}else if(A[1]==0){out=10;}else{out=5;}';
+$expression = 'if(A[2]>0 && A[3]==0){out=0;}else if(A[0]>0 && A[3]==0){out=10;}else if(A[1]<=1){out=10;}else{out=5;}';
 $grid = "${TmpDir}/grid.mnc";
 Spawn(["minccalc", "-expression", $expression, $rslCSF, $clsMasked,
        $wmMask, $wmLine,$grid]);
 
 # create the laplacian field
 $laplace = "${TmpDir}/laplace.mnc";
-Spawn(["laplacian_thickness", "-potential_only", "-volume-double", "-gradients-double", "-from_grid", $grid, "-convergence", "-0.1", "-max_iterations", "500", $output]);
+Spawn(["laplacian_thickness", "-like", $minc_model, "-potential_only", "-volume-double", "-gradients-double", "-from_grid", $grid, "-convergence", "1e-8", "-max_iterations", "500", $output]);
 
-# correct the field
-Spawn(["mincresample", "-like", $cls, $output, $laplace]);
-$expression = 'if(A[0]==0){out=-0.1;}else{out=A[1];}';
-Spawn(["minccalc", "-clobber", "-expression", $expression, $grid, $laplace, $output]);
+# chamfer map in WM area
+$in_chamfer="${TmpDir}/in_chamfer.mnc";
+Spawn(["minccalc", "-expression", 'if(A[0]==0){out=0;}else{out=10;}', $grid, $in_chamfer]);
+Spawn(["mincchamfer", "-max_dist", "10", $in_chamfer, "${TmpDir}/chamfer.mnc"]);
+Spawn(["mincresample", "-clobber", "-like", $output, "${TmpDir}/chamfer.mnc", $in_chamfer]);
+
+# chamfer map in CSF and background area
+$out_chamfer="${TmpDir}/out_chamfer.mnc";
+Spawn(["minccalc", "-expression", 'if(A[0]==10){out=0;}else{out=11;}', $grid, $out_chamfer]);
+Spawn(["mincchamfer", "-max_dist", "11", $out_chamfer, "${TmpDir}/chamfer.mnc"]);
+Spawn(["mincresample", "-clobber", "-like", $output, "${TmpDir}/chamfer.mnc", $out_chamfer]);
+
+# combine laplacian field with chamfer maps
+Spawn(["minccalc", "-clobber", "-expression", 'if(A[0]>=10){out=A[0]+A[1]-1;}else{out=A[0]-A[2];}', $output, $out_chamfer, $in_chamfer, "${TmpDir}/chamfer.mnc"]);
+Spawn(["mv", "-f", "${TmpDir}/chamfer.mnc", $output]);

@@ -1,80 +1,140 @@
-@#!xPERLx -w
+#!xPERLx -w
 
-require "xINCDIRx/deform_utils.pl";
+use strict;
+
+require "deform_utils.pl";
+use Getopt::Tabular;
+use MNI::Startup;
+use MNI::FileUtilities;
+use MNI::Spawn;
 use MNI::DataDir;
+use MNI::FileUtilities qw(check_output_dirs);
 
-    $volume = shift;
-    $white_surface = shift;
-    $input = shift;
-    $isovalue = shift;
+MNI::Spawn::RegisterPrograms
+  ( [qw/  rm
+     mincmorph
+     minccalc
+     subdivide_polygons
+     new_fit_3d_1
+     make_gradient_volume
+     set_object_colour/ ] )
+  or exit 1;
 
-    $laplacian_file = shift;
-    $logfile = shift;
-    $start_n = shift;
-    $end_n = shift;
-    $dont_copy = shift;
-$output = $input;
+my ($i, $step, $size, $sw, $cw, $n_iters, $iter_inc);
+my ($si_step, $oversample, $self_weight, $self_dist);
+my ($laplacian_sampling, $laplacian_factor, $laplacian_weight);
+my ($self2, $surf2_info, $n_failures, $iter, $ni, $command, $ret, $b2);
+my ($laplace_info);
+
+# --- set the help & usage strings ---
+my $help = <<HELP;
+[refine]   : give a value >0 to generate the gray surface with 327680 triangles
+
+HELP
+
+my $usage = <<USAGE;
+usage: $ProgramName cls.mnc white.obj gray.obj field.mnc [refine]
+       $ProgramName -help to list options
+USAGE
+
+Getopt::Tabular::SetHelp( $help, $usage );
+
+# --- process options ---
+my( $masking_surface, $masked_input, $output_prefix );
+my @options = 
+  ( @DefaultArgs,     # from MNI::Startup
+  );
+
+GetOptions( \@options, \@ARGV ) 
+  or exit 1;
+die "$usage\n" unless @ARGV >= 4;
+
+    my $cls = shift;
+    my $white_surface = shift;
+    my $input = shift;
+    my $laplacian_file = shift;
+#my $output = shift;
+    my $refine = shift;
+
+    my $logfile = shift;
+    my $start_n = shift;
+    my $end_n = shift;
+    my $dont_copy = shift;
+my $output = $input;
     if( ! defined($laplacian_file) )
     {
         die "Usage: $0  input.mnc white.obj input_gray.obj output1_pref field.mnc [log_file] [start] [end] [dont copy]\n";
     }
 
 #---------
+    check_output_dirs($TmpDir);
 
-    $fit = "new_fit_3d ";
+    my $fit = "new_fit_3d ";
 
-    $laplacian_gradient_file = "/tmp/laplacian_grad_${$}.mnc";
-    system_call( "make_gradient_volume $laplacian_file $laplacian_gradient_file 1 3" );
-
-    $oversample_reference = 20480;
-    $n_polygons = `print_n_polygons $white_surface`;
+    my $oversample_reference = 20480;
+    my $n_polygons = `print_n_polygons $white_surface`;
     chop( $n_polygons );
 
-    $model_data_dir = MNI::DataDir::dir('ASP');
+    my $model_data_dir = MNI::DataDir::dir('ASP');
     MNI::DataDir::check_data($model_data_dir, ["ellipsoid_${n_polygons}.obj.gz"]);
 
-    $model = $white_surface;
+    my $model = $white_surface;
     $model = "${model_data_dir}/ellipsoid_${n_polygons}.obj.gz";
 
-    $self_dist2 = 0.01;
-    $n_selfs = 9;
-    $self_factor = 1.0;
+    my $self_dist2 = 0.01;
+    my $n_selfs = 9;
+    my $self_factor = 1.0;
 
-    $stop_threshold = 3e-2;
-    $stop_iters = 10;
+    my $stop_threshold = 3e-2;
+    my $stop_iters = 10;
 
-    #$value_differential_offset = 0.5;
-
-    $filter = 0;
-    $n_per = 1;
-    $tolerance = 1.0e-2;
+    my $filter = 0;
+    my $n_per = 1;
+    my $tolerance = 1.0e-2;
     $tolerance = 1.0e-10;
-    $f_tolerance = 1.0e-2;
+    my $f_tolerance = 1.0e-2;
     $f_tolerance = 1.0e-10;
 
-    $iters_scale = 1.0;
-    $break_scale = 1.0;
-    $oo_scale = 1.0 * sqrt( $oversample_reference / $n_polygons );
-    #$value_oo_scale = 1.0;
-    $iters_override = 0;
+    my $iters_scale = 1.0;
+    my $break_scale = 1.0;
+    my $oo_scale = 1.0 * sqrt( $oversample_reference / $n_polygons );
+    my $iters_override = 0;
 
-    $stretch_scale = 1;
-    $curvature_scale = 0;
+    my $stretch_scale = 1;
+    my $curvature_scale = 0;
 
-    @schedule = (
+    if( ! defined($refine) )
+        { $refine = 0; }
 
-#size   sw  n_it  inc offo offi  si over   sw   self                 v_w   v_mw
-#----- ---- ----  --- ---  ----  -- ----  ----  ----                 ---   ----
- 1e1,   0,  100,  50,  1,   1,   .5,  1,  1e1,  .25, 4, -1, -5, 2, 1e-4,1e-5,0,0,1.0, 1.0, 1e-4, 1e0,
- 1e1,   0, 1400,  50,  1,   1,   .5,  1,  1e1,  .25, 4, -1, -5, 2, 1e-4,1e-5,0,0,1.0, 2.0, 1e-4, 1e0,
- 1e1,   0, 1000,  50,  1,   1,   .5,  1,  1e1,  .25, 4, -1, -5, 2, 1e-4,1e-5,0,0,1.0, 2.0, 2e-4, 1e1,
- 1e1,   0,  500,  50,  1,   1,   .5,  1,  1e1,  .25, 4, -1, -5, 2, 1e-4,1e-5,0,0,1.0, 2.0, 2e-4, 1e2,
+    my @schedule;
+    if( $refine == 0 )
+    {
+      @schedule = (
+#size   sw        n_it  inc  si over   sw   self   l_s  l_d   l_w
+#----- ----       ----  ---  -- ----  ----  ----   ---  ---  ----
+ 81920, 1e1,   0,  200,  50,  .5,  1,  1e1,  .25, , 1.0, 0.0, 5e-6, 
+ 81920, 1e1,   0,  200,  50,  .5,  1,  1e1,  .25, , 1.0, 0.0, 1e-4, 
+ 81920, 1e1,   0,  300,  50,  .5,  1,  1e1,  .25, , 1.0, 0.0, 1e-3, 
+# 81920, 1e1,   0,  800,  50,  .5,  1,  1e1,  .25, , 1.0, 0.0, 5e-3,
+ 81920, 1e1,   0,  800,  50,  .5,  1,  1e1,  .25, , 1.0, 1.0, 1e-2,
   );
+    }
+    else
+    {
+      @schedule = (
+#size   sw        n_it  inc  si over   sw   self   l_s  l_d   l_w
+#----- ----       ----  ---  -- ----  ----  ----   ---  ---  ----
+ 81920, 1e1,   0,  200,  50,  .5,  1,  1e1,  .25, , 1.0, 0.0, 5e-6, 
+ 81920, 1e1,   0,  200,  50,  .5,  1,  1e1,  .25, , 1.0, 0.0, 2e-4, 
+ 81920, 1e1,   0,  300,  50,  .5,  1,  1e1,  .25, , 1.0, 0.0, 1e-3, 
+327680, 1e1,   0,  800,  50,  .5,  1,  1e1,  .25, , 1.0, 1.0, 1e-2, 
+  );
+    }
 
 
-    $sched_size =  22;
+    my $sched_size =  12;
 
-    $log = "";
+    my $log = "";
     if( defined($logfile) )
         { $log = " -log $logfile"; }
 
@@ -87,21 +147,20 @@ $output = $input;
 #------ loop over each schedule
 
     if( !$dont_copy && $start_n <= 0 ) {
-        system_call( "set_object_colour $white_surface ${output} white" );
+        Spawn(["set_object_colour", $white_surface, $output, "white"]);
     }
-$once = 0;
+
+    my $prev_n = $schedule[0];
+    my $movie_num = 1;
     for( $i = 0;  $i < @schedule;  $i += $sched_size )
     {
         $step = $i / $sched_size;
 
         #--- get the components of the deformation schedule entry
 
-        ( $sw, $cw, $n_iters, $iter_inc, $offo, $offi,
-          $si_step, $oversample, $self_weight, $self_dist, $desired_dist,
-          $anchor_weight, $min_dist, $max_dist, $v_weight, $v_max_weight,
-          $adaptive_anchor_ratio, $adaptive_boundary_ratio,
-          $laplacian_sampling, $laplacian_factor, $laplacian_weight,
-          $surf_surf_weight ) =
+        ( $size, $sw, $cw, $n_iters, $iter_inc,
+          $si_step, $oversample, $self_weight, $self_dist, 
+          $laplacian_sampling, $laplacian_factor, $laplacian_weight ) =
                      @schedule[$i..$i+$sched_size-1];
 
         $sw *= $stretch_scale;
@@ -119,22 +178,26 @@ $once = 0;
         $self2 = get_self_intersect( $self_weight, $n_selfs, $self_dist,
                                      $self_dist2 );
 
-        if( $step < $start_n || $step > $end_n )
-            { next; }
-
         #--- if the schedule size is greater than the current number of
         #--- polygons in the deforming surface, subdivide the deforming surface
+        if( $step < $start_n || $step > $end_n )
+            { $prev_n = $size;  next; }
+        if( $size != $prev_n && (!$dont_copy || $step > $start_n) )
+        {
+          Spawn(["subdivide_polygons", $white_surface, "${TmpDir}/white_${size}.obj", $size]);
+          Spawn(["subdivide_polygons", $output, "${output}_${size}.obj", 
+                  $size]);
+          $input = $output = "${output}_${size}.obj";
+          $white_surface = "${TmpDir}/white_${size}.obj";
+        }
+        $prev_n = $size;
 
         print( "Fitting polygons at filter ${filter}, " .
                "max $n_iters iters.\n" );
 
-        #$b2 = " -boundary $offo $offi $volume " .
-        #                   " $isovalue - 20 20 0 0 $oversample" .
-        #      " -value_differential $value_differential_offset 1e-9" .
-        #      " -value 0 $masked_volume 0 2.0 -10 0 1e4 $value_oversample";
-
-        $b2 = " -boundary $offo $offi $volume " .
-                           " $isovalue - 0 0 0 0 $oversample";
+        $b2 = " -boundary 1 1 $cls " .
+          " 1.5 - 0 0 0 0 $oversample";
+        $laplace_info = " -laplacian $laplacian_file $laplacian_weight 0 10 $laplacian_factor $laplacian_sampling ";
 
         $iter_inc *= $break_scale;
         if( $iter_inc <= 0 )  { $iter_inc = $n_iters; }
@@ -143,44 +206,19 @@ $once = 0;
           " -equal_lengths".
           " -stretch $sw ${input} -1.0 0 0 0".
           " $b2 ".
-          " $self2 ";
-
-        if( $anchor_weight != 0 )
-        {
-            $tmp_anchor = "/tmp/anchor_${$}.txt";
-
-            #register_tmp_files( $tmp_anchor );
-
-            #system_call( "create_anchor_constraints " .
-            #             " $white_surface $tmp_anchor $desired_dist"  );
-            $anchor = "-anchor $anchor_weight $tmp_anchor ".
-                      #"1e4 $min_dist $max_dist $depthfile";
-                      "0 $min_dist $max_dist";
-        }
-        else
-        {
-            $anchor = "";
-        }
+          " $self2 ".
+          " $laplace_info ";
 
         $n_failures = 0;
 
         for( $iter = 0;  $iter < $n_iters;  $iter += $iter_inc )
         {
             system( "echo Step: $iter / $n_iters    $sw $cw" );
-	if( $once > 0 ){
-        $surf2_info = " -surface ${output} ${output} ${white_surface}" .
-          " -equal_lengths".
-          " -stretch $sw ${output} -1.0 0 0 0".
-          " $b2 ".
-          " $self2 ";
-    }
 	
             $ni = $n_iters - $iter;
             if( $ni > $iter_inc )  { $ni = $iter_inc; }
-system( "echo second");
+
             $command = "$fit -mode three $surf2_info ".
-                       " -volume $v_weight $v_max_weight $adaptive_anchor_ratio $adaptive_boundary_ratio " .
-                       " -laplacian $laplacian_file $laplacian_gradient_file $laplacian_weight 0 10 $laplacian_factor $laplacian_sampling ".
                        " -print_deriv " .
                        " -step $si_step " .
                        " -fitting $ni $n_per $tolerance " .
@@ -189,8 +227,11 @@ system( "echo second");
                        " $log ";
 
             $ret = system_call( "$command", 1 );
-$once = 1;
+
             system_call( "measure_surface_area $output" );
+            #$string_num = sprintf "%04s", ${movie_num};
+            $movie_num = ${movie_num} + 1;
+            #system_call( "cp -f ${output} movie/gray_${string_num}.obj" );
 
             if( $ret == 1 )
             {
@@ -204,22 +245,9 @@ $once = 1;
                 $n_failures = 0;
             }
         }
-
-        if( $anchor_weight > 0 )
-        {
-            unlink( $tmp_anchor );
-        }
     }
 
-    system_call( "rm -f $laplacian_gradient_file" );
     print( "Surface extraction finished.\n" );
 
     clean_up();
-
-
-
-
-
-
-
 

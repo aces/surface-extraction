@@ -14,22 +14,20 @@ $(checked_libs): %.pl: %.plib
 perllib_DATA = deform_utils.pl utils.pl
 
 bin_SCRIPTS = asp expand_from_white extract_white_surface \
-			  mask_cortical_white_matter make_asp_grid
+			  mask_cortical_white_matter make_asp_grid \
+                          clasp1 clasp2 calibrate_white
 
 EXTRA_DIST =  asp.pl expand_from_white.pl extract_white_surface.pl \
-			  mask_cortical_white_matter.pl make_asp_grid.pl \
-			  deform_utils.plib utils.plib
+			  mask_cortical_white_matter.pl deform_utils.plib utils.plib \
+              make_asp_grid.pl clasp1.pl clasp2.pl calibrate_white.pl
 
 SUFFIXES = .pl
 .pl:
 	@rm -f $@
 	sed < $< > $@-t \
-		-e 's,xPERLx,$(PERL),' \
-		-e 's,xINCDIRx,$(perllibdir),g' \
-		-e 's,xDATADIRx,$(datadir),g' \
-		-e 's,xPKGDATADIRx,$(pkgdatadir),g' &&\
+		-e 's,xPERLx,$(PERL),' -e 's,xINCDIRx,$(perllibdir),g' &&\
 	mv $@-t $@
 
 CLEANFILES = asp expand_from_white extract_white_surface \
-			 mask_cortical_white_matter make_asp_grid \
-	         deform_utils.pl utils.pl
+			  mask_cortical_white_matter deform_utils.pl utils.pl \
+			  make_asp_grid clasp1 clasp2 calibrate_white
