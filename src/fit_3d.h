@@ -1,7 +1,7 @@
 #ifndef  _DEF_FIT_3D_H
 #define  _DEF_FIT_3D_H
 
-#include  <volume_io/internal_volume_io.h>
+#include  <internal_volume_io.h>
 #include  <bicpl.h>
 #include  <conjugate.h>
 
@@ -68,6 +68,10 @@ typedef  struct
     Point                   *points;
     int                     n_midpoints;
     int                     *midpoints;
+  // Added by June Sic Kim at 5/12/2002
+    Real                    max_weight_value;
+    Real                    *weights;
+    int                     n_weights;
 }
 surface_struct;
 
@@ -90,6 +94,10 @@ typedef  struct
     BOOLEAN                 check_direction_flag;
     BOOLEAN                 normal_direction_only;
     BOOLEAN                 clip_to_surface;
+  // Added by June Sic Kim at 5/12/2002
+    Real                    max_weight_value;
+    Real                    *weights;
+    int                     n_weights;
 } surface_bound_struct;
 
 typedef  struct
@@ -180,6 +188,9 @@ typedef struct
     Real         min_distance;
     Real         desired_distance;
     Real         max_distance;
+  // Added by June Sic Kim at 6/12/2002
+    Real         weight;
+    Real         max_weight;
 }
 anchor_point_struct;
 
@@ -189,6 +200,8 @@ typedef   struct
     Real                 max_dist_weight;
     int                  n_anchor_points;
     anchor_point_struct  *anchor_points;
+  // Added by June Sic Kim at 7/12/2002
+    Real                 max_weight_value;
 } anchor_struct;
 
 
@@ -233,6 +246,26 @@ typedef struct
 
 typedef  struct
 {
+    Real                   weight;
+    Real                   max_weight;
+    Real                   adaptive_anchor_ratio;
+    Real                   adaptive_boundary_ratio;
+}volume_info_struct;
+
+typedef  struct
+{
+    Real                   weight;
+    Volume                 volume;
+    Volume                 grad_vol;
+    voxel_coef_struct      *voxel_lookup;
+    Real                   from_value;
+    Real                   to_value;
+    Real                   deriv_factor;
+    Real                   oversample;
+}laplacian_struct;
+
+typedef  struct
+{
     BOOLEAN                static_flag;
     surface_struct         surface;
     int                    n_bound;
@@ -251,6 +284,10 @@ typedef  struct
     weight_point_struct    *weight_points;
     int                    n_self_intersects;
     self_intersect_struct  *self_intersects;
+    int                    n_volume;
+    volume_info_struct     *volume;
+    int                    n_laplacian;
+    laplacian_struct       *laplacian;
 } one_surface_struct;
 
 typedef  struct
@@ -277,6 +314,8 @@ typedef struct
     Real      inter_surface_fit;
     Real      anchor_fit;
     Real      weight_point_fit;
+    Real      volume_fit;
+    Real      laplacian_fit;
 }
 fit_eval_struct;
 

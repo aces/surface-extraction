@@ -15,6 +15,16 @@ private  Status  input_surface(
     int       *n_neighbours[],
     int       **neighbours[] );
 
+private  Status  input_surface_with_normals(
+    STRING    filename,
+    BOOLEAN   model_flag,
+    int       *n_points,
+    Point     *points[],
+    Vector    *normals[],
+    int       *n_polygons,
+    int       *n_neighbours[],
+    int       **neighbours[] );
+
 private  Status  lookup_volume(
     STRING             filename,
     Volume             *volume,
@@ -86,15 +96,23 @@ Usage:     %s  help not implemented yet \n\
 
 static  int   n_surfaces_read = 0;
 static  int  n_volumes_read = 0;
+static  STRING log_filename;
+
+private FILE *open_file_to_write_info(char *);
+private int  write_file_info(FILE *, fit_eval_struct *);
+private int  close_file_info(FILE *);
 
 int  main(
     int    argc,
     char   *argv[] )
 {
     STRING               arg, volume_filename, surface_direction;
+    STRING               surf_surf_filename;
     STRING               model_filename, node_dist_filename;
     STRING               input_filename, output_filename;
+    STRING               wm_obj_filename;
     STRING               *input_filenames, *output_filenames, filename;
+    STRING               depth_filename, laplacian_filename;
     STRING               stretch_factor_name, curvature_factor_name;
     STRING               bend_factor_name, midpoint_filename;
     int                  n_bend, p1, p2, midpoint, n_weight_steps;
@@ -116,7 +134,7 @@ int  main(
     Real                 deriv_smoothing;
     int                  n_deriv_smoothing_steps;
     int                  point_grid_size, p, n_movements;
-    FILE                 *file;
+    FILE                 *file, *file1;
     File_formats         format;
     object_struct        **object_list;
     polygons_struct      *polygons;
@@ -137,6 +155,8 @@ int  main(
     weight_struct        w;
     self_intersect_struct  *self;
     surf_surf_struct     *ss;
+    volume_info_struct   volume_s;
+    laplacian_struct     laplacian;
     BOOLEAN              use_tri_tri_dist, use_equal_lengths;
     BOOLEAN              print_deriv, print_closest, print_initial;
     BOOLEAN              add_to_flag, timing_flag, did_all_iterations;
@@ -188,6 +208,7 @@ int  main(
         {
             if( !get_string_argument( NULL, &input_filename ) ||
                 !get_string_argument( NULL, &output_filename ) )
+                //!get_string_argument( NULL, &surf_surf_filename ) )
             {
                 print_error( "Error in -surface arguments.\n" );
                 usage( argv[0] );
@@ -214,16 +235,87 @@ int  main(
             surf.n_anchors = 0;
             surf.n_weight_points = 0;
             surf.n_self_intersects = 0;
+
             ADD_ELEMENT_TO_ARRAY( deform.surfaces, deform.n_surfaces,
-                                  surf, 1 );
+                                  surf, 1);
             --deform.n_surfaces;
             ADD_ELEMENT_TO_ARRAY( input_filenames, deform.n_surfaces,
                                   input_filename, 1 );
             --deform.n_surfaces;
             ADD_ELEMENT_TO_ARRAY( output_filenames, deform.n_surfaces,
                                   output_filename, 1 );
+            /*if( input_surface( surf_surf_filename, FALSE,
+                               &surface.n_points, &surface.points,
+                               &surface.n_polygons,
+                               &surface.n_neighbours, &surface.neighbours )
+                != OK )
+            {
+              return( 1 );
+            }
 
+            surface.n_midpoints = 0;
+            surf.surface = surface;
+            surf.static_flag = FALSE;
+            surf.n_bound = 0;
+            surf.n_value = 0;
+            surf.n_stretch = 0;
+            surf.n_curvature = 0;
+            surf.n_bend = 0;
+            surf.n_anchors = 0;
+            surf.n_weight_points = 0;
+            surf.n_self_intersects = 0;
+            ADD_ELEMENT_TO_ARRAY( deform.surfaces, deform.n_surfaces,
+                                  surf, 1);
+            */
         }
+	else if( equal_strings( arg, "-ban_wm" ) )
+	{
+	  if( !get_string_argument( NULL, &wm_obj_filename ) ||
+	      !get_real_argument( 0.0, &weight) ||
+	      !get_real_argument( 0.0, &min_distance ))
+	  {
+	    print_error( "Error in -surface arguments.\n" );
+	    usage( argv[0] );
+	    return( 1 );
+	  }
+
+	  if( input_surface( wm_obj_filename, FALSE,
+			    &surface.n_points, &surface.points,
+			    &surface.n_polygons,
+			    &surface.n_neighbours, &surface.neighbours )
+	     != OK )
+	  {
+	    return( 1 );
+	  }
+
+	  surface.n_midpoints = 0;
+	  surf.surface = surface;
+	  surf.static_flag = FALSE;
+	  surf.n_bound = 0;
+	  surf.n_value = 0;
+	  surf.n_stretch = 0;
+	  surf.n_curvature = 0;
+	  surf.n_bend = 0;
+	  surf.n_anchors = 0;
+	  surf.n_weight_points = 0;
+	  surf.n_self_intersects = 0;
+	  ADD_ELEMENT_TO_ARRAY( deform.surfaces, deform.n_surfaces,
+			       surf, 1 );
+	  SET_ARRAY_SIZE( deform.surf_surfs, deform.n_surf_surfs,
+			 deform.n_surf_surfs+1,DEFAULT_CHUNK_SIZE);
+	  deform.surf_surfs[deform.n_surf_surfs].surface_index1 = 2;
+	  deform.surf_surfs[deform.n_surf_surfs].surface_index2 = 1;
+	  deform.surf_surfs[deform.n_surf_surfs].n_weights = 0;
+	  ++deform.n_surf_surfs;
+	  ss = &deform.surf_surfs[deform.n_surf_surfs-1];
+	  SET_ARRAY_SIZE( ss->weights, ss->n_weights,
+			 ss->n_weights+1, 1);
+	  SET_ARRAY_SIZE( ss->min_distances, ss->n_weights,
+			 ss->n_weights+1, 1);
+	  ss->weights[ss->n_weights] = weight;
+	  ss->min_distances[ss->n_weights] = min_distance;
+	  ++ss->n_weights;
+	}
         else if( equal_strings( arg, "-static" ) )
         {
             deform.surfaces[deform.n_surfaces-1].static_flag = TRUE;
@@ -269,6 +361,44 @@ int  main(
 
             close_file( file );
         }
+        else if( equal_strings( arg, "-laplacian" ) )
+        {
+          if( !get_string_argument( NULL, &laplacian_filename ) ||
+              !get_real_argument( 0.0, &laplacian.weight ) ||
+              !get_real_argument( 0.0, &laplacian.from_value ) ||
+              !get_real_argument( 0.0, &laplacian.to_value ) ||
+              !get_real_argument( 0.0, &laplacian.deriv_factor ) ||
+              !get_real_argument( 1.0, &laplacian.oversample ) )
+          {
+            print_error( "Error in -laplacian arguments.\n" );
+            usage( argv[0] );
+            return( 1 );
+          }
+          if( lookup_volume( laplacian_filename, &laplacian.volume,
+                             &laplacian.voxel_lookup ) != OK )
+          {
+            return( 1 );
+          }
+          ADD_ELEMENT_TO_ARRAY(
+              deform.surfaces[deform.n_surfaces-1].laplacian,
+              deform.surfaces[deform.n_surfaces-1].n_laplacian, laplacian, 1 );
+        }
+        else if( equal_strings( arg, "-volume" ) )
+        {
+          if( !get_real_argument( 0.0, &volume_s.weight ) ||
+              !get_real_argument( 0.0, &volume_s.max_weight ) ||
+              !get_real_argument( 0.0, &volume_s.adaptive_anchor_ratio ) ||
+              !get_real_argument( 0.0, &volume_s.adaptive_boundary_ratio ) )
+          {
+            print_error( "Error in -volume arguments.\n" );
+            usage( argv[0] );
+            return( 1 );
+          }
+          ADD_ELEMENT_TO_ARRAY( deform.surfaces[deform.n_surfaces-1].
+                                volume,
+                                deform.surfaces[deform.n_surfaces-1].
+                                n_volume, volume_s, DEFAULT_CHUNK_SIZE );
+        }
         else if( equal_strings( arg, "-boundary" ) )
         {
             if( !get_real_argument( 0.0, &bound.image_weight_out ) ||
@@ -281,6 +411,7 @@ int  main(
                 !get_real_argument( 0.0, &bound.max_dist_weight ) ||
                 !get_real_argument( 0.0, &bound.max_dist_threshold ) ||
                 !get_int_argument( 0, &bound.oversample ) )
+                //!get_string_argument( NULL, &depth_filename ) )
             {
                 print_error( "Error in -boundary arguments.\n" );
                 usage( argv[0] );
@@ -309,6 +440,27 @@ int  main(
             create_bitlist_3d( sizes[X], sizes[Y], sizes[Z], &bound.done_bits );
             create_bitlist_3d( sizes[X], sizes[Y], sizes[Z],
                                &bound.surface_bits );
+
+            // Added by June Sic Kim at 6/12/2002
+            /*if( open_file( depth_filename, READ_FILE, ASCII_FORMAT, &file ) != OK )
+            {
+                print_error( "Error opening file: %s\n", depth_filename );
+                return( 1 );
+            }
+ 
+           while( input_real( file, &x ) == OK )
+            {
+              if( bound.max_weight_value < x )
+              {
+                bound.max_weight_value = x;
+              }
+                ADD_ELEMENT_TO_ARRAY( bound.weights,
+                                      bound.n_weights,
+                                      x, DEFAULT_CHUNK_SIZE );
+            }
+
+            (void) close_file( file );*/
+
 
             ADD_ELEMENT_TO_ARRAY(
                 deform.surfaces[deform.n_surfaces-1].bound,
@@ -491,6 +643,8 @@ int  main(
             if( stretch.n_points >
                 deform.surfaces[deform.n_surfaces-1].surface.n_points )
             {
+              printf("stretch model=%d, surface=%d\n",stretch.n_points, 
+                     deform.surfaces[deform.n_surfaces-1].surface.n_points);
                 print_error( "Stretch model has more points than surface.\n" );
                 return( 1 );
             }
@@ -947,6 +1101,7 @@ int  main(
                 !get_real_argument( 0.0, &factor ) ||
                 !get_real_argument( 0.0, &min_offset ) ||
                 !get_real_argument( 0.0, &max_offset ) )
+                //!get_string_argument( NULL, &depth_filename ) )
             {
                 print_error( "Error in -anchor arguments.\n" );
                 usage( argv[0] );
@@ -966,7 +1121,14 @@ int  main(
                 return( 1 );
             }
 
-            while( input_int( file, &a.surface_point ) == OK )
+            // Added by June Sic Kim at 5/12/2002
+            /*if( open_file( depth_filename, READ_FILE, ASCII_FORMAT, &file1 ) != OK )
+            {
+                print_error( "Error opening file: %s\n", filename );
+                return( 1 );
+            }*/
+ 
+           while( input_int( file, &a.surface_point ) == OK )
             {
                 if( input_real( file, &x ) != OK ||
                     input_real( file, &y ) != OK ||
@@ -990,12 +1152,26 @@ int  main(
                     return( 1 );
                 }
 
+                // Added by June Sic Kim at 6/12/2002
+                /*if( input_real( file1, &x ) != OK )
+                {
+                  print_error( "Error reading file: %s\n", depth_filename);
+                  return( 1 );
+                }
+                if( anchor.max_weight_value < x )
+                {
+                  anchor.max_weight_value = x;
+                }
+                a.weight = x;
+                a.max_weight = x;*/
+
                 ADD_ELEMENT_TO_ARRAY( anchor.anchor_points,
                                       anchor.n_anchor_points,
                                       a, DEFAULT_CHUNK_SIZE );
             }
 
             (void) close_file( file );
+            //(void) close_file( file1 );
 
             ADD_ELEMENT_TO_ARRAY( deform.surfaces[deform.n_surfaces-1].anchors,
                                  deform.surfaces[deform.n_surfaces-1].n_anchors,
@@ -1271,6 +1447,15 @@ int  main(
             print_closest = FALSE;
         else if( equal_strings( arg, "-timing" ) )
             timing_flag = TRUE;
+        else if( equal_strings( arg, "-log" ) )
+        {
+            if( !get_string_argument( 0, &log_filename ) )
+            {
+                print_error( "Error in -log arguments.\n" );
+                usage( argv[0] );
+                return( 1 );
+            }
+        }
         else
         {
             print_error( "Unrecognized argument: %s.\n", arg );
@@ -1439,6 +1624,8 @@ int  main(
 
     output_alloc_to_file( NULL );
 
+    printf("This code is modified by June Sic Kim at 14/11/2002\n");
+
     return( did_all_iterations ? 0 : 1 );
 }
 
@@ -1528,6 +1715,8 @@ static  struct    {
                       STRING  filename;
                       int     n_points;
                       Point   *points;
+  // Add one line for normals
+                      Vector  *normals;
                       int     n_polygons;
                       int     *n_neighbours;
                       int     **neighbours;
@@ -1596,6 +1785,82 @@ private  Status  input_surface(
 
     *n_points = surface_lookup[i].n_points;
     *points = surface_lookup[i].points;
+
+    if( n_polygons != NULL )
+        *n_polygons = surface_lookup[i].n_polygons;
+
+    *n_neighbours = surface_lookup[i].n_neighbours;
+    *neighbours = surface_lookup[i].neighbours;
+
+    return( OK );
+}
+
+private  Status  input_surface_with_normals(
+    STRING    filename,
+    BOOLEAN   model_flag,
+    int       *n_points,
+    Point     *points[],
+    Vector    *normals[],
+    int       *n_polygons,
+    int       *n_neighbours[],
+    int       **neighbours[] )
+{
+    int              i, n_objects;
+    object_struct    **object_list;
+    polygons_struct  *surface;
+    File_formats     format;
+    STRING           expanded;
+
+    expanded = expand_filename( filename );
+
+    for_less( i, 0, n_surfaces_read )
+    {
+        if( equal_strings( expanded, surface_lookup[i].filename ) )
+            break;
+    }
+
+    if( i >= n_surfaces_read )
+    {
+        if( input_graphics_file( expanded, &format, &n_objects,
+                                 &object_list ) != OK || n_objects != 1 ||
+            get_object_type(object_list[0]) != POLYGONS )
+        {
+            print_error( "Error in %s\n", expanded );
+            return( ERROR );
+        }
+
+        SET_ARRAY_SIZE( surface_lookup, n_surfaces_read, n_surfaces_read+1,
+                        DEFAULT_CHUNK_SIZE );
+
+        surface = get_polygons_ptr( object_list[0] );
+
+        if( surface->n_items * 3 != surface->end_indices[surface->n_items-1] )
+            print( "\n---- warning, non-triangulated surface will not work with self-intersection testing\n\n" );
+
+        get_surface_neighbours( object_list[0], n_neighbours, neighbours );
+        surface_lookup[n_surfaces_read].filename = expanded;
+        surface_lookup[n_surfaces_read].n_points = surface->n_points;
+        surface_lookup[n_surfaces_read].points = surface->points;
+        surface_lookup[n_surfaces_read].normals = surface->normals;
+        surface_lookup[n_surfaces_read].n_polygons = surface->n_items;
+        surface_lookup[n_surfaces_read].model_flag = model_flag;
+        surface_lookup[n_surfaces_read].n_neighbours = *n_neighbours;
+        surface_lookup[n_surfaces_read].neighbours = *neighbours;
+
+        ALLOC( surface->points, 1 );
+        ALLOC( surface->normals, 1 );
+        delete_object_list( n_objects, object_list );
+        ++n_surfaces_read;
+    }
+    else
+        delete_string( expanded );
+
+    if( !model_flag )
+        surface_lookup[n_surfaces_read].model_flag = FALSE;
+
+    *n_points = surface_lookup[i].n_points;
+    *points = surface_lookup[i].points;
+    *normals = surface_lookup[i].normals;
 
     if( n_polygons != NULL )
         *n_polygons = surface_lookup[i].n_polygons;
@@ -2295,6 +2560,7 @@ private  Real   evaluate_along_line(
     int                  n_parameters,
     int                  start_parameter[],
     Real                 parameters[],
+    Real                 old_parameters[],
     Smallest_int         active_flags[],
     Smallest_int         evaluate_flags[],
     Real                 line_dir[],
@@ -2312,14 +2578,16 @@ private  Real   evaluate_along_line(
     self_intersect_lookup_struct  **si_lookup;
     surf_surf_lookup_struct       *ss_lookup;
 
-    for_less( p, 0, n_parameters )
-        buffer[p] = parameters[p] + dist * line_dir[p];
+    for_less( p, 0, n_parameters ){
+      buffer[p] = parameters[p] + dist * line_dir[p];
+    }
 
     get_line_lookup( line_lookup, deform, n_parameters,
                      parameters, dist, line_dir, &offset,
                      &si_lookup, &ss_lookup );
 
     fit = evaluate_fit( deform, start_parameter, buffer,
+                        old_parameters,
                         active_flags, evaluate_flags,
                         boundary_t_coefs, dist,
                         boundary_flags, boundary_points,
@@ -2406,6 +2674,7 @@ private  Real   minimize_along_line(
     int                 n_parameters,
     int                 start_parameter[],
     Real                parameters[],
+    Real                old_parameters[],
     Smallest_int        active_flags[],
     Smallest_int        evaluate_flags[],
     Real                line_dir[],
@@ -2451,7 +2720,8 @@ private  Real   minimize_along_line(
 
     t1 = initial_step_forward;
     f1 = evaluate_along_line( deform, n_parameters, start_parameter,
-                              parameters, active_flags, evaluate_flags,
+                              parameters, old_parameters,
+                              active_flags, evaluate_flags,
                               line_dir,
                               test_parameters, t1,
                               boundary_coefs, boundary_flags, boundary_points,
@@ -2481,7 +2751,8 @@ private  Real   minimize_along_line(
         step *= search_ratio;
 
         f2 = evaluate_along_line( deform, n_parameters, start_parameter,
-                                  parameters, active_flags, evaluate_flags,
+                                  parameters, old_parameters,
+                                  active_flags, evaluate_flags,
                                   line_dir,
                                   test_parameters, t2,
                                   boundary_coefs, boundary_flags,
@@ -2550,7 +2821,8 @@ private  Real   minimize_along_line(
         }
 
         f_next = evaluate_along_line( deform, n_parameters, start_parameter,
-                                      parameters, active_flags, evaluate_flags,
+                                      parameters, old_parameters,
+                                      active_flags, evaluate_flags,
                                       line_dir, test_parameters, t_next,
                                       boundary_coefs, boundary_flags,
                                       boundary_points,
@@ -2617,7 +2889,8 @@ private  Real   minimize_along_line(
         t1 *= shorten;
 
         f1 = evaluate_along_line( deform, n_parameters, start_parameter,
-                                  parameters, active_flags, evaluate_flags,
+                                  parameters, old_parameters,
+                                  active_flags, evaluate_flags,
                                   line_dir, test_parameters, t1,
                                   boundary_coefs,
                                   boundary_flags, boundary_points,
@@ -2751,11 +3024,13 @@ private  BOOLEAN   fit_polygons(
     int                         n_since_recompute, n_done;
     int                         active_point, n_active_points;
     int                         p1, oversample, n_eval_points;
+    int                         new_fit_num=0;
     Smallest_int                *active_flags, *evaluate_flags;
     STRING                      active_string;
-    Real                        fit, min_value, max_value, diff;
+    Real                        fit, min_value, max_value, diff, *new_fits;
     Real                        step_taken;
     Real                        *derivative, *parameters, rms_movement;
+    Real                        *old_parameters; // New one
     Real                        max_movement, movement;
     Real                        dx, dy, dz, boundary_coefs[3], max_step, delta;
     Real                        *prev_parms;
@@ -2783,8 +3058,15 @@ private  BOOLEAN   fit_polygons(
     Real                        start_time, current_time;
     int                         n_deriv_iters, n, neigh, deriv_iter;
     Real                        fraction, avg_x, avg_y, avg_z;
+    FILE                        *parameter_log;
 
     ALLOC( start_parameter, deform->n_surfaces );
+    ALLOC( new_fits, 400 );
+
+    for_less( s, 0, 100 )
+    {
+        new_fits[s] = 0;
+    }
 
     n_parameters = 0;
     for_less( s, 0, deform->n_surfaces )
@@ -2862,6 +3144,8 @@ private  BOOLEAN   fit_polygons(
     }
 
     ALLOC( parameters, n_parameters );
+    // Added by June 30/07/2003
+    ALLOC( old_parameters, n_parameters );
 
     for_less( s, 0, deform->n_surfaces )
     {
@@ -3102,11 +3386,16 @@ private  BOOLEAN   fit_polygons(
             prev_parms[i] = parameters[i];
     }
 
+    
     position_changed = TRUE;
     iter = 0;
     while( iter < n_iters )
     {
         ++iter;
+
+        // Added by June 30/07/2003
+        for_less( i, 0, n_parameters )
+          old_parameters[i] = parameters[i];
 
         if( one_at_a_time )
         {
@@ -3195,7 +3484,8 @@ private  BOOLEAN   fit_polygons(
                             derivative, boundary_coefs );
 
         fit = evaluate_fit( deform, start_parameter,
-                            parameters, active_flags, evaluate_flags,
+                            parameters, old_parameters, 
+                            active_flags, evaluate_flags,
                             boundary_coefs, 0.0,
                             boundary_flags, boundary_points,
                             0.0, FABS(offset), si_lookup, ss_lookup,
@@ -3215,7 +3505,6 @@ private  BOOLEAN   fit_polygons(
                             cross_parms, cross_terms,
                             si_lookup, ss_lookup, derivative, &deriv_info );
 
-
         if( getenv( "DERIV_SMOOTH" ) == NULL ||
             sscanf( getenv( "DERIV_SMOOTH" ), "%d %lf", &n_deriv_iters,
                                                         &fraction ) != 2 )
@@ -3223,6 +3512,26 @@ private  BOOLEAN   fit_polygons(
             n_deriv_iters = n_deriv_smoothing_steps;
             fraction = deriv_smoothing;
         }
+
+        /* Added by June */
+        //////////////////////////////////////////////////////////////
+/*        if( new_fit_num>=20 )
+        {
+            new_fit_num=0;
+        }
+        Real new_fit;
+        new_fit = 0;
+        for_less( s, 0, 19 )
+        {
+            new_fit += new_fits[s];
+        }
+        new_fit /= 20.0;
+        if(fabs(fit-new_fit)<0.00001)
+        {
+            break;
+        }
+        new_fits[new_fit_num++] = fit;
+*/		//////////////////////////////////////////////////////////////
 
         if( n_deriv_iters > 0 && fraction > 0.0 )
         {
@@ -3371,7 +3680,8 @@ private  BOOLEAN   fit_polygons(
 
         fit = minimize_along_line( fit, deform, n_parameters,
                                    start_parameter,
-                                   parameters, active_flags, evaluate_flags,
+                                   parameters, old_parameters,
+                                   active_flags, evaluate_flags,
                                    derivative,
                                    boundary_flags, boundary_points,
                                    boundary_coefs,
@@ -3407,6 +3717,14 @@ private  BOOLEAN   fit_polygons(
         print( "\n" );
         (void) flush_file( stdout );
 
+/* writing file_info log file by JUNE */
+        if( strcmp(log_filename,"debug.log") != 0 )
+        {
+          parameter_log = open_file_to_write_info(log_filename);
+          write_file_info( parameter_log, &fit_info );
+          close_file_info(parameter_log);
+        }
+
         if( movement_threshold > 0.0 && n_movements > 0 &&
             (iter % n_movements) == 0 )
         {
@@ -3439,6 +3757,7 @@ private  BOOLEAN   fit_polygons(
             n_since_recompute = recompute_every;
         }
     }
+
 
     if( movement_threshold > 0.0 && n_movements > 0 )
     {
@@ -3495,6 +3814,8 @@ private  BOOLEAN   fit_polygons(
 
     FREE( start_parameter );
     FREE( parameters );
+    FREE( old_parameters ); // New one
+    FREE( new_fits );
 
     if( active_flags != NULL )
     {
@@ -3512,4 +3833,52 @@ private  BOOLEAN   fit_polygons(
         FREE( start_points );
 
     return( iter == n_iters && max_movement >= successful_movement_threshold );
+}
+
+/* style of log file (each constraint has 8 bytes)
+   B   v   S   C   b   I   SS   2   A   L */
+int write_file_info( FILE *log_file, fit_eval_struct *fit_info )
+{
+    char *fbuf = (char*)malloc(100);
+
+    memset(fbuf,0,100);
+    if( log_file != NULL )
+    {
+        sprintf(fbuf,
+            "%11.4f\t%8.4f\t%10.4f\t%8.4f\t%8.4f\t%10.4f\t%8.4f\t%8.4f\t%10.4f\t%9.4f\n",
+            fit_info->boundary_fit, fit_info->volume_fit, fit_info->stretch_fit,
+            fit_info->curvature_fit, fit_info->bend_fit, 
+            fit_info->self_intersect_fit, fit_info->surf_surf_fit,
+            fit_info->inter_surface_fit, fit_info->anchor_fit, 
+            fit_info->laplacian_fit);
+
+        fwrite(fbuf, 1, 100, log_file);
+    }else{
+        return 0;
+    }
+    free(fbuf);
+
+    return 90;
+}
+
+FILE *open_file_to_write_info( char *filename )
+{
+    FILE *handle = NULL;
+
+    if((handle = fopen(filename, "a+")) == NULL)
+    {
+        print_error("Can't create log file\n");
+        return NULL;
+    }
+
+    return handle;
+}
+
+int close_file_info( FILE *handle)
+{
+    if( fclose(handle) != 0 )
+    {
+        print_error("Warning: log file is not closed!\n");
+    }
+    return 0;
 }
