@@ -1508,6 +1508,7 @@ int  main(
         }
         else
         {
+
             print_error( "Unrecognized argument: %s.\n", arg );
             usage( argv[0] );
             return( 1 );
@@ -1534,7 +1535,7 @@ int  main(
         surface_points[s] = deform.surfaces[s].surface.points;
 
     // modified by June at 14/08/2003
-    for_less( s, 0, 1/*deform.n_surfaces*/ )
+    for_less( s, 0, deform.n_surfaces>0?1:0 )
     {
         for_less( i, 0, deform.surfaces[s].n_bound )
         {
@@ -1638,7 +1639,7 @@ int  main(
     if( deform.n_inter_surfaces > 0 )
         FREE( deform.inter_surfaces );
 
-    for_less( s, 0, 1/*deform.n_surfaces*/ )
+    for_less( s, 0, deform.n_surfaces>0?1:0 )
     {
         if( deform.surfaces[s].static_flag )
             continue;
@@ -1675,7 +1676,7 @@ int  main(
 
     output_alloc_to_file( NULL );
 
-    printf("This code is modified by June Sic Kim at 14/11/2002\n");
+    printf("This code is modified by June Sic Kim at 30/04/2004\n");
 
     return( did_all_iterations ? 0 : 1 );
 }

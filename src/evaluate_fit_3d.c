@@ -5011,7 +5011,7 @@ private  int   private_evaluate_fit(
         ++count;
     }
 
-    for_less( surface, 0, 1)//deform->n_surfaces )
+    for_less( surface, 0, deform->n_surfaces>0?1:0 )
     {
         this_parms = &parameters[start_parameter[surface]];
         this_active = (active_flags == NULL) ? NULL :
@@ -5020,7 +5020,6 @@ private  int   private_evaluate_fit(
         for_less( i, 0, deform->surfaces[surface].n_self_intersects )
         {
             self = &deform->surfaces[surface].self_intersects[i];
-
             if( which == -2 || which == count )
             {
                 f = evaluate_self_intersect_fit(
@@ -5070,7 +5069,6 @@ private  int   private_evaluate_fit(
         for_less( i, 0, deform->surfaces[surface].n_laplacian )
         {
           //anchor = &deform->surfaces[surface].anchors[0];
-          
           if( which == -2 || which == count )
           {
             f = evaluate_laplacian_fit(
@@ -5164,7 +5162,7 @@ private  int   private_evaluate_fit(
     }
 
     ind = 0;
-    for_less( surface, 0, 1 )//deform->n_surfaces )
+    for_less( surface, 0, deform->n_surfaces>0?1:0 )
     {
         this_parms = &parameters[start_parameter[surface]];
         this_evaluate = (evaluate_flags == NULL) ? NULL :
@@ -5637,7 +5635,7 @@ public  void   evaluate_fit_deriv(
         derivative[p] = 0.0;
     }
 
-    for_less( surface, 0, 1/*deform->n_surfaces*/ )
+    for_less( surface, 0, deform->n_surfaces>0?1:0 )
     {
         this_parms = &parameters[start_parameter[surface]];
         this_deriv = &derivative[start_parameter[surface]];
@@ -5676,7 +5674,7 @@ public  void   evaluate_fit_deriv(
     }
     }
     ind = 0;
-    for_less( surface, 0, 1/*deform->n_surfaces*/ )
+    for_less( surface, 0, deform->n_surfaces>0?1:0 )
     {
         this_parms = &parameters[start_parameter[surface]];
         this_deriv = &derivative[start_parameter[surface]];
@@ -5724,7 +5722,7 @@ public  void   evaluate_fit_deriv(
     //////////////////////////////////////////////////////////////////
     // Added by June
     // constraint for WM surface intersection
-    for_less( surface, 0, 1/*deform->n_surfaces*/ )
+    for_less( surface, 0, deform->n_surfaces>0?1:0 )
     {
       this_parms = &parameters[start_parameter[surface]];
       this_deriv = &derivative[start_parameter[surface]];
@@ -5755,7 +5753,7 @@ public  void   evaluate_fit_deriv(
 
     //////////////////////////////////////////////////////////////////
     // Added by JUNE
-    for_less( surface, 0, 1/*deform->n_surfaces*/ )
+    for_less( surface, 0, deform->n_surfaces>0?1:0 )
     {
       this_parms = &parameters[start_parameter[surface]];
       this_deriv = &derivative[start_parameter[surface]];
@@ -5790,7 +5788,7 @@ public  void   evaluate_fit_deriv(
 
     //////////////////////////////////////////////////////////////////
     // Added by June
-    for_less( surface, 0, 1/*deform->n_surfaces*/ )
+    for_less( surface, 0, deform->n_surfaces>0?1:0 )
     {
         this_parms = &parameters[start_parameter[surface]];
         this_deriv = &derivative[start_parameter[surface]];
@@ -5980,7 +5978,7 @@ public  void   evaluate_fit_deriv(
         derivative[p] = 0.0;
     }
 
-    for_less( surface, 0, 1/*deform->n_surfaces*/ )
+    for_less( surface, 0, deform->n_surfaces>0?1:0 )
     {
         this_parms = &parameters[start_parameter[surface]];
         this_deriv = &derivative[start_parameter[surface]];
