@@ -344,8 +344,9 @@ private  void    recursive_find_close_pairs(
 
     for_less( c1, 0, 16 )
     {
-        if( count1[c1] == count1[c1+1] )
-            continue;
+      if( count1[c1] == count1[c1+1] ){
+        continue;
+      }
 
         n_to_compare2 = 0;
 
@@ -420,7 +421,7 @@ private  void    recursive_find_close_pairs(
                                              &parameters2[parm_p2],
                                              &parameters2[parm_n21],
                                              &parameters2[parm_n22],
-                                             &which_case );
+                                             &which_case,0 );
 
                 if( dist >= search_distance_sq )
                 {
@@ -930,7 +931,7 @@ public  BOOLEAN   test_surf_surf_candidate(
                                           &parameters1[n12*3],
                                           &parameters2[p2*3],
                                           &parameters2[n21*3],
-                                          &parameters2[n22*3], &which_case );
+                                          &parameters2[n22*3], &which_case,0 );
 
     if( which_case != prev_case )
         ss_lookup->cases[which] = (unsigned char) which_case;
@@ -967,7 +968,9 @@ public  void   create_surf_surf_deriv_info(
     if( dist_sq > 0.0 )
         deriv->dist = sqrt( dist_sq );
     else
-        deriv->dist = sqrt( dist_sq );
+      //deriv->dist = sqrt( dist_sq );
+      // Added by June
+      deriv->dist = 1;
 
     sq_triangle_triangle_dist_deriv( &parameters1[IJ(p1,0,3)],
                                      &parameters1[IJ(n11,0,3)],

@@ -110,6 +110,21 @@ typedef  struct
     Real                    max_diff;
     Real                    image_weight;
     Real                    max_diff_weight;
+
+    Real                    differential_ratio;
+    Real                    differential_offset;
+} gradient_struct;
+
+typedef  struct
+{
+    Volume                  volume;
+    voxel_coef_struct       *voxel_lookup;
+    int                     continuity;
+    Real                    threshold;
+    Real                    min_diff;
+    Real                    max_diff;
+    Real                    image_weight;
+    Real                    max_diff_weight;
     int                     oversample;
 
     Real                    differential_ratio;
@@ -284,6 +299,8 @@ typedef  struct
     surface_struct         surface;
     int                    n_bound;
     surface_bound_struct   *bound;
+    int                    n_gradient;
+    gradient_struct        *gradient;
     int                    n_value;
     surface_value_struct   *value;
     int                    n_stretch;
@@ -320,6 +337,7 @@ typedef  struct
 typedef struct
 {
     Real      boundary_fit;
+    Real      gradient_fit;
     Real      value_fit;
     Real      stretch_fit;
     Real      curvature_fit;

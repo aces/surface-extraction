@@ -1,7 +1,7 @@
 #ifndef  _DEF_FIT_H
 #define  _DEF_FIT_H
 
-#include  <volume_io/internal_volume_io.h>
+#include  <internal_volume_io.h>
 #include  <deform.h>
 #include  <subdiv.h>
 #include  <special_geometry.h>

@@ -480,6 +480,7 @@ private  Real  sq_triangle_triangle_dist_and_weights(
     outside_ea1 = (v_ea1 <= 0.0);
     outside_ea2 = (v_ea2 <= 0.0);
 
+    // when b0 is located outside 'a' triangular prism
     if( !outside_ea0 && !outside_ea1 && !outside_ea2 )
     {
         d = DOT( b0, an ) - a0_dot_an;
@@ -509,6 +510,7 @@ private  Real  sq_triangle_triangle_dist_and_weights(
             }
         }
     }
+    // when b0 is located outside line of a1-a0
     else if( outside_ea0 && v_da0 > 0.0 && v_da0 < len_da0 )
     {
         d = v_da0 / len_da0;
@@ -1492,7 +1494,8 @@ public  Real  sq_triangle_triangle_dist(
     Real   b0[],
     Real   b1[],
     Real   b2[],
-    int    *which_case )
+    int    *which_case,
+    Real   *dist_sq)
 {
     int   i, tri_case;
     Real  dist;
@@ -1544,7 +1547,7 @@ public  Real  sq_triangle_triangle_dist(
                 100.0 * (Real) other / (Real) count );
     }
 #endif  /* STATS */
-
+    if(dist_sq) *dist_sq = dist;
     return( dist );
 }
 
@@ -2057,6 +2060,12 @@ public  void  sq_triangle_triangle_dist_deriv(
     }
     else if( n_non_null_a == 0 )
     {
+      // Added by June
+      compute_point_plane_derivative(points[0], derivs[0],
+                                     &points[3], &derivs[3] );
+      derivs[0][0] *= -1e0;
+      derivs[0][1] *= -1e0;
+      derivs[0][2] *= -1e0;
     }
 }
 

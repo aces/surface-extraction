@@ -144,6 +144,7 @@ int  main(
     one_surface_struct   surf;
     surface_struct       surface;
     surface_bound_struct bound;
+    gradient_struct      gradient;
     surface_value_struct value;
     stretch_struct       stretch;
     bend_struct          bend;
@@ -172,6 +173,7 @@ int  main(
     deform.n_surfaces = 0;
     deform.n_inter_surfaces = 0;
     deform.n_surf_surfs = 0;
+    deform.n_intersect_wm = 0;
 
     timing_flag = FALSE;
     use_equal_lengths = FALSE;
@@ -279,6 +281,9 @@ int  main(
             surf.surface = surface;
             surf.static_flag = FALSE;
             surf.n_bound = 0;
+            surf.n_laplacian = 0;
+            surf.n_volume = 0;
+            surf.n_gradient = 0;
             surf.n_value = 0;
             surf.n_stretch = 0;
             surf.n_curvature = 0;
@@ -311,6 +316,9 @@ int  main(
               surf.surface = surface;
               surf.static_flag = FALSE;
               surf.n_bound = 0;
+              surf.n_laplacian = 0;
+              surf.n_volume = 0;
+              surf.n_gradient = 0;
               surf.n_value = 0;
               surf.n_stretch = 0;
               surf.n_curvature = 0;
@@ -564,6 +572,41 @@ int  main(
             deform.surfaces[deform.n_surfaces-1].
                         bound[deform.surfaces[deform.n_surfaces-1].n_bound-1].
                                 check_direction_flag = TRUE;
+        }
+        else if( equal_strings( arg, "-gradient" ) )
+        {
+            if( !get_real_argument( 0.0, &gradient.image_weight ) ||
+                !get_string_argument( NULL, &volume_filename ) ||
+                !get_int_argument( 0, &gradient.continuity ) ||
+                !get_real_argument( 0.0, &gradient.threshold ) ||
+                !get_real_argument( 0.0, &gradient.min_diff ) ||
+                !get_real_argument( 0.0, &gradient.max_diff ) ||
+                !get_real_argument( 0.0, &factor ) ||
+                !get_real_argument( 0.0, &value_differential_offset ) ||
+                !get_real_argument( 0.0, &value_differential_ratio ) )
+            {
+                print_error( "Error in -gradient arguments.\n" );
+                usage( argv[0] );
+                return( 1 );
+            }
+
+            if( gradient.image_weight > 0.0 )
+                gradient.max_diff_weight = factor * gradient.image_weight;
+            else
+                gradient.max_diff_weight = factor;
+
+            if( lookup_volume( volume_filename, &gradient.volume,
+                               &gradient.voxel_lookup ) != OK )
+            {
+                return( 1 );
+            }
+
+            gradient.differential_offset = value_differential_offset;
+            gradient.differential_ratio = value_differential_ratio;
+
+            ADD_ELEMENT_TO_ARRAY(
+                deform.surfaces[deform.n_surfaces-1].gradient,
+                deform.surfaces[deform.n_surfaces-1].n_gradient, gradient, 1 );
         }
         else if( equal_strings( arg, "-value_differential" ) )
         {

@@ -1,4 +1,4 @@
-#include  <volume_io/internal_volume_io.h>
+#include  <internal_volume_io.h>
 #include  <fit_3d.h>
 
 #define  MAX_POLYGONS_PER_NODE   5

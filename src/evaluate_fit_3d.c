@@ -1037,6 +1037,120 @@ typedef  struct
 }
 weighting_struct;
 
+private  Real   evaluate_gradient_fit(
+    Volume               volume,
+    voxel_coef_struct    *lookup,
+    int                  continuity,
+    Real                 image_weight,
+    Real                 threshold,
+    Real                 min_diff,
+    Real                 max_diff,
+    Real                 max_diff_weight,
+    Real                 differential_offset,
+    Real                 differential_ratio,
+    int                  n_points,
+    int                  n_edges,
+    int                  n_polygons,
+    Real                 parameters[],
+    Smallest_int         active_flags[] )
+{
+    int        p1, p1_index, n1_index, n2_index, neigh1, neigh2, w1, w2, n;
+    int        i, j, k, sizes[N_DIMENSIONS];
+    int        n_neighs, *neighs;
+    Real       x, y, z, value, diff, fit1, fit2;
+    Real       ln_start_weight;
+    Real       x1, y1, z1, x2, y2, z2, x3, y3, z3;
+    Real       xv1, yv1, zv1, xv2, yv2, zv2, xv3, yv3, zv3;
+    Real       dx12, dy12, dz12, dx13, dy13, dz13;
+    Real       alpha1, alpha2;
+    Real       wtv00, wtv01, wtv02, wtv03;
+    Real       wtv10, wtv11, wtv12, wtv13;
+    Real       wtv20, wtv21, wtv22, wtv23;
+    Real       voxel[3], voxel_000[3], voxel_100[3], voxel_010[3];
+    Real       voxel_001[3];
+    Real       u, v, w, u1, v1, ww1;
+    Real       real_scale, real_translation;
+    unsigned char  *ptr;
+    BOOLEAN    inside;
+    int               n_weights, n_weights1, n_weights2;
+    weighting_struct  tt, *weights1, *weights2, *weights;
+    unsigned  char  ***voxel_ptr;
+    int             offset1, offset2, offset3, offset4;
+    int             offset5, offset6, offset7;
+    BOOLEAN    checking_differential, fast_interp;
+
+    if( image_weight < 0.0 )
+        return( 0.0 );
+
+    get_volume_sizes( volume, sizes );
+
+    fit1 = 0.0;
+    fit2 = 0.0;
+
+    if( active_flags != NULL )
+        handle_internal_error( "Need to implement this" );
+
+    convert_world_to_voxel( volume, 0.0, 0.0, 0.0, voxel_000 );
+    convert_world_to_voxel( volume, 1.0, 0.0, 0.0, voxel_100 );
+    convert_world_to_voxel( volume, 0.0, 1.0, 0.0, voxel_010 );
+    convert_world_to_voxel( volume, 0.0, 0.0, 1.0, voxel_001 );
+
+    wtv00 = voxel_100[0] - voxel_000[0];
+    wtv01 = voxel_010[0] - voxel_000[0];
+    wtv02 = voxel_001[0] - voxel_000[0];
+    wtv03 = voxel_000[0];
+
+    wtv10 = voxel_100[1] - voxel_000[1];
+    wtv11 = voxel_010[1] - voxel_000[1];
+    wtv12 = voxel_001[1] - voxel_000[1];
+    wtv13 = voxel_000[1];
+
+    wtv20 = voxel_100[2] - voxel_000[2];
+    wtv21 = voxel_010[2] - voxel_000[2];
+    wtv22 = voxel_001[2] - voxel_000[2];
+    wtv23 = voxel_000[2];
+
+    ln_start_weight = log( differential_ratio );
+
+    checking_differential = (min_diff < max_diff && max_diff_weight > 0.0);
+
+    real_translation = convert_voxel_to_value( volume, 0.0 );
+    real_scale = convert_voxel_to_value( volume, 1.0 ) - real_translation;
+    real_translation -= threshold;
+
+    for_less( p1, 0, n_points )
+    {
+        p1_index = IJ( p1, 0, 3 );
+
+        x = parameters[p1_index+0];
+        y = parameters[p1_index+1];
+        z = parameters[p1_index+2];
+
+        voxel[0] = wtv00 * x + wtv01 * y + wtv02 * z + wtv03;
+        voxel[1] = wtv10 * x + wtv11 * y + wtv12 * z + wtv13;
+        voxel[2] = wtv20 * x + wtv21 * y + wtv22 * z + wtv23;
+
+        if( continuity == 0 )
+            value = trilinear_interpolate( volume, lookup, voxel );
+        else
+        {
+            (void) evaluate_volume( volume, voxel, NULL, continuity,
+                                    FALSE, 0.0, &value, NULL, NULL );
+        }
+        //////////////////////////////////////////////////////////////////
+        // modified by June S. Kim at 7/MAY/2004
+        diff = (value<threshold)?value - threshold:0;
+
+        fit1 += diff * diff;
+        //if( !checking_differential || diff >= min_diff && diff <= max_diff )
+        //    continue;
+
+        //fit2 += differential_weights( diff, min_diff, max_diff,
+        //                              differential_offset,
+        //                              ln_start_weight );
+        ////////////////////////////////////////////////////////////////
+    }
+}
 private  Real   evaluate_image_value_fit(
     Volume               volume,
     voxel_coef_struct    *lookup,
@@ -1150,7 +1264,6 @@ private  Real   evaluate_image_value_fit(
         fit2 += differential_weights( diff, min_diff, max_diff,
                                       differential_offset,
                                       ln_start_weight );
-
     }
 
     if( oversample > 0 )
@@ -1369,6 +1482,129 @@ private  Real   evaluate_image_value_fit(
     fit2 *= max_diff_weight;
 
     return( fit1 + fit2 );
+}
+
+private  void   evaluate_gradient_fit_deriv(
+    Volume               volume,
+    voxel_coef_struct    *lookup,
+    int                  continuity,
+    Real                 image_weight,
+    Real                 threshold,
+    Real                 min_diff,
+    Real                 max_diff,
+    Real                 max_diff_weight,
+    Real                 differential_offset,
+    Real                 differential_ratio,
+    int                  n_points,
+    int                  n_edges,
+    int                  n_polygons,
+    Real                 parameters[],
+    Real                 deriv[] )
+{
+    int     p1, p1_index, n1_index, n2_index, neigh1, neigh2, w1, w2, n;
+    Real    x, y, z, value, diff, dx, dy, dz;
+    Real    x1, y1, z1, x2, y2, z2, x3, y3, z3, derivative;
+    Real    weight1, weight2, weight3, alpha1, alpha2, f1, f2, f3;
+    Real    ln_start_weight, value_deriv[N_DIMENSIONS], *value_deriv_ptr[1];
+    Real    wtv00, wtv01, wtv02, wtv03;
+    Real    wtv10, wtv11, wtv12, wtv13;
+    Real    wtv20, wtv21, wtv22, wtv23;
+    Real    voxel[3], voxel_000[3], voxel_100[3], voxel_010[3];
+    Real    voxel_001[3];
+    Real              trilin_sizes[N_DIMENSIONS];
+    int               n_weights, n_weights1, n_weights2, sizes[N_DIMENSIONS];
+    weighting_struct  tt, *t_ptr, *weights1, *weights2, *weights;
+    Real              dx12, dy12, dz12, dx13, dy13, dz13;
+    Real              xv1, yv1, zv1, xv2, yv2, zv2, xv3, yv3, zv3;
+    BOOLEAN           inside;
+
+    if( image_weight < 0.0 )
+        return;
+
+    get_volume_sizes( volume, sizes );
+    trilin_sizes[0] = (Real) sizes[0] - 1.0;
+    trilin_sizes[1] = (Real) sizes[1] - 1.0;
+    trilin_sizes[2] = (Real) sizes[2] - 1.0;
+
+    convert_world_to_voxel( volume, 0.0, 0.0, 0.0, voxel_000 );
+    convert_world_to_voxel( volume, 1.0, 0.0, 0.0, voxel_100 );
+    convert_world_to_voxel( volume, 0.0, 1.0, 0.0, voxel_010 );
+    convert_world_to_voxel( volume, 0.0, 0.0, 1.0, voxel_001 );
+
+    wtv00 = voxel_100[0] - voxel_000[0];
+    wtv01 = voxel_010[0] - voxel_000[0];
+    wtv02 = voxel_001[0] - voxel_000[0];
+    wtv03 = voxel_000[0];
+
+    wtv10 = voxel_100[1] - voxel_000[1];
+    wtv11 = voxel_010[1] - voxel_000[1];
+    wtv12 = voxel_001[1] - voxel_000[1];
+    wtv13 = voxel_000[1];
+
+    wtv20 = voxel_100[2] - voxel_000[2];
+    wtv21 = voxel_010[2] - voxel_000[2];
+    wtv22 = voxel_001[2] - voxel_000[2];
+    wtv23 = voxel_000[2];
+
+    ln_start_weight = log( differential_ratio );
+
+    inside = TRUE;
+    for_less( p1, 0, n_points )
+    {
+        p1_index = IJ(p1,0,3);
+        x1 = parameters[p1_index+0];
+        y1 = parameters[p1_index+1];
+        z1 = parameters[p1_index+2];
+
+        xv1 = wtv00 * x1 + wtv01 * y1 + wtv02 * z1 + wtv03;
+        yv1 = wtv10 * x1 + wtv11 * y1 + wtv12 * z1 + wtv13;
+        zv1 = wtv20 * x1 + wtv21 * y1 + wtv22 * z1 + wtv23;
+
+        if( xv1 < 0.0 || xv1 >= (Real) sizes[0]-1.0 ||
+            yv1 < 0.0 || yv1 >= (Real) sizes[1]-1.0 ||
+            zv1 < 0.0 || zv1 >= (Real) sizes[2]-1.0 )
+        {
+            inside = FALSE;
+
+            break;
+        }
+    }
+
+    for_less( p1, 0, n_points )
+    {
+        p1_index = IJ( p1, 0, 3 );
+
+        x = parameters[p1_index+0];
+        y = parameters[p1_index+1];
+        z = parameters[p1_index+2];
+
+        voxel[0] = wtv00 * x + wtv01 * y + wtv02 * z + wtv03;
+        voxel[1] = wtv10 * x + wtv11 * y + wtv12 * z + wtv13;
+        voxel[2] = wtv20 * x + wtv21 * y + wtv22 * z + wtv23;
+
+        if( continuity == 0 )
+        {
+            value = trilinear_interpolate_with_deriv( volume, inside,
+                                                      trilin_sizes,
+                                                      lookup, voxel,
+                                                      value_deriv );
+        }
+        else
+        {
+            value_deriv_ptr[0] = value_deriv;
+            (void) evaluate_volume( volume, voxel, NULL, continuity,
+                                    FALSE, 0.0, &value, value_deriv_ptr, NULL );
+        }
+
+        convert_voxel_normal_vector_to_world( volume, value_deriv,
+                                              &dx, &dy, &dz );
+
+        diff = (value<threshold)?value - threshold:0;
+
+        deriv[p1_index+0] += image_weight * 2.0 * dx * diff;
+        deriv[p1_index+1] += image_weight * 2.0 * dy * diff;
+        deriv[p1_index+2] += image_weight * 2.0 * dz * diff;
+    }
 }
 
 private  void   evaluate_image_value_fit_deriv(
@@ -4426,7 +4662,7 @@ private  Real   evaluate_self_intersect_fit(
     Real                          *closest_dist )
 {
     int     i, w, n_candidates;
-    Real    fit, *fits, dist, dist_sq, diff, *sq_min_distances;
+    Real    fit, *fits=0, dist, dist_sq, diff, *sq_min_distances=0;
     Real    max_distance_sq;
     BOOLEAN sqrt_done;
 
@@ -4461,8 +4697,9 @@ private  Real   evaluate_self_intersect_fit(
 
         for_less( w, 0, n_weights )
         {
-            if( dist_sq >= sq_min_distances[w] )
+	  if( dist_sq >= sq_min_distances[w] ){
                 continue;
+	  }
 
             if( dist_sq == 0.0 )
             {
@@ -4704,7 +4941,7 @@ private  Real   evaluate_surf_surf_fit(
                                              parameters_n12,
                                              &parameters2[p2*3],
                                              &parameters2[n21*3],
-                                             &parameters2[n22*3], &which_case );
+                                             &parameters2[n22*3], &which_case,NULL );
 
         if( dist_sq > max_distance_sq )
             continue;
@@ -4905,6 +5142,7 @@ private  int   private_evaluate_fit(
     stretch_struct         *stretch;
     curvature_struct       *curvature;
     bend_struct            *bend;
+    gradient_struct        *gradient;
     surface_value_struct   *value;
     inter_surface_struct   *inter;
     self_intersect_struct  *self;
@@ -5060,8 +5298,8 @@ private  int   private_evaluate_fit(
                            0, deform->surfaces[surface].surface.n_points);
             eval->surf_surf_fit += f;
             *fit += f;
-            ++count;
-          }
+	  }
+	  ++count;
         }
 
         //////////////////////////////////////////////////////////////////
@@ -5178,8 +5416,8 @@ private  int   private_evaluate_fit(
             // Modified by June at 22/11
             // reduce boundary_search_fit term to 0.5 times
             if(BOUNDARY_DECREASE == 1){
-            eval->boundary_fit += (f*1.0);
-            *fit += (f*1.0);
+	      eval->boundary_fit += (f*1.0);
+	      *fit += (f*1.0);
             }
             //////////////////////////////////////////////////////////
         }
@@ -5235,6 +5473,36 @@ private  int   private_evaluate_fit(
                 }
                 ++count;
             }
+        }
+
+        for_less( i, 0, deform->surfaces[surface].n_gradient )
+        {
+            gradient = &deform->surfaces[surface].gradient[i];
+
+            if( which == -2 || which == count )
+            {
+                f = evaluate_gradient_fit( gradient->volume,
+                                          gradient->voxel_lookup,
+                                          gradient->continuity,
+                                          gradient->image_weight,
+                                          gradient->threshold,
+                                          gradient->min_diff,
+                                          gradient->max_diff,
+                                          gradient->max_diff_weight,
+                                          gradient->differential_offset,
+                                          gradient->differential_ratio,
+                   deform->surfaces[surface].surface.n_points,
+                   deform->surfaces[surface].surface.n_edges,
+                   deform->surfaces[surface].surface.n_polygons,
+                   this_parms, this_active);
+
+                eval->gradient_fit += f;
+                *fit += f;
+
+                if( which == -2 && max_value > 0.0 && *fit > max_value )
+                    return( 0 );
+            }
+            ++count;
         }
 
         for_less( i, 0, deform->surfaces[surface].n_value )
@@ -5415,6 +5683,7 @@ public  Real   evaluate_fit(
 #endif
 
     eval.boundary_fit = 0.0;
+    eval.gradient_fit = 0.0;
     eval.value_fit = 0.0;
     eval.stretch_fit = 0.0;
     eval.curvature_fit = 0.0;
@@ -5564,6 +5833,7 @@ public  void   evaluate_fit_deriv(
     curvature_struct       *curvature;
     bend_struct            *bend;
     surface_bound_struct   *bound;
+    gradient_struct        *gradient;
     surface_value_struct   *value;
     inter_surface_struct   *inter;
     self_intersect_struct  *self;
@@ -5576,6 +5846,7 @@ public  void   evaluate_fit_deriv(
     fit_eval_struct        eval;
 
     eval.boundary_fit = 0.0;
+    eval.gradient_fit = 0.0;
     eval.value_fit = 0.0;
     eval.stretch_fit = 0.0;
     eval.curvature_fit = 0.0;
@@ -5597,6 +5868,34 @@ public  void   evaluate_fit_deriv(
 
     for_less( p, 0, n_parameters )
         derivative[p] = 0.0;
+
+    for_less( surface, 0, deform->n_surfaces )
+    {
+        this_parms = &parameters[start_parameter[surface]];
+        this_deriv = &derivative[start_parameter[surface]];
+
+        for_less( i, 0, deform->surfaces[surface].n_gradient )
+        {
+            gradient = &deform->surfaces[surface].gradient[i];
+
+            evaluate_gradient_fit_deriv( gradient->volume,
+                                            gradient->voxel_lookup,
+                                            gradient->continuity,
+                                            gradient->image_weight,
+                                            gradient->threshold,
+                                            gradient->min_diff,
+                                            gradient->max_diff,
+                                            gradient->max_diff_weight,
+                                            gradient->differential_offset,
+                                            gradient->differential_ratio,
+                   deform->surfaces[surface].surface.n_points,
+                   deform->surfaces[surface].surface.n_edges,
+                   deform->surfaces[surface].surface.n_polygons,
+                   this_parms, this_deriv );
+        }
+    }
+
+    eval.value_fit = compute_deriv_mag( n_parameters, derivative );
 
     for_less( surface, 0, deform->n_surfaces )
     {
@@ -7280,6 +7579,8 @@ public  void  print_fit_info(
 {
     if( f->boundary_fit != 0.0 )
         print( " B:%.4g", f->boundary_fit );
+    if( f->gradient_fit != 0.0 )
+        print( " G:%.4g", f->gradient_fit );
     if( f->value_fit != 0.0 )
         print( " V:%.4g", f->value_fit );
     if( f->stretch_fit != 0.0 )
@@ -7322,6 +7623,8 @@ public  void  print_fit_deriv_info(
 {
     if( f->boundary_fit != 0.0 )
         print( " B:%.2g", f->boundary_fit );
+    if( f->gradient_fit != 0.0 )
+        print( " G:%.2g", f->gradient_fit );
     if( f->value_fit != 0.0 )
         print( " V:%.2g", f->value_fit );
     if( f->stretch_fit != 0.0 )
