@@ -99,7 +99,7 @@ Spawn(["minccalc", "-expression", 'if(A[0]>2){out=2;}else if(A[0]<1){out=1;}else
 #Spawn(["make_gradient_volume", $cls_gm, $cls_gm_gradient, "1", "3"]);
 #Spawn(["gradient_volume.sh", $cls_gm, $cls_gm_gradient]);
 gradient_volume($cls_gm, $cls_gm_gradient);
-Spawn(["minccalc", "-clobber", "-expression", 'if(A[0]>0.000001){out=1;}else{out=0;}', $cls_gm_gradient, $cls_gradient_tmp]);
+Spawn(["minccalc", "-clobber", "-expression", 'if(A[0]>0.01){out=1;}else{out=0;}', $cls_gm_gradient, $cls_gradient_tmp]);
 Spawn(["mincblur", "-clobber", "-fwhm", "1", $cls_gradient_tmp, "${TmpDir}/cls_gm_1"]);
 
 # Make a gradient image of an MRI
@@ -124,10 +124,7 @@ Spawn(["mv", "-f", "${TmpDir}/cls_tmp.mnc", $cls]);
 #chomp( $max_num = qx(intensity_statistics ${gradient_masked} none | grep Max | cut -c 12-) );
 chomp( $mean = qx(intensity_statistics ${gradient_masked} none | grep Mean | cut -c 12-) );
 chomp( $std = qx(intensity_statistics ${gradient_masked} none | grep Std | cut -c 12-) );
-#$mean = $mean / 4e2;
-#$mean = $mean / 4e9;
-#$max_num = $max_num * 0.1;
-$gradient_weight = 1e-5 / $mean;
+$gradient_weight = 1e-2 / ($mean * $mean);
 $gradient_threshold = $mean + $std;
 
 Spawn(["new_fit_3d", "-surface", $white, $white_fix, "-stretch", "2", $white,
