@@ -23,7 +23,7 @@ MNI::Spawn::RegisterPrograms
      mincblur
      make-curvature-volume
      minccalc
-     pve2
+     pve
      skel
      mask_cortical_white_matter
      surface_mask2 mask_volume

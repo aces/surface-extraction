@@ -27,6 +27,7 @@ MNI::Spawn::RegisterPrograms
      discretize_pve
      pve_script
      pve_curvature
+     skel
      mask_cortical_white_matter
      surface_mask2 mask_volume
      extract_white_surface
