@@ -1,0 +1,14 @@
+Makefile.in Makefile
+aclocal.m4
+config.h.in config.h
+config.log config.status
+configure
+libtool
+stamp-h.in stamp-h
+stamp-h1
+.deps
+.libs
+*.la
+*.lo
+negative_values_test 
+volume_tests

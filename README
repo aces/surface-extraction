@@ -1,0 +1,4 @@
+The ASP package: Anatomic Segmentation using Proximities
+
+Note: in order to install this package, the mni-acmacros have to be
+checked out to the m4 directory.
