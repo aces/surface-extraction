@@ -84,7 +84,7 @@ X_PRE_LIBS = @X_PRE_LIBS@
 am__include = @am__include@
 am__quote = @am__quote@
 install_sh = @install_sh@
-bin_PROGRAMS = new_fit_3d create_anchor_constraints
+bin_PROGRAMS = new_fit_3d create_anchor_constraints skel
 
 new_fit_3d_SOURCES = evaluate_fit_3d.c \
 					 	boundary_search.c \
@@ -99,6 +99,8 @@ new_fit_3d_SOURCES = evaluate_fit_3d.c \
 
 create_anchor_constraints_SOURCES = create_anchor_constraints.c
 
+skel_SOURCES = skeletonization.c
+
 noinst_HEADERS = conjugate.h\
 	deform.h \
 	deform_prototypes.h \
@@ -111,13 +113,15 @@ noinst_HEADERS = conjugate.h\
 	sp_geom_prototypes.h \
 	subdiv.h \
 	subdiv_prototypes.h \
-	tri_mesh.h
+	tri_mesh.h \
+	skeletonization.h
 
 subdir = src
 mkinstalldirs = $(SHELL) $(top_srcdir)/mkinstalldirs
 CONFIG_HEADER = $(top_builddir)/config.h
 CONFIG_CLEAN_FILES =
-bin_PROGRAMS = new_fit_3d$(EXEEXT) create_anchor_constraints$(EXEEXT)
+bin_PROGRAMS = new_fit_3d$(EXEEXT) create_anchor_constraints$(EXEEXT) \
+	skel$(EXEEXT)
 PROGRAMS = $(bin_PROGRAMS)
 
 am_create_anchor_constraints_OBJECTS = \
@@ -136,6 +140,11 @@ new_fit_3d_OBJECTS = $(am_new_fit_3d_OBJECTS)
 new_fit_3d_LDADD = $(LDADD)
 new_fit_3d_DEPENDENCIES =
 new_fit_3d_LDFLAGS =
+am_skel_OBJECTS = skeletonization.$(OBJEXT)
+skel_OBJECTS = $(am_skel_OBJECTS)
+skel_LDADD = $(LDADD)
+skel_DEPENDENCIES =
+skel_LDFLAGS =
 
 DEFS = @DEFS@
 DEFAULT_INCLUDES =  -I. -I$(srcdir) -I$(top_builddir)
@@ -153,6 +162,7 @@ am__depfiles_maybe = depfiles
 @AMDEP_TRUE@	./$(DEPDIR)/new_fit_3d.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/poly_poly_dist.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/self_intersect.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/skeletonization.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/surf_surf_dist.Po
 COMPILE = $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) \
 	$(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS)
@@ -160,11 +170,11 @@ CCLD = $(CC)
 LINK = $(CCLD) $(AM_CFLAGS) $(CFLAGS) $(AM_LDFLAGS) $(LDFLAGS) -o $@
 CFLAGS = @CFLAGS@
 DIST_SOURCES = $(create_anchor_constraints_SOURCES) \
-	$(new_fit_3d_SOURCES)
+	$(new_fit_3d_SOURCES) $(skel_SOURCES)
 HEADERS = $(noinst_HEADERS)
 
 DIST_COMMON = $(noinst_HEADERS) Makefile.am Makefile.in
-SOURCES = $(create_anchor_constraints_SOURCES) $(new_fit_3d_SOURCES)
+SOURCES = $(create_anchor_constraints_SOURCES) $(new_fit_3d_SOURCES) $(skel_SOURCES)
 
 all: all-am
 
@@ -207,6 +217,9 @@ create_anchor_constraints$(EXEEXT): $(create_anchor_constraints_OBJECTS) $(creat
 new_fit_3d$(EXEEXT): $(new_fit_3d_OBJECTS) $(new_fit_3d_DEPENDENCIES) 
 	@rm -f new_fit_3d$(EXEEXT)
 	$(LINK) $(new_fit_3d_LDFLAGS) $(new_fit_3d_OBJECTS) $(new_fit_3d_LDADD) $(LIBS)
+skel$(EXEEXT): $(skel_OBJECTS) $(skel_DEPENDENCIES) 
+	@rm -f skel$(EXEEXT)
+	$(LINK) $(skel_LDFLAGS) $(skel_OBJECTS) $(skel_LDADD) $(LIBS)
 
 mostlyclean-compile:
 	-rm -f *.$(OBJEXT) core *.core
@@ -223,6 +236,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/new_fit_3d.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/poly_poly_dist.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/self_intersect.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/skeletonization.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/surf_surf_dist.Po@am__quote@
 
 distclean-depend:

@@ -1,3 +1,7 @@
+2003-09-10  Jason Lerch	      <jason@bic.mni.mcgill.ca>
+
+	* added src/skeletonization.{c,h} to the repository
+
 2003-09-08  Jason Lerch       <jason@bic.mni.mcgill.ca>
 
 	* added scripts/make_asp_grid.pl
