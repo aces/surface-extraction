@@ -1,3 +1,10 @@
+2002-04-08  Jason Lerch		<jason@bic.mni.mcgill.ca>
+
+	* NEWS added.
+	* removed specific bicpl header checks from configure.ac
+	* added bicpl/ or volume_io/ into #include statements where
+	necessary.
+	
 2002-01-20  Jason Lerch		<jason@bic.mni.mcgill.ca>
 
 	* tagged the repository with the rag "rel_1" - this is the

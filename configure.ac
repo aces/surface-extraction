@@ -16,11 +16,6 @@ AC_PROG_CXX
 
 mni_REQUIRE_BICPL
 
-# check for special header files needed
-AC_CHECK_HEADER(numerical.h,,AC_MSG_ERROR([The file numerical.h must be includable - it should be part of the internal bicpl include files - so make sure that those are included in the CPPFLAGS]))
-
-AC_CHECK_HEADER(internal_volume_io.h,,AC_MSG_ERROR([The file internal_volume_io.h must be includable - it should be part of the internal volume_io files - so make sure that those are included in the CPPFLAGS]))
-
 AC_PATH_PROGS(PERL, perl5 perl)
 
 AC_CONFIG_FILES([Makefile src/Makefile scripts/Makefile models/Makefile])
