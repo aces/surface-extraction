@@ -2,7 +2,7 @@ dnl Process this file with autoconf to produce a configure script.
 
 AC_INIT
 AC_CONFIG_SRCDIR([src/new_fit_3d.c])
-AM_INIT_AUTOMAKE(ASP, 1.0)
+AM_INIT_AUTOMAKE(CLASP, 2.0)
 AM_CONFIG_HEADER(config.h)
 
 smr_WITH_BUILD_PATH

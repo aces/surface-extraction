@@ -1,3 +1,7 @@
+2004-10-16  Jason Lerch	      <jason@bic.mni.mcgill.ca>
+
+	* configure.ac: changed name to CLASP and bumped up to version 2.0
+
 2004-04-30  June Sic Kim      <luck3d@bic.mni.mcgill.ca>
 
 	* delete some redundant code in 'evaluate_laplacian_fit' & 
