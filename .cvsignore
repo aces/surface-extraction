@@ -10,5 +10,5 @@ stamp-h1
 .libs
 *.la
 *.lo
-negative_values_test 
-volume_tests
+autom4te.cache
+m4

@@ -23,7 +23,10 @@ SUFFIXES = .pl
 .pl:
 	@rm -f $@
 	sed < $< > $@-t \
-		-e 's,xPERLx,$(PERL),' -e 's,xINCDIRx,$(perllibdir),g' &&\
+		-e 's,xPERLx,$(PERL),' \
+		-e 's,xINCDIRx,$(perllibdir),g' \
+		-e 's,xDATADIRx,$(datadir),g' \
+		-e 's,xPKGDATADIRx,$(pkgdatadir),g' &&\
 	mv $@-t $@
 
 CLEANFILES = asp expand_from_white extract_white_surface \

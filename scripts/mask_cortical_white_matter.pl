@@ -1,4 +1,4 @@
-#!/usr/local/bin/perl5 -w
+#! xPERLx -w
 
 # Part of the ASP cortex extraction suite. For a description of the
 # algorithms used here see MacDonald et. al. "Automated 3-D Extraction
