@@ -1,4 +1,4 @@
-SUBDIRS = src scripts models
+SUBDIRS = src scripts models configs
 
 AUTOMAKE_OPTIONS = check-news
 

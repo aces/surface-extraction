@@ -1,37 +1,73 @@
 #!xPERLx -w
 
+# takes as input a white matter surface and a classified volume, then
+# expands out from the white matter surface to find the grey matter
+# surface.
+
+# Author: David MacDonald
+# Modified: Jason Lerch <jason@bic.mni.mcgill.ca>
+
 require "xINCDIRx/deform_utils.pl";
+
 use MNI::DataDir;
+use MNI::Startup;
+use Getopt::Tabular;
 
 #    &print_out_script_info();
+
+my ($volume, $white_surface, $output);
+my ($start_n, $end_n, $dont_copy, $isovalue);
+my ($schedule_file, $model_data_dir);
+
+# defaults:
+$schedule_file = "xSYSCONFx/expand_from_white.cfg";
+$model_data_dir = MNI::DataDir::dir('ASP');
+
+$isovalue = 1.5;
+
+# get command line arguments and set defaults
+sub Initialise {
+
+    my @options = 
+	( @DefaultArgs, # from MNI::Startup
+	  [ "-start_n", "int", 1, \$start_n,
+	    "Schedule number to start iterating at." ],
+	  [ "-end_n", "int", 1, \$end_n,
+	    "Schedule number to end iterating at." ],
+	  [ "-schedule", "string", 1, \$schedule_file,
+	    "Schedule to use. [Default: $schedule_file]" ],
+	  [ "-isovalue", "float", 1, \$isovalue,
+	    "Isovalue of volume to fit. [Default: $isovalue]" ],
+	  [ "-modeldir", "string", 1, \$model_data_dir,
+	    "Location of model data. [Default: $model_data_dir]" ],
+	  );
+    
+    GetOptions( \@options, \@ARGV ) or die "\n";
 
     $volume = shift;
     $white_surface = shift;
     $output = shift;
-    $isovalue = shift;
-
-    $start_n = shift;
-    $end_n = shift;
     $dont_copy = shift;
 
-    if( ! defined($isovalue) )
-    {
-        die "Usage: $0  input.mnc white.obj output1_pref [start] [end] [dont copy]\n";
-    }
+    MNI::DataDir::check_data($model_data_dir, 
+			     ["ellipsoid_${n_polygons}.obj.gz"]);
+
+    $model = $white_surface;
+    $model = "${model_data_dir}/ellipsoid_${n_polygons}.obj.gz";
+
+
+#      if( ! defined($isovalue) )
+#      {
+#          die "Usage: $0  input.mnc white.obj output1_pref [start] [end] [dont copy]\n";
+#      }
+}
 
 #---------
-
     $fit = "new_fit_3d ";
 
     $oversample_reference = 20480;
     $n_polygons = `print_n_polygons $white_surface`;
     chop( $n_polygons );
-
-    $model_data_dir = MNI::DataDir::dir('ASP');
-    MNI::DataDir::check_data($model_data_dir, ["ellipsoid_${n_polygons}.obj.gz"]);
-
-    $model = $white_surface;
-    $model = "${model_data_dir}/ellipsoid_${n_polygons}.obj.gz";
 
     $self_dist2 = 0.01;
     $n_selfs = 9;
@@ -58,15 +94,23 @@ use MNI::DataDir;
     $stretch_scale = 1;
     $curvature_scale = 0;
 
-    @schedule = (
+my @schedule;
 
-#size   sw  n_it  inc offo offi  si over   sw   self
-#----- ---- ----  --- ---  ----  -- ----  ----  ----
- 1e1,   0,  250,  50,  1,   1,   .5,  1,  1e1,  .25, 4, 1e-6, -5, 2,
- 1e1,   0,  250,  50,  1,   1,   .5,  1,  1e1,  .25, 4, 1e-6, -4, 2,
- 1e1,   0, 2000,  50,  1,   1,   .5,  1,  1e1,  .25, 4, 1e-6, -2, 2,
-  );
+open SCHEDULE, $schedule_file 
+    or die "ERROR: could not open schedule file $schedule_file\n";
+while (<SCHEDULE>) {
+    my $line = $_;
+    chomp $line;
+    unless ($line ~= /^\#/) { # ignore comment lines
+	my @fields = split /,/, $line;
+	foreach my $field (@fields) {
+	    $field =~ s/\s//g;
+	    push @schedule, $field;
+	}
+    }
+}
 
+print "SCHEDULE: @schedule\n";
 
     $sched_size =  14;
  

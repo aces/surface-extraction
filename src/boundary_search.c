@@ -1,6 +1,6 @@
-#include  <internal_volume_io.h>
+#include  <volume_io/internal_volume_io.h>
 #include  <fit_3d.h>
-#include  <numerical.h>
+#include  <bicpl/numerical.h>
 
 #define  MAX_IN_VOXEL_COEF_LOOKUP  20000
 
