@@ -73,6 +73,8 @@ LN_S = @LN_S@
 MOC = @MOC@
 PACKAGE = @PACKAGE@
 PERL = @PERL@
+QTDIR = @QTDIR@
+STRIP = @STRIP@
 UIC = @UIC@
 VERSION = @VERSION@
 X_CFLAGS = @X_CFLAGS@
@@ -93,17 +95,19 @@ checked_libs = $(unchecked_libs:.plib=.pl)
 perllib_DATA = deform_utils.pl utils.pl
 
 bin_SCRIPTS = asp expand_from_white extract_white_surface \
-			  mask_cortical_white_matter
+			  mask_cortical_white_matter make_asp_grid
 
 
 EXTRA_DIST = asp.pl expand_from_white.pl extract_white_surface.pl \
-			  mask_cortical_white_matter.pl deform_utils.plib utils.plib
+			  mask_cortical_white_matter.pl make_asp_grid.pl \
+			  deform_utils.plib utils.plib
 
 
 SUFFIXES = .pl
 
 CLEANFILES = asp expand_from_white extract_white_surface \
-			  mask_cortical_white_matter deform_utils.pl utils.pl
+			 mask_cortical_white_matter make_asp_grid \
+	         deform_utils.pl utils.pl
 
 subdir = scripts
 mkinstalldirs = $(SHELL) $(top_srcdir)/mkinstalldirs
@@ -281,7 +285,10 @@ $(checked_libs): %.pl: %.plib
 .pl:
 	@rm -f $@
 	sed < $< > $@-t \
-		-e 's,xPERLx,$(PERL),' -e 's,xINCDIRx,$(perllibdir),g' &&\
+		-e 's,xPERLx,$(PERL),' \
+		-e 's,xINCDIRx,$(perllibdir),g' \
+		-e 's,xDATADIRx,$(datadir),g' \
+		-e 's,xPKGDATADIRx,$(pkgdatadir),g' &&\
 	mv $@-t $@
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.
