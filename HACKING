@@ -1,0 +1,16 @@
+		Hacking Notes
+		-------------
+
+The CVS tag "rel_1" corresponds to the software as David MacDonald had left it
+with only a very few minor bug fixes, and autoconfiscation.
+
+The CVS tag "rel_2" is a *branch* tag.  It has a few more fixes, but
+none of the new Laplacian stuff (yet).  This is the branch on which
+ASP version 1.0 (tag "asp-1_0") was made.
+
+Version 1.x shall be reserved for stable fixes to David's original
+algorithm.
+
+Version 2.x shall be reserved for the Laplacian-based modifications by
+June.
+

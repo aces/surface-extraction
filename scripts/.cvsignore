@@ -1,8 +1,7 @@
-Makefile
-Makefile.in
+Makefile Makefile.in
 asp
-expand_from_white
+expand_from_white 
 extract_white_surface
 mask_cortical_white_matter
+deform_utils.pl 
 utils.pl
-deform_utils.pl

@@ -17,14 +17,19 @@ bin_SCRIPTS = asp expand_from_white extract_white_surface \
 			  mask_cortical_white_matter
 
 EXTRA_DIST =  asp.pl expand_from_white.pl extract_white_surface.pl \
-			  mask_cortical_white_matter.pl deform_utils.plib utils.plib
+			  mask_cortical_white_matter.pl \
+			  deform_utils.plib utils.plib
 
 SUFFIXES = .pl
 .pl:
 	@rm -f $@
 	sed < $< > $@-t \
-		-e 's,xPERLx,$(PERL),' -e 's,xINCDIRx,$(perllibdir),g' -e 's,xSYSCONFx,$(sysconfdir)/@PACKAGE@,g' &&\
+		-e 's,xPERLx,$(PERL),' \
+		-e 's,xINCDIRx,$(perllibdir),g' \
+		-e 's,xDATADIRx,$(datadir),g' \
+		-e 's,xPKGDATADIRx,$(pkgdatadir),g' &&\
 	mv $@-t $@
 
 CLEANFILES = asp expand_from_white extract_white_surface \
-			  mask_cortical_white_matter deform_utils.pl utils.pl
+	mask_cortical_white_matter \
+	deform_utils.pl utils.pl

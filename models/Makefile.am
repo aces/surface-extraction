@@ -16,5 +16,5 @@ pkgdata_DATA = white_matter_mask.obj \
 	ellipsoid_81920.obj.gz \
 	ellipsoid_8192.obj.gz
 
-EXTRA_DIST = $pkgdata_DATA
+EXTRA_DIST = $(pkgdata_DATA)
 

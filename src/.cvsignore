@@ -1,5 +1,4 @@
-Makefile
-Makefile.in
+Makefile Makefile.in
 .deps
+new_fit_3d 
 create_anchor_constraints
-new_fit_3d
