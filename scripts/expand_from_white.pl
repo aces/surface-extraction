@@ -7,17 +7,18 @@ use MNI::DataDir;
 
     $volume = shift;
     $white_surface = shift;
-    $output = shift;
+    $input = shift;
     $isovalue = shift;
 
     $laplacian_file = shift;
     $start_n = shift;
     $end_n = shift;
     $dont_copy = shift;
+    $output = $input;
 
     if( ! defined($isovalue) )
     {
-        die "Usage: $0  input.mnc white.obj output1_pref [start] [end] [dont copy]\n";
+        die "Usage: $0  input.mnc white.obj input_gray.obj output1_pref [log_file] [start] [end] [dont copy]\n";
     }
 
 #---------
@@ -41,7 +42,7 @@ use MNI::DataDir;
     $stop_threshold = 3e-2;
     $stop_iters = 10;
 
-    $value_differential_offset = 0.5;
+    #$value_differential_offset = 0.5;
 
     $filter = 0;
     $n_per = 1;
@@ -53,7 +54,7 @@ use MNI::DataDir;
     $iters_scale = 1.0;
     $break_scale = 1.0;
     $oo_scale = 1.0 * sqrt( $oversample_reference / $n_polygons );
-    $value_oo_scale = 1.0;
+    #$value_oo_scale = 1.0;
     $iters_override = 0;
 
     $stretch_scale = 1;
@@ -61,8 +62,8 @@ use MNI::DataDir;
 
     @schedule = (
 
-#size   sw  n_it  inc offo offi  si over   sw   self
-#----- ---- ----  --- ---  ----  -- ----  ----  ----
+#size   sw  n_it  inc offo offi  si over   sw   self                 v_w   v_mw
+#----- ---- ----  --- ---  ----  -- ----  ----  ----                 ---   ----
  1e1,   0, 1000, 100,  1,   1,   .5,  1,  1e1,  .25, 4, -1, -5, 2, 0,1e-5,0,0,1.0, 2.0, 1e-3, 1e3,
  1e1,   0, 1500,  50,  1,   1,   .5,  1,  1e1,  .25, 4, -1, -5, 2, 0,1e-5,0,0,1.0, 2.0, 1e-3, 1e4,
  1e1,   0,  500,  50,  1,   1,   .5,  1,  1e1,  .25, 4, -1, -5, 2, 0,1e-5,0,0,1.0, 2.0, 1e-3, 1e5,
@@ -70,7 +71,7 @@ use MNI::DataDir;
 
 
     $sched_size =  22;
- 
+
     if( ! defined($start_n) )
         { $start_n = 0; }
 
@@ -82,9 +83,7 @@ use MNI::DataDir;
     if( !$dont_copy && $start_n <= 0 ) {
         system_call( "set_object_colour $white_surface ${output} white" );
     }
-
-    $once = 0;
-
+$once = 0;
     for( $i = 0;  $i < @schedule;  $i += $sched_size )
     {
         $step = $i / $sched_size;
@@ -93,8 +92,7 @@ use MNI::DataDir;
 
         ( $sw, $cw, $n_iters, $iter_inc, $offo, $offi,
           $si_step, $oversample, $self_weight, $self_dist, $desired_dist,
-          $anchor_weight, $min_dist, $max_dist,
-          $v_weight, $v_max_weight,
+          $anchor_weight, $min_dist, $max_dist, $v_weight, $v_max_weight,
           $adaptive_anchor_ratio, $adaptive_boundary_ratio,
           $laplacian_sampling, $laplacian_factor, $laplacian_weight,
           $surf_surf_weight ) =
@@ -103,7 +101,7 @@ use MNI::DataDir;
         $sw *= $stretch_scale;
         $cw *= $curvature_scale;
         $oversample *= $oo_scale;
-        $value_oversample = $oversample * $value_oo_scale;
+        #$value_oversample = $oversample * $value_oo_scale;
 
         if( $iters_override > 0 )
             { $n_iters = $iters_override; }
@@ -124,24 +122,24 @@ use MNI::DataDir;
         print( "Fitting polygons at filter ${filter}, " .
                "max $n_iters iters.\n" );
 
-        $b2 = " -boundary $offo $offi $volume " .
-                           " $isovalue - 20 20 0 0 $oversample " .
-              " -value_differential $value_differential_offset 1e-9" .
-              " -value 0 $masked_volume 0 2.0 -10 0 1e4 $value_oversample";
+        #$b2 = " -boundary $offo $offi $volume " .
+        #                   " $isovalue - 20 20 0 0 $oversample" .
+        #      " -value_differential $value_differential_offset 1e-9" .
+        #      " -value 0 $masked_volume 0 2.0 -10 0 1e4 $value_oversample";
 
         $b2 = " -boundary $offo $offi $volume " .
-                           " $isovalue - 20 2 0 0 $oversample ";
+                           " $isovalue - 0 0 0 0 $oversample";
 
         $iter_inc *= $break_scale;
         if( $iter_inc <= 0 )  { $iter_inc = $n_iters; }
 
-        $surf2_info = " -mode three".
-          " -surface ${output} ${output} $white_surface" .
-          " -stretch $sw $input -1.0 0 0 0".
+        $surf2_info = " -surface ${input} ${output} ${white_surface}" .
+          " -equal_lengths".
+          " -stretch $sw ${input} -1.0 0 0 0".
           " $b2 ".
           " $self2 ";
 
-        if( $anchor_weight > 0 )
+        if( $anchor_weight != 0 )
         {
             $tmp_anchor = "/tmp/anchor_${$}.txt";
 
@@ -150,7 +148,8 @@ use MNI::DataDir;
             system_call( "create_anchor_constraints " .
                          " $white_surface $tmp_anchor $desired_dist"  );
             $anchor = "-anchor $anchor_weight $tmp_anchor ".
-                      "1e4 $min_dist $max_dist";
+                      #"1e4 $min_dist $max_dist $depthfile";
+                      "0 $min_dist $max_dist";
         }
         else
         {
@@ -162,34 +161,33 @@ use MNI::DataDir;
         for( $iter = 0;  $iter < $n_iters;  $iter += $iter_inc )
         {
             system( "echo Step: $iter / $n_iters    $sw $cw" );
-
-            if( $once > 0 ){
-              $surf2_info = " -mode three".
-                " -surface ${output} ${output} ${white_surface}" .
-                " -equal_lengths".
-                " -stretch $sw ${output} -1.0 0 0 0".
-                " $b2 ".
-                " $self2 ";
+	if( $once > 0 ){
+        $surf2_info = " -surface ${output} ${output} ${white_surface}" .
+          " -equal_lengths".
+          " -stretch $sw ${output} -1.0 0 0 0".
+          " $b2 ".
+          " $self2 ";
 	
-              $ni = $n_iters - $iter;
-              if( $ni > $iter_inc )  { $ni = $iter_inc; }
-              $command = "$fit $surf2_info ".
-                " $anchor " .
-                " -volume $v_weight $v_max_weight $adaptive_anchor_ratio $adaptive_boundary_ratio " .
-                " -laplacian $laplacian_file $laplacian_weight 0 20 $laplacian_factor $laplacian_sampling ".
-                " -surf_surf 0 1 $surf_surf_weight 0.1" .
-                " -print_deriv " .
-                " -step $si_step " .
-                " -fitting $ni $n_per $tolerance " .
-                " -ftol $f_tolerance " .
-                " -stop $stop_threshold $stop_iters ";
-            }
-            else
-            {
-              $ni = $n_iters - $iter;
-              if( $ni > $iter_inc )  { $ni = $iter_inc; }
+            $ni = $n_iters - $iter;
+            if( $ni > $iter_inc )  { $ni = $iter_inc; }
+system( "echo second");
+            $command = "$fit -mode three $surf2_info ".
+                       " $anchor " .
+                       " -volume $v_weight $v_max_weight $adaptive_anchor_ratio $adaptive_boundary_ratio " .
+                       " -laplacian $laplacian_file $laplacian_weight 0 20 $laplacian_factor $laplacian_sampling ".
+                       " -surf_surf 0 1 $surf_surf_weight 0.1" .
+                       " -print_deriv " .
+                       " -step $si_step " .
+                       " -fitting $ni $n_per $tolerance " .
+                       " -ftol $f_tolerance " .
+                       " -stop $stop_threshold $stop_iters ";
+      }
+      else
+      {
+            $ni = $n_iters - $iter;
+            if( $ni > $iter_inc )  { $ni = $iter_inc; }
 
-              $command = "$fit $surf2_info ".
+            $command = "$fit -mode three $surf2_info ".
                        " $anchor " .
                        " -volume $v_weight $v_max_weight $adaptive_anchor_ratio $adaptive_boundary_ratio " .
                        " -laplacian $laplacian_file $laplacian_weight 0 20 $laplacian_factor $laplacian_sampling ".
@@ -199,11 +197,9 @@ use MNI::DataDir;
                        " -fitting $ni $n_per $tolerance " .
                        " -ftol $f_tolerance " .
                        " -stop $stop_threshold $stop_iters ";
-            }
-            $once = 1;
-
+      }
             $ret = system_call( "$command", 1 );
-
+            $once = 1;
             system_call( "measure_surface_area $output" );
 
             if( $ret == 1 )
