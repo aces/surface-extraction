@@ -40,7 +40,6 @@ public  Real   evaluate_fit(
     Deform_struct                 *deform,
     int                           start_parameter[],
     Real                          parameters[],
-    Real                          old_parameters[],
     Smallest_int                  active_flags[],
     Smallest_int                  evaluate_flags[],
     Real                          boundary_coefs[],

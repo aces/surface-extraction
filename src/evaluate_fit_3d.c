@@ -250,7 +250,6 @@ private  Real   evaluate_volume_fit(
     int          n_anchor_points,
     anchor_point_struct anchor_points[],
     Real         parameter[],
-    Real         old_params[],
     int          start_point,
     int          end_point,
     int          n_points)
@@ -4862,7 +4861,6 @@ private  int   private_evaluate_fit(
     Deform_struct                 *deform,
     int                           start_parameter[],
     Real                          parameters[],
-    Real                          old_parameters[],
     Smallest_int                  active_flags[],
     Smallest_int                  evaluate_flags[],
     Real                          boundary_coefs[],
@@ -5062,7 +5060,6 @@ private  int   private_evaluate_fit(
                              bound->volume,
                              anchor->n_anchor_points, anchor->anchor_points,
                              this_parms,
-                             old_parameters,
                              0,
                              deform->surfaces[surface].surface.n_points,
                              deform->surfaces[surface].surface.n_points);
@@ -5123,7 +5120,7 @@ private  int   private_evaluate_fit(
     }
 
     ind = 0;
-    for_less( surface, 0, deform->n_surfaces )
+    for_less( surface, 0, 1 )//deform->n_surfaces )
     {
         this_parms = &parameters[start_parameter[surface]];
         this_evaluate = (evaluate_flags == NULL) ? NULL :
@@ -5342,7 +5339,6 @@ private  void  multi_function(
     (void) private_evaluate_fit( index,
                                  fit_data->deform, fit_data->start_parameter,
                                  fit_data->parameters,
-                                 NULL,
                                  fit_data->active_flags,
                                  fit_data->evaluate_flags,
                                  fit_data->boundary_coefs, fit_data->t_dist,
@@ -5358,7 +5354,6 @@ public  Real   evaluate_fit(
     Deform_struct                 *deform,
     int                           start_parameter[],
     Real                          parameters[],
-    Real                          old_parameters[],
     Smallest_int                  active_flags[],
     Smallest_int                  evaluate_flags[],
     Real                          boundary_coefs[],
@@ -5396,7 +5391,6 @@ public  Real   evaluate_fit(
 
     (void) private_evaluate_fit( -1,
                                  deform, start_parameter, parameters,
-                                 old_parameters,
                                  active_flags, evaluate_flags,
                                  boundary_coefs, t_dist,
                                  boundary_flags, boundary_points,
@@ -5413,7 +5407,6 @@ public  Real   evaluate_fit(
 #endif
         (void) private_evaluate_fit( -2,
                                      deform, start_parameter, parameters,
-                                     old_parameters,
                                      active_flags, evaluate_flags,
                                      boundary_coefs, t_dist,
                                      boundary_flags, boundary_points,
@@ -5639,7 +5632,7 @@ public  void   evaluate_fit_deriv(
     }
     }
     ind = 0;
-    for_less( surface, 0, deform->n_surfaces )
+    for_less( surface, 0, 1/*deform->n_surfaces*/ )
     {
         this_parms = &parameters[start_parameter[surface]];
         this_deriv = &derivative[start_parameter[surface]];

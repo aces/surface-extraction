@@ -182,8 +182,7 @@ use MNI::DataDir;
                 " -step $si_step " .
                 " -fitting $ni $n_per $tolerance " .
                 " -ftol $f_tolerance " .
-                " -stop $stop_threshold $stop_iters ".
-                " -log $logfile ";
+                " -stop $stop_threshold $stop_iters ";
             }
             else
             {
@@ -199,8 +198,7 @@ use MNI::DataDir;
                        " -step $si_step " .
                        " -fitting $ni $n_per $tolerance " .
                        " -ftol $f_tolerance " .
-                       " -stop $stop_threshold $stop_iters ".
-                       " -log $logfile ";
+                       " -stop $stop_threshold $stop_iters ";
             }
             $once = 1;
 

@@ -96,7 +96,7 @@ Usage:     %s  help not implemented yet \n\
 
 static  int   n_surfaces_read = 0;
 static  int  n_volumes_read = 0;
-static  STRING log_filename;
+static  STRING log_filename = "";
 
 private FILE *open_file_to_write_info(char *);
 private int  write_file_info(FILE *, fit_eval_struct *);
@@ -2606,7 +2606,6 @@ private  Real   evaluate_along_line(
     int                  n_parameters,
     int                  start_parameter[],
     Real                 parameters[],
-    Real                 old_parameters[],
     Smallest_int         active_flags[],
     Smallest_int         evaluate_flags[],
     Real                 line_dir[],
@@ -2633,7 +2632,6 @@ private  Real   evaluate_along_line(
                      &si_lookup, &ss_lookup );
 
     fit = evaluate_fit( deform, start_parameter, buffer,
-                        old_parameters,
                         active_flags, evaluate_flags,
                         boundary_t_coefs, dist,
                         boundary_flags, boundary_points,
@@ -2720,7 +2718,6 @@ private  Real   minimize_along_line(
     int                 n_parameters,
     int                 start_parameter[],
     Real                parameters[],
-    Real                old_parameters[],
     Smallest_int        active_flags[],
     Smallest_int        evaluate_flags[],
     Real                line_dir[],
@@ -2766,7 +2763,7 @@ private  Real   minimize_along_line(
 
     t1 = initial_step_forward;
     f1 = evaluate_along_line( deform, n_parameters, start_parameter,
-                              parameters, old_parameters,
+                              parameters,
                               active_flags, evaluate_flags,
                               line_dir,
                               test_parameters, t1,
@@ -2797,7 +2794,7 @@ private  Real   minimize_along_line(
         step *= search_ratio;
 
         f2 = evaluate_along_line( deform, n_parameters, start_parameter,
-                                  parameters, old_parameters,
+                                  parameters,
                                   active_flags, evaluate_flags,
                                   line_dir,
                                   test_parameters, t2,
@@ -2867,7 +2864,7 @@ private  Real   minimize_along_line(
         }
 
         f_next = evaluate_along_line( deform, n_parameters, start_parameter,
-                                      parameters, old_parameters,
+                                      parameters,
                                       active_flags, evaluate_flags,
                                       line_dir, test_parameters, t_next,
                                       boundary_coefs, boundary_flags,
@@ -2935,7 +2932,7 @@ private  Real   minimize_along_line(
         t1 *= shorten;
 
         f1 = evaluate_along_line( deform, n_parameters, start_parameter,
-                                  parameters, old_parameters,
+                                  parameters,
                                   active_flags, evaluate_flags,
                                   line_dir, test_parameters, t1,
                                   boundary_coefs,
@@ -3076,7 +3073,6 @@ private  BOOLEAN   fit_polygons(
     Real                        fit, min_value, max_value, diff, *new_fits;
     Real                        step_taken;
     Real                        *derivative, *parameters, rms_movement;
-    Real                        *old_parameters; // New one
     Real                        max_movement, movement;
     Real                        dx, dy, dz, boundary_coefs[3], max_step, delta;
     Real                        *prev_parms;
@@ -3190,8 +3186,6 @@ private  BOOLEAN   fit_polygons(
     }
 
     ALLOC( parameters, n_parameters );
-    // Added by June 30/07/2003
-    ALLOC( old_parameters, n_parameters );
 
     for_less( s, 0, deform->n_surfaces )
     {
@@ -3439,10 +3433,6 @@ private  BOOLEAN   fit_polygons(
     {
         ++iter;
 
-        // Added by June 30/07/2003
-        for_less( i, 0, n_parameters )
-          old_parameters[i] = parameters[i];
-
         if( one_at_a_time )
         {
             if( iter == 1 || iter == n_iters )
@@ -3517,7 +3507,7 @@ private  BOOLEAN   fit_polygons(
                 realloc_quadratic_cross_terms_real( n_parameters, n_cross_terms,
                                                &cross_parms, &cross_terms );
             }
-
+            printf("hahaha\n");
         }
 
         get_line_lookup( &line_lookup, deform, n_parameters,
@@ -3532,7 +3522,7 @@ private  BOOLEAN   fit_polygons(
                             derivative, boundary_coefs );
 
         fit = evaluate_fit( deform, start_parameter,
-                            parameters, old_parameters, 
+                            parameters,  
                             active_flags, evaluate_flags,
                             boundary_coefs, 0.0,
                             boundary_flags, boundary_points,
@@ -3728,7 +3718,7 @@ private  BOOLEAN   fit_polygons(
 
         fit = minimize_along_line( fit, deform, n_parameters,
                                    start_parameter,
-                                   parameters, old_parameters,
+                                   parameters,
                                    active_flags, evaluate_flags,
                                    derivative,
                                    boundary_flags, boundary_points,
@@ -3766,7 +3756,7 @@ private  BOOLEAN   fit_polygons(
         (void) flush_file( stdout );
 
 /* writing file_info log file by JUNE */
-        if( strcmp(log_filename,"debug.log") != 0 )
+        if( !equal_strings(log_filename,"") )
         {
           parameter_log = open_file_to_write_info(log_filename);
           write_file_info( parameter_log, &fit_info );
@@ -3862,7 +3852,6 @@ private  BOOLEAN   fit_polygons(
 
     FREE( start_parameter );
     FREE( parameters );
-    FREE( old_parameters ); // New one
     FREE( new_fits );
 
     if( active_flags != NULL )
