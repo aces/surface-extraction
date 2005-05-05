@@ -85,15 +85,23 @@ GetOptions( \@options, \@ARGV )
   or exit 1;
 die "$usage\n" unless @ARGV == 2;
 
+# Pass along $Clobber in case of a restart
+AddDefaultArgs('discretize_pve',['-clobber']) if ($Clobber);
+AddDefaultArgs('pve_curvature',['-clobber']) if ($Clobber);
+AddDefaultArgs('make_asp_grid',['-clobber']) if ($Clobber);
+AddDefaultArgs('calibrate_white',['-clobber']) if ($Clobber);
+AddDefaultArgs('minccalc',['-clobber']) if ($Clobber);
+AddDefaultArgs('mincresample',['-clobber']) if ($Clobber);
+
 # $input_volume should be a CLASSIFIED MINC volume
 my $input_volume = shift;
 my $t1_volume = shift;
-
 
 # Masking surface and cortical-matter masked version of input.
 # These are temporary files.
 MNI::FileUtilities::check_output_path("${TmpDir}")
   or exit 1;
+
 $masking_surface = "${TmpDir}input-mask.obj"
   unless defined $masking_surface;
 $masked_input = "${TmpDir}input-masked"
@@ -129,7 +137,7 @@ elsif( $vol_mask_flag ){
     Spawn(["dilate_volume", $Mask, "${TmpDir}/cortical_mask.mnc", "1", "26", "3"]);
     $Mask = "${TmpDir}/cortical_mask.mnc";
 }
-Spawn(["mincresample", "-clobber", "-like", $input_volume, $Mask, "${TmpDir}/mask.mnc"]);
+Spawn(["mincresample", "-like", $input_volume, $Mask, "${TmpDir}/mask.mnc"]);
 Spawn(["mv", "-f", "${TmpDir}/mask.mnc", $Mask]);
 Spawn(["minccalc", "-expression", 'if(A[1]>0){out=A[0];}else{out=0;}', $input_volume, $Mask, "${TmpDir}/cls_masked.mnc"]);
 $input_volume = "${TmpDir}/cls_masked.mnc";
@@ -163,7 +171,7 @@ for( my $hemi_num=0; $hemi_num < (1+$hemi_num_total); $hemi_num+=2 ){
     Spawn(["make_phantom", "-rectangle", "-center", "-45", "0", "0", "-width", "90","300", "300", "-nelements", "181", "217", "181", "-step", "1", "1", "1", "-start", "-90", "-126", "-72", $hemi_rect_mask]);
     Spawn(["mincresample", "-like", $cls_correct_bak, $hemi_rect_mask, "${TmpDir}/left_tmp.mnc"]);
     Spawn(["mv", "-f", "${TmpDir}/left_tmp.mnc", $hemi_rect_mask]);    
-    Spawn(["minccalc", "-clobber", "-expression", 'if(A[1]==0 && A[0]>=2.5){out=0;}else{out=A[0];}', $cls_correct_bak, $hemi_rect_mask, $hemi_cls]);
+    Spawn(["minccalc", "-expression", 'if(A[1]==0 && A[0]>=2.5){out=0;}else{out=A[0];}', $cls_correct_bak, $hemi_rect_mask, $hemi_cls]);
     $cls_correct = $hemi_cls;
     $output_prefix="${output_prefix_bak}_left";
   }
@@ -174,7 +182,7 @@ for( my $hemi_num=0; $hemi_num < (1+$hemi_num_total); $hemi_num+=2 ){
     Spawn(["make_phantom", "-rectangle", "-center", "45", "0", "0", "-width", "90", "300", "300", "-nelements", "181", "217", "181", "-step", "1", "1", "1", "-start", "-90", "-126", "-72", $hemi_rect_mask]);
     Spawn(["mincresample", "-like", $cls_correct_bak, $hemi_rect_mask, "${TmpDir}/right_tmp.mnc"]);
     Spawn(["mv", "-f", "${TmpDir}/right_tmp.mnc", $hemi_rect_mask]);
-    Spawn(["minccalc", "-clobber", "-expression", 'if(A[1]==0 && A[0]>=2.5){out=0;}else{out=A[0];}', $cls_correct_bak, $hemi_rect_mask, $hemi_cls]);
+    Spawn(["minccalc", "-expression", 'if(A[1]==0 && A[0]>=2.5){out=0;}else{out=A[0];}', $cls_correct_bak, $hemi_rect_mask, $hemi_cls]);
     $cls_correct = $hemi_cls;
     $output_prefix="${output_prefix_bak}_right";
   }

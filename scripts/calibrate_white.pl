@@ -139,7 +139,8 @@ Spawn(["new_fit_3d", "-surface", $white, $white_fix, "-stretch", "2", $white,
        "1e8", "0.01", "-print_deriv", "-step", "1", "-fitting", "300", "5", 
        "1e-10", "-ftol", "1e-10", "-stop", "0.03", "10", 
        "-gradient", $gradient_weight, $gradient_parm, "0", 
-       $gradient_threshold, "0", $gradient_threshold, "1", "0", "1"]);
+       $gradient_threshold, "0", $gradient_threshold, "1", "0", "1"],
+       err_action => 'ignore');
 
 #Create the kernel files used in taking the image derivative
 sub CreateKernelFiles

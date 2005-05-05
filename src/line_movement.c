@@ -351,7 +351,7 @@ private  Real  get_max_movement_per_unit_line_method5(
 
         if( dist > reject_dist )
         {
-            if( n_outer_points > MAX_POINTS )
+            if( n_outer_points >= MAX_POINTS )
             {
                 return( 2.0 * max_dist_from_centre );
             }

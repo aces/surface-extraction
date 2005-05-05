@@ -206,6 +206,7 @@ int  main(
     movement_threshold = -1.0;
     n_movements = 0;
 
+    deriv_smoothing = 0.0;
     n_deriv_smoothing_steps = 0;
 
     initialize_argument_processing( argc, argv );

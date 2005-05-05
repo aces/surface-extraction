@@ -2,7 +2,7 @@
 
 use strict;
 
-require "deform_utils.pl";
+require "xINCDIRx/deform_utils.pl";
 use Getopt::Tabular;
 use MNI::Startup;
 use MNI::FileUtilities;

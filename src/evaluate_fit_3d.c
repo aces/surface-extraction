@@ -5334,19 +5334,18 @@ private  int   private_evaluate_fit(
                            deform->surfaces[surface].surface.n_points);
             eval->laplacian_fit += f;
             *fit += f;
-            ++count;
           }
+          ++count;
         }
 
         for_less( i, 0, deform->surfaces[surface].n_volume )
         {
-          //anchor = &deform->surfaces[surface].anchors[0];
-            bound = &deform->surfaces[surface].bound[0];
-            f=0;
-            fv=0;
-            if( which == -2 || which == count )
-            {
-              fv = evaluate_volume_fit( deform->surfaces[surface].volume->weight, deform->surfaces[surface].volume->max_weight,
+            if( which == -2 || which == count ) {
+              //anchor = &deform->surfaces[surface].anchors[0];
+              //bound = &deform->surfaces[surface].bound[0];
+              bound = &deform->surfaces[surface].bound[i];   // modified by Claude
+              fv = evaluate_volume_fit( deform->surfaces[surface].volume->weight,
+                             deform->surfaces[surface].volume->max_weight,
                              deform->surfaces[surface].volume->direction,
                              bound->volume,
                              deform->surfaces[surface].laplacian->volume,
@@ -5357,33 +5356,30 @@ private  int   private_evaluate_fit(
                              deform->surfaces[surface].surface.n_points);
               eval->volume_fit += fv;
               *fit += fv;
-                if( which == -2 && max_value > 0.0 && *fit > max_value )
-                    return( 0 );
+              if( which == -2 && max_value > 0.0 && *fit > max_value )
+                  return( 0 );
             }
             count++;
         }          
 
         for_less( i, 0, deform->surfaces[surface].n_anchors )
         {
-            anchor = &deform->surfaces[surface].anchors[i];
-            f=0;
-            fv=0;
-            if( which == -2 || which == count )
-            {
+            if( which == -2 || which == count ) {
               /////////////////////////////////////////////////////////
               /////// Modified by June ////////////////////////////////
-        if(NO_ANCHOR != 1){
-          f = evaluate_anchor_fit( 0,
+              if( NO_ANCHOR != 1 ) {
+                anchor = &deform->surfaces[surface].anchors[i];
+                f = evaluate_anchor_fit( 0,
                        anchor->weight*1, anchor->max_dist_weight*1,
                        anchor->n_anchor_points, anchor->anchor_points,
                        this_parms, this_active, anchor->max_weight_value );
         
                 eval->anchor_fit += f;
-        }
-                *fit +=  fv + f;
+                *fit += f;
 
                 if( which == -2 && max_value > 0.0 && *fit > max_value )
-                    return( 0 );
+                  return( 0 );
+              }
             }
             ++count;
         }
