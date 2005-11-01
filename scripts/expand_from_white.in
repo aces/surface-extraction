@@ -1,7 +1,7 @@
-#!xPERLx -w
+#! @PERL@
 
 use strict;
-
+use warnings "all";
 require "xINCDIRx/deform_utils.pl";
 use Getopt::Tabular;
 use MNI::Startup;

@@ -1,4 +1,4 @@
-#! xPERLx -w
+#! @PERL@
 
 # Part of the ASP cortex extraction suite. For a description of the
 # algorithms used here see MacDonald et. al. "Automated 3-D Extraction
@@ -13,6 +13,7 @@
 #    * removed any hardcoded paths
 #    * uses MNI::DataDir
 
+use warnings "all";
 require "xINCDIRx/deform_utils.pl";
 use MNI::DataDir;
 

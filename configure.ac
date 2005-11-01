@@ -1,25 +1,41 @@
-dnl Process this file with autoconf to produce a configure script.
+# Require autoconf 2.57 or newer.
+AC_PREREQ([2.57])
 
-AC_INIT
-AC_CONFIG_SRCDIR([src/new_fit_3d.c])
-AM_INIT_AUTOMAKE(CLASP, 2.1)
-AM_CONFIG_HEADER(config.h)
+# The arguments are package name, and package version.
+AC_INIT([surface-extraction],[2.2], [Andrew Janke <a.janke@gmail.com>])
+AC_CONFIG_SRCDIR([src/surface_fit.c])
 
+AM_INIT_AUTOMAKE
+
+# The argument is the name of the generated header file.
+# It is recommended to leave it as "config.h".
+AC_CONFIG_HEADERS([config.h])
+
+# This macro eases building the package; see m4/README.
 smr_WITH_BUILD_PATH
 
+AC_PROG_CC
+AC_PROG_CXX
 AC_PROG_INSTALL
 AC_PROG_LN_S
 AC_PROG_MAKE_SET
 
-AC_PROG_CC
-AC_PROG_CXX
-
 mni_REQUIRE_BICPL
 
-AC_PATH_PROGS(PERL, perl5 perl)
+AC_PATH_PROGS(PERL, [perl], no)
 
-AC_CONFIG_FILES([Makefile src/Makefile scripts/Makefile models/Makefile])
-AC_OUTPUT
+# Finish up by writing output files.
+AC_OUTPUT(
+scripts/asp
+scripts/clasp
+scripts/expand_from_white
+scripts/extract_white_surface
+scripts/mask_cortical_white_matter
+scripts/make_asp_grid
+scripts/calibrate_white
+scripts/classify_correct
+Makefile
+src/Makefile
+epm-header
+)
 
-AC_MSG_RESULT([====================])
-AC_MSG_RESULT([Once the program has built make sure that the model files are accessible through the MNI_DATAPATH variable])

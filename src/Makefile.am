@@ -1,6 +1,6 @@
-bin_PROGRAMS = new_fit_3d create_anchor_constraints skel
+bin_PROGRAMS = surface_fit create_anchor_constraints skel
 
-new_fit_3d_SOURCES = 	evaluate_fit_3d.c \
+surface_fit_SOURCES = 	evaluate_fit_3d.c \
 					 	boundary_search.c \
 						conjugate_grad.c \
 						poly_poly_dist.c \
@@ -8,7 +8,7 @@ new_fit_3d_SOURCES = 	evaluate_fit_3d.c \
 						self_intersect.c \
 						clip_search.c \
 						line_movement.c \
-						new_fit_3d.c
+						surface_fit.c
 
 create_anchor_constraints_SOURCES = create_anchor_constraints.c
 

@@ -1,3 +1,8 @@
+2005-11-01  Andrew Janke  <a.janke@gmail.com>
+
+	* renamed to surface-extraction for release
+	* renamed new_fit_3D to surface_fit
+	
 2004-10-17  Jason Lerch	      <jason@bic.mni.mcgill.ca>
 
 	* calibrate_white.pl: fixed divide by zero bug on linux

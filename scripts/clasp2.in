@@ -1,9 +1,9 @@
-#!xPERLx -w
+#! @PERL@
 #
 # Based on ~david/Surface_deformation/How_to_extract_cortical_surfaces.txt
 
 use strict;
-
+use warnings "all";
 use Getopt::Tabular;
 use MNI::Startup;
 use MNI::FileUtilities;

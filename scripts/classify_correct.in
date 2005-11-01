@@ -1,4 +1,4 @@
-#!xPERLx -w
+#! @PERL@
 
 # correct a classified volume: putamen is classified as WM.
 # partial volume estimation: generate a skeletonized volume of CSF.
@@ -8,6 +8,7 @@
 # May 2004
 
 use strict;
+use warnings "all";
 use MNI::Startup;
 use Getopt::Tabular;
 use MNI::Spawn;

@@ -1,4 +1,4 @@
-#!xPERLx -w
+#! @PERL@
 
 # creates a grid from the classified image. This grid can then
 # be used to initialise the solving of Laplace's equation.
@@ -9,6 +9,7 @@
 # Sep 2003
 
 use strict;
+use warnings "all";
 use MNI::Startup;
 use Getopt::Tabular;
 use MNI::Spawn;

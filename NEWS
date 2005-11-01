@@ -1,11 +1,19 @@
+New in Release 2.2
+------------------
+	* first public release
+	* renamed package to surface-extraction from CLASP
+
 New in Release 2.1
-* fixes seg fault in new_fit3d
-* correct handling of restarts in clasp2.pl
-* fixes handling of return values in perl scripts
+------------------
+	* fixes seg fault in new_fit3d
+	* correct handling of restarts in clasp2.pl
+	* fixes handling of return values in perl scripts
 
 New in Release 2.0
-* renamed to CLASP: Constrained Laplacian ASP
-* multiple improvements made by June-sic Kim
+------------------
+	* renamed to CLASP: Constrained Laplacian ASP
+	* multiple improvements made by June-sic Kim
 
 New in Release 1.0
-* fully autoconfiscated
+------------------
+	* fully autoconfiscated
