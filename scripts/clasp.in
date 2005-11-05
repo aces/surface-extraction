@@ -18,7 +18,7 @@ $ENV{MNI_DATAPATH} = 'xDATADIRx'
 
 
 MNI::Spawn::RegisterPrograms
-  ( [qw/  rm
+  ( [qw/ rm
      mv
      minccalc
      mincresample

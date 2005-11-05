@@ -32,8 +32,6 @@ pkgdata_DATA = models/white_matter_mask.obj \
    models/ellipsoid_327680.obj.gz \
    models/ellipsoid_8192.obj.gz
 
-# EXTRA_DIST = $(pkgdata_DATA)
-
 
 EXTRA_DIST = \
    $(pkgdata_DATA) \
