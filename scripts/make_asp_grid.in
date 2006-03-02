@@ -56,7 +56,7 @@ $output = shift @leftOverArgs or die $usage;
 # register the programs
 RegisterPrograms(["minccalc", "mincresample", "scan_object_to_volume",
                   "surface_mask2", "cortical_surface", "laplacian_thickness",
-                  "mincmath", "mv", "mincchamfer"]);
+                  "mincdefrag", "mincmath", "mv", "mincchamfer"]);
 
 if ($Clobber) {
     AddDefaultArgs("minccalc", ["-clobber"]);
@@ -109,14 +109,19 @@ Spawn(["mincresample", "-nearest_neighbour", "-like",
        $clsMasked, $skelCSF, $rslCSF]);
 
 # create the grid itself
-$expression = 'if(A[2]>0 && A[3]==0){out=0;}else if(A[0]>0 && A[3]==0){out=10;}else if(A[1]<=1){out=10;}else{out=5;}';
+$expression = 'if(A[2]>0 && A[3]==0){out=0;}else if(A[0]>0 && A[3]==0){out=10;}else if(A[1]<=1.1){out=10;}else if(A[1]>2.5 && A[2]==0){out=10;}else{out=5;}';
 $grid = "${TmpDir}/grid.mnc";
 Spawn(["minccalc", "-expression", $expression, $rslCSF, $clsMasked,
        $wmMask, $wmLine,$grid]);
 
+# remove dangling voxels
+Spawn(["mincdefrag", $grid, $grid, "5", "6"]);
+Spawn(["mincdefrag", $grid, $grid, "10", "27", "20" ]);
+
 # create the laplacian field
 $laplace = "${TmpDir}/laplace.mnc";
-Spawn(["laplacian_thickness", "-like", $minc_model, "-potential_only", "-volume-double", "-gradients-double", "-from_grid", $grid, "-convergence", "1e-8", "-max_iterations", "500", $output]);
+Spawn(["laplacian_thickness", "-like", $minc_model, "-potential_only", "-volume-double", 
+       "-from_grid", $grid, "-convergence", "1e-6", "-max_iterations", "500", $output]);
 
 # chamfer map in WM area
 $in_chamfer="${TmpDir}/in_chamfer.mnc";

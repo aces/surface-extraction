@@ -4,6 +4,7 @@
 
 use strict;
 use warnings "all";
+
 use Getopt::Tabular;
 use MNI::Startup;
 use MNI::FileUtilities;
@@ -18,10 +19,11 @@ $ENV{MNI_DATAPATH} = 'xDATADIRx'
 
 
 MNI::Spawn::RegisterPrograms
-  ( [qw/ rm
+  ( [qw/  rm
      mv
      minccalc
      mincresample
+     mincdefrag
      make_phantom
      dilate_volume
      cortical_surface
@@ -55,7 +57,7 @@ Getopt::Tabular::SetHelp( $help, $usage );
 # --- process options ---
 my( $masking_surface, $masked_input, $output_prefix );
 my( $laplace, $cls_correct, $skelCSF, $white );
-my( $Mask, $objMask, $vol_mask_flag );
+my( $Mask, $Mask_dilated, $objMask, $vol_mask_flag );
 my( $hemi_left, $hemi_right, $hemi_rect_mask, $hemi_cls, $hemi_num );
 my( $cls_correct_bak, $output_prefix_bak, $hemi_num_total );
 my( $remove_flag );
@@ -104,7 +106,7 @@ MNI::FileUtilities::check_output_path("${TmpDir}")
 
 $masking_surface = "${TmpDir}input-mask.obj"
   unless defined $masking_surface;
-$masked_input = "${TmpDir}input-masked"
+$masked_input = "${TmpDir}input-masked.mnc"
   unless defined $masked_input;
 
 # Output filename prefix
@@ -115,33 +117,36 @@ if ( !defined $output_prefix ) {
 
 # Generate mask image
 my $Filled = "${TmpDir}/Filled.mnc";
+$Mask_dilated = "${TmpDir}/dilated_mask.mnc";
 if ( !defined $Mask ) {
     $Mask = "${TmpDir}/cortical_mask.mnc";
-    Spawn(["cortical_surface", $input_volume, "${output_prefix}_cortex.obj", "1.5"]);
+    Spawn(["mincdefrag", $input_volume, $Mask, "3", "6"] );
+    Spawn(["mincdefrag", $Mask, $Mask, "2", "6"] );
+    Spawn(["cortical_surface", $Mask, "${TmpDir}/${output_prefix}_cortex.obj", "1.5"]);
     Spawn(["minccalc", "-expression", 'out=1;', $input_volume, $Filled]);
-    Spawn(["surface_mask2", "-binary_mask", $Filled, "${output_prefix}_cortex.obj", $Mask]);
-    Spawn(["dilate_volume", $Mask, "${TmpDir}/cortical_mask_tmp.mnc", "1", "26", "3"]);
-    Spawn(["mv", "-f", "${TmpDir}/cortical_mask_tmp.mnc", $Mask]);
+    Spawn(["surface_mask2", "-binary_mask", $Filled, 
+           "${TmpDir}/${output_prefix}_cortex.obj",
+           "${TmpDir}/mask.mnc"]);
+    Spawn(["mincresample", "-clobber", "-like", $input_volume, 
+           "${TmpDir}/mask.mnc", $Mask]);
+    Spawn(["rm", "-f", "${TmpDir}/mask.mnc"]);
     Spawn(["rm", "-f", $Filled]);
-}
-elsif( !$vol_mask_flag ){
+} elsif( !$vol_mask_flag ){
     $objMask = $Mask;
+    $Mask = "${TmpDir}/cortical_mask.mnc";
     Spawn(["minccalc", "-expression", 'out=1;', $input_volume, $Filled]);
-    Spawn(["surface_mask2", "-binary_mask", $Filled, $objMask, "${TmpDir}/cortical_mask.mnc"]);
+    Spawn(["surface_mask2", "-binary_mask", $Filled, $objMask, "${TmpDir}/mask.mnc"]);
+    Spawn(["mincresample", "-clobber", "-like", $input_volume, "${TmpDir}/mask.mnc", $Mask]);
+    Spawn(["rm", "-f", "${TmpDir}/mask.mnc"]);
     Spawn(["rm", "-f", $Filled]);
-    $Mask = "${TmpDir}/cortical_mask.mnc";
-    Spawn(["dilate_volume", $Mask, "${TmpDir}/cortical_mask_tmp.mnc", "1", "26", "3"]);
-    Spawn(["mv", "-f", "${TmpDir}/cortical_mask_tmp.mnc", $Mask]);
 }
-elsif( $vol_mask_flag ){
-    Spawn(["dilate_volume", $Mask, "${TmpDir}/cortical_mask.mnc", "1", "26", "3"]);
-    $Mask = "${TmpDir}/cortical_mask.mnc";
-}
-Spawn(["mincresample", "-like", $input_volume, $Mask, "${TmpDir}/mask.mnc"]);
-Spawn(["mv", "-f", "${TmpDir}/mask.mnc", $Mask]);
-Spawn(["minccalc", "-expression", 'if(A[1]>0){out=A[0];}else{out=0;}', $input_volume, $Mask, "${TmpDir}/cls_masked.mnc"]);
-$input_volume = "${TmpDir}/cls_masked.mnc";
 
+# Dilate the mask to make sure to include everything. Add 3 layers.
+
+Spawn(["dilate_volume", $Mask, $Mask_dilated, "1", "26", "3"]);
+Spawn(["minccalc", "-clobber", "-expression", 'if(A[1]>0){out=A[0];}else{out=0;}', $input_volume, 
+       $Mask_dilated, "${TmpDir}/cls_masked.mnc"]);
+$input_volume = "${TmpDir}/cls_masked.mnc";
 
 #---------------------------------------------------------------------------
 #  Step 1:   2 hours    Correcting a cls volume to classify putamen as WM
@@ -151,15 +156,49 @@ $input_volume = "${TmpDir}/cls_masked.mnc";
 # Partial volume estimation using pve2
 $cls_correct = "${TmpDir}/cls_correct.mnc";
 $skelCSF = "${TmpDir}skel_CSF.mnc";
-Spawn(["pve_curvature", $t1_volume, $input_volume, $Mask, "${TmpDir}/curve"]);
-Spawn(["pve_script", "-curve", "${TmpDir}/curve_cg.mnc", "-subcortical", $t1_volume, "${TmpDir}/pve", "-mask", $Mask, "-image", $input_volume]);
+Spawn(["pve_curvature", $t1_volume, $input_volume, $Mask_dilated, "${TmpDir}/curve"]);
+Spawn(["pve_script", "-curve", "${TmpDir}/curve_cg.mnc", "-subcortical", $t1_volume, "${TmpDir}/pve", "-mask", $Mask_dilated, "-image", $input_volume]);
 Spawn(["skel", "${TmpDir}/pve_csf.mnc", $skelCSF]);
 Spawn(["discretize_pve", "${TmpDir}/pve_csf.mnc", "${TmpDir}/pve_wm.mnc", "${TmpDir}/pve_gm.mnc", "${TmpDir}/pve_sc.mnc", $cls_correct]);
-#$input_volume = $cls_correct;
 
 #---------------------------------------------------------------------------
+#  Get rid of hanging white/gray voxels that might have been added in the
+#  region created by dilate_volume in the masking step. The dilation also
+#  includes extra voxels in the region of the cerebellum. In the region of
+#  the non-dilated mask, take the original classification without defrag.
+#  Also apply same mask to pve files as well (add all to csf, ignore pve_sc).
+#---------------------------------------------------------------------------
+
+my $cls_frag = "${TmpDir}/cls_frag.mnc";
+Spawn(["mincdefrag", $cls_correct, $cls_frag, "2", "6"] );
+Spawn(["mincdefrag", $cls_frag, $cls_frag, "3", "6"] );
+
+Spawn(["minccalc", "-expression",
+       'if(A[3]>A[2] && A[0]>1.5 && A[1]<1.5){out=1;}else{out=0;}',
+       "$cls_correct", $cls_frag, $Mask, $Mask_dilated,
+       "${TmpDir}/reset_mask.mnc"] );
+
+Spawn(["minccalc", "-expression", 'if(A[1]>0.5){out=0.0;}else{out=A[0];}',
+      $cls_correct, "${TmpDir}/reset_mask.mnc", "${TmpDir}/reset_cls.mnc"] );
+Spawn(["mv", "-f", "${TmpDir}/reset_cls.mnc", $cls_correct]);
+
+Spawn(["minccalc", "-expression", 'if(A[1]>0.5){out=0.0;}else{out=A[0];}',
+      "${TmpDir}/pve_wm.mnc", "${TmpDir}/reset_mask.mnc", "${TmpDir}/reset_wm.mnc"] );
+Spawn(["mv", "-f", "${TmpDir}/reset_wm.mnc", "${TmpDir}/pve_wm.mnc"]);
+
+Spawn(["minccalc", "-expression", 'if(A[1]>0.5){out=0.0;}else{out=A[0];}',
+      "${TmpDir}/pve_gm.mnc", "${TmpDir}/reset_mask.mnc", "${TmpDir}/reset_gm.mnc"] );
+Spawn(["mv", "-f", "${TmpDir}/reset_gm.mnc", "${TmpDir}/pve_gm.mnc"]);
+
+Spawn(["minccalc", "-expression", 'if(A[1]>0.5){out=1.0;}else{out=A[0];}',
+      "${TmpDir}/pve_csf.mnc", "${TmpDir}/reset_mask.mnc", "${TmpDir}/reset_csf.mnc"] );
+Spawn(["mv", "-f", "${TmpDir}/reset_csf.mnc", "${TmpDir}/pve_csf.mnc"]);
+
+Spawn(["rm", "-f", $cls_frag, $Mask_dilated, "${TmpDir}/reset_mask.mnc"]);
+
 #---------------------------------------------------------------------------
 # Generate cortical surface in the defined hemisphere
+#---------------------------------------------------------------------------
 $cls_correct_bak=$cls_correct;
 $output_prefix_bak=$output_prefix;
 $hemi_num_total=$hemi_left+$hemi_right;
@@ -188,26 +227,12 @@ for( my $hemi_num=0; $hemi_num < (1+$hemi_num_total); $hemi_num+=2 ){
   }
 
 #---------------------------------------------------------------------------
-#  Step 2:   1/2 hour   Creating a mask surface to chop of non-cortical white
-#                       matter
+#  Step 2:   2 minutes  Create a mask for the cortical white matter and 
+#            the sub-cortical gray, to be used as the target to extract
+#            the white matter surface.
 #---------------------------------------------------------------------------
 
-# Deforms from model file `white_matter_mask.obj' using new_fit_3d
-  Spawn( "mask_cortical_white_matter $cls_correct  $masking_surface  2.5");
-
-
-#---------------------------------------------------------------------------
-#  Step 3:   2 minutes  Masking the classified volume with the masking_surface
-#---------------------------------------------------------------------------
-
-# conglomerate routine
-  Spawn("surface_mask2  $cls_correct  $masking_surface  $masked_input");
-#Spawn("rm -f $masking_surface");
-
-# Set all voxels with value in range (1,2.5) to zero
-# conglomerate routine
-  Spawn("mask_volume    $masked_input $masked_input $masked_input 1 2.5 0");
-
+  Spawn( "mask_cortical_white_matter ${TmpDir}/pve $masked_input 3");
 
 #---------------------------------------------------------------------------
 #  Step 4:   20 hours   Shrink wrapping a sphere to the MASKED white matter
@@ -218,15 +243,14 @@ for( my $hemi_num=0; $hemi_num < (1+$hemi_num_total); $hemi_num+=2 ){
 #                            white_surface_m_{320,1280,5120,20480,81920}.obj
 #---------------------------------------------------------------------------
 
-# Deforms from model file `white_model_320.obj' using new_fit_3d
-  Spawn("extract_white_surface  $masked_input   ${output_prefix}_white  2.5");
-#Spawn("rm -f $masked_input");
+# Deforms from model file `white_model_320.obj' using surface_fit
+  Spawn("extract_white_surface  $masked_input  ${output_prefix}_white  2.5");
 
 #---------------------------------------------------------------------------
 #  Step 5:   x hours    Calibrate white_surface wite a gradient field
 #---------------------------------------------------------------------------
 
-  $white = "${output_prefix}_white_81920.obj";
+  $white = "${output_prefix}_white_cal_81920.obj";
   Spawn(["calibrate_white", $t1_volume, $cls_correct, $skelCSF, "${output_prefix}_white_81920.obj", $white]);
 
 
@@ -248,8 +272,10 @@ for( my $hemi_num=0; $hemi_num < (1+$hemi_num_total); $hemi_num+=2 ){
 
   Spawn(["expand_from_white", $cls_correct, $white, "${output_prefix}_gray_81920.obj", $laplace]);
 
-  if( $remove_flag ){
-    Spawn(["rm", "-f", "${output_prefix}_white_m_*", "${output_prefix}_white_320.obj", "${output_prefix}_white_1280.obj", "${output_prefix}_white_5120.obj", "${output_prefix}_white_20480.obj"]);
-  }
+#---------------------------------------------------------------------------
+#  Step 8:   5 minutes  Quality checks on the white and gray surfaces.
+#---------------------------------------------------------------------------
+
+Spawn(["surface_qc", $masked_input, $cls_correct, $white, "${output_prefix}_gray_81920.obj"]);
 
 }

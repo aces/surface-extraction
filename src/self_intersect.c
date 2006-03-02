@@ -608,8 +608,11 @@ public  Real sq_triangle_triangle_dist_estimate(
     return( dist );
 }
 
-#define  MAX_THRESHOLD_N_POLYGONS   200
-#define  THRESHOLD_N_POLYGONS   60
+// #define  MAX_THRESHOLD_N_POLYGONS   200
+// #define  THRESHOLD_N_POLYGONS   60
+
+#define  MAX_THRESHOLD_N_POLYGONS   350
+#define  THRESHOLD_N_POLYGONS   100
 
 #ifdef PRINT_DIST
 #define PRINT_DIST
@@ -1401,7 +1404,7 @@ private  void   create_self_intersect_deriv_info_tritri(
     if( dist_sq > 0.0 )
         deriv->dist = sqrt( dist_sq );
     else
-        deriv->dist = sqrt( dist_sq );
+        deriv->dist = 0.0;
 
     sq_triangle_triangle_dist_deriv( &parameters[IJ(p1,0,3)],
                                      &parameters[IJ(n11,0,3)],

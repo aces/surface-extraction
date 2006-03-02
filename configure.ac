@@ -27,13 +27,15 @@ AC_PATH_PROGS(PERL, [perl], no)
 # Finish up by writing output files.
 AC_OUTPUT(
 scripts/asp
+scripts/calibrate_white
 scripts/clasp
+scripts/classify_correct
+scripts/cortical_thickness
 scripts/expand_from_white
 scripts/extract_white_surface
-scripts/mask_cortical_white_matter
 scripts/make_asp_grid
-scripts/calibrate_white
-scripts/classify_correct
+scripts/mask_cortical_white_matter
+scripts/surface_qc
 Makefile
 src/Makefile
 epm-header

@@ -1,0 +1,127 @@
+#! @PERL@
+#
+# Simple Quality checks on the white and gray surfaces.
+#   - Count how many classified white voxels outside white surface
+#   - Count how many classified gray voxels outside gray surface
+#
+
+use strict;
+use warnings "all";
+
+use Getopt::Tabular;
+use MNI::Startup;
+use MNI::FileUtilities;
+use MNI::Spawn;
+
+# Several of the sub-programs will look for static files using
+# MNI::DataDir.  Set the directory here if the user does not have
+# their own.
+#
+$ENV{MNI_DATAPATH} = 'xDATADIRx'
+  unless defined $ENV{MNI_DATAPATH};
+
+MNI::Spawn::RegisterPrograms
+  ( [qw/  rm
+     mv
+     minccalc
+     mincstats
+     mincresample
+     surface_mask2/ ] )
+  or exit 1;
+
+# --- set the help & usage strings ---
+my $help = <<HELP;
+Simple Quality checks on the white and gray surfaces.
+
+HELP
+
+my $usage = <<USAGE;
+usage: $ProgramName cls_correct.mnc white_mask.mnc white.obj gray.obj
+USAGE
+
+Getopt::Tabular::SetHelp( $help, $usage );
+
+# --- initialization ---
+my @options = 
+  ( @DefaultArgs,     # from MNI::Startup
+  );
+
+GetOptions( \@options, \@ARGV )
+  or exit 1;
+die "$usage\n" unless @ARGV == 4;
+
+# $input_volume should be a CLASSIFIED MINC volume
+my $white_mask = shift;
+my $cls_correct = shift;
+my $white = shift;
+my $gray = shift;
+
+# These are temporary files.
+MNI::FileUtilities::check_output_path("${TmpDir}")
+  or exit 1;
+
+#  Quality checks on the white and gray surfaces.
+
+  # White surface:
+
+  # number of voxels classified as white
+  Spawn(["minccalc", "-clobber", "-expression", 'if(A[0]>2.5){out=1;}else{out=0;}',
+         $white_mask, "${TmpDir}/diff.mnc"]);
+  my $ret = `mincstats -sum "${TmpDir}/diff.mnc"`;
+  my ($bla,$sum) = split(' ',$ret);
+  my $sum_white = $sum;
+
+  # voxels outside white surface that are classified as white matter (label 3)
+  Spawn(["minccalc", "-clobber", "-expression", 'out=1', $white_mask,
+         "${TmpDir}/filled.mnc"]);
+  Spawn(["surface_mask2", "-binary_mask", "${TmpDir}/filled.mnc",
+         $white, "${TmpDir}/tmp_wqc.mnc"]);
+  Spawn(["mincresample", "-clobber", "-like", $white_mask,
+         "${TmpDir}/tmp_wqc.mnc", "${TmpDir}/wqc.mnc"]);
+  Spawn(["minccalc", "-clobber", "-expression", 'if(A[0]>2.5 && A[1]==0){out=1;}else{out=0;}',
+         $white_mask, "${TmpDir}/wqc.mnc", "${TmpDir}/diff.mnc"]);
+  $ret = `mincstats -sum "${TmpDir}/diff.mnc"`;
+  ($bla,$sum) = split(' ',$ret);
+  print( "CLASP_QC: $sum white voxels outside white surface (", 
+         sprintf( "%5.2f", 100.0*${sum}/${sum_white} ), "%)\n" );
+
+  # voxels inside white surface, but not classified as white matter
+  # (FIX: This is a big number because it includes ventricules.)
+  # Spawn(["minccalc", "-clobber", "-expression", 'if(A[0]<2.5 && A[1]==1){out=1;}else{out=0;}',
+  #        $white_mask, "${TmpDir}/wqc.mnc", "${TmpDir}/diff.mnc"]);
+  # $ret = `mincstats -sum "${TmpDir}/diff.mnc"`;
+  # ($bla,$sum) = split(' ',$ret);
+  # print( "CLASP_QC: $sum surface white voxels exceeding white matter\n" );
+
+  # Gray surface:
+
+  # number of voxels classified as gray
+  Spawn(["minccalc", "-clobber", "-expression", 'if(A[0]>1.5 && A[0]<2.5){out=1;}else{out=0;}',
+         $cls_correct, "${TmpDir}/diff.mnc"]);
+  $ret = `mincstats -sum "${TmpDir}/diff.mnc"`;
+  ($bla,$sum) = split(' ',$ret);
+  my $sum_gray = $sum;
+
+  # voxels outside gray surface that are classified as gray matter (label 2)
+  Spawn(["minccalc", "-clobber", "-expression", 'out=1', $cls_correct,
+         "${TmpDir}/filled.mnc"]);
+  Spawn(["surface_mask2", "-binary_mask", "${TmpDir}/filled.mnc",
+         $gray, "${TmpDir}/tmp_gqc.mnc"]);
+  Spawn(["mincresample", "-clobber", "-like", $cls_correct,
+         "${TmpDir}/tmp_gqc.mnc", "${TmpDir}/gqc.mnc"]);
+  Spawn(["minccalc", "-clobber", "-expression", 'if(A[0]>1.5 && A[0]<2.5&& A[1]==0){out=1;}else{out=0;}',
+         $cls_correct, "${TmpDir}/gqc.mnc", "${TmpDir}/diff.mnc"]);
+  $ret = `mincstats -sum "${TmpDir}/diff.mnc"`;
+  ($bla,$sum) = split(' ',$ret);
+  print( "CLASP_QC: $sum gray voxels outside gray surface (", 
+         sprintf( "%5.2f", 100.0*${sum}/${sum_gray} ), "%)\n" );
+
+  # voxels inside gray surface, but not classified as gray matter
+  # (FIX: This is a big number because it includes ventricules.)
+  # Spawn(["minccalc", "-clobber", "-expression", 'if((A[0]<1.5||A[0]>2.5) && A[1]==1){out=1;}else{out=0;}',
+  #        $cls_correct, "${TmpDir}/wqc.mnc", "${TmpDir}/diff.mnc"]);
+  # $ret = `mincstats -sum "${TmpDir}/diff.mnc"`;
+  # ($bla,$sum) = split(' ',$ret);
+  # print( "CLASP_QC: $sum surface gray voxels exceeding gray matter\n" );
+
+

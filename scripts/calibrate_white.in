@@ -2,6 +2,15 @@
 
 # Calibrate the white surface with a gradient field.
 #
+# This step looks at the gradient between white and gray matter
+# and adjusts the white surface to line up with this gradient.
+# This is assumed to be a more realistic white-gray boundary than 
+# the one obtained by the discrete classifier. Overall, it tends
+# to make the white matter a litte thicker, meaning a little thinner
+# gray matter. However, note that this step does not correct for
+# any imperfections in the white surface. CL.
+#
+#
 # Authors: June-sic Kim <luck3d@bic.mni.mcgill.ca> and
 #
 # May 2004
@@ -47,7 +56,7 @@ $white_fix = shift @leftOverArgs or die $usage;
 
 RegisterPrograms(["minccalc", "mincmath", "mincmorph",
                   "surface_mask2", "mincblur", "intensity_statistics",
-                  "new_fit_3d", "mv", "rm", "mincresample", "dilate_volume"]);
+                  "surface_fit", "mv", "rm", "mincresample", "dilate_volume"]);
 
 if ($Clobber) {
     AddDefaultArgs("minccalc", ["-clobber"]);
@@ -121,14 +130,14 @@ Spawn(["surface_mask2", $gradient_parm, $white, $gradient_masked]);
 Spawn(["minccalc", "-expression", 'if(A[1]>0){out=A[0];}else{out=0;}', $cls, $mask_dil, "${TmpDir}/cls_tmp.mnc"]);
 Spawn(["mv", "-f", "${TmpDir}/cls_tmp.mnc", $cls]);
 
-# Determine parameters for 'new_fit_3d'
+# Determine parameters for 'surface_fit'
 #chomp( $max_num = qx(intensity_statistics ${gradient_masked} none | grep Max | cut -c 12-) );
 chomp( $mean = qx(intensity_statistics ${gradient_masked} none | grep Mean | cut -c 12-) );
 chomp( $std = qx(intensity_statistics ${gradient_masked} none | grep Std | cut -c 12-) );
 $gradient_weight = 1e-2 / ($mean * $mean);
 $gradient_threshold = $mean + $std;
 
-Spawn(["new_fit_3d", "-surface", $white, $white_fix, "-stretch", "2", $white,
+Spawn(["surface_fit", "-surface", $white, $white_fix, "-stretch", "2", $white,
        "-.9", "0", "0", "0", "-boundary", "100", "1", $cls, "2.5", "-", "3", 
        "50", "0", "0", "1", "-self_intersect", "1", "0.75", "-self_intersect",
        "10", "0.667777777777778", "-self_intersect", "100", 

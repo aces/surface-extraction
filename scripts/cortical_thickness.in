@@ -1,0 +1,107 @@
+#! @PERL@
+#
+
+# January, 2006: Initial implementation. - Claude Lepage
+
+use strict;
+use warnings "all";
+
+use Getopt::Tabular;
+use MNI::Startup qw(cputimes);
+use MNI::PathUtilities qw(split_path);
+use MNI::FileUtilities qw(check_output_dirs check_output_path);
+use MNI::DataDir;
+use MNI::Spawn;
+
+$ENV{MNI_DATAPATH} = 'xDATADIRx'
+  unless defined $ENV{MNI_DATAPATH};
+
+MNI::Spawn::RegisterPrograms
+  ( [qw/  rm
+     average_surfaces
+     laplacian_initialisation
+     laplacian_thickness
+     vertex_stats
+     dump_rms/ ] )
+  or exit 1;
+
+# --- set the help & usage strings ---
+my $help = <<HELP;
+Compute the cortical thickness from the white and gray surfaces.
+HELP
+
+my $usage = <<USAGE;
+Usage: $ProgramName [options] white.obj gray.obj output.txt
+       $ProgramName -help to list options
+
+USAGE
+
+Getopt::Tabular::SetHelp( $help, $usage );
+
+my( $white, $gray, $output, $tlink, $tnear, $tnormal, $tlaplace );
+my( $midSurface, $method );
+
+$tlink = 0;
+$tnear = 0;
+$tnormal = 0;
+$tlaplace = 0;
+
+my @options =
+  ( @DefaultArgs,     # from MNI::Startup
+    ['-tlink', 'boolean', 0, \$tlink, 'use t-link method for thickness'],
+    ['-tnear', 'boolean', 0, \$tnear, 'use t-near method for thickness'],
+    ['-tnormal', 'boolean', 0, \$tnormal, 'use t-normal method for thickness'],
+    ['-tlaplace', 'boolean', 0, \$tlaplace, 'use t-Laplace method for thickness'],
+  );
+
+GetOptions( \@options, \@ARGV )
+  or exit 1;
+die "$usage\n" unless @ARGV == 3;
+
+$white = shift;
+$gray = shift;
+$output = shift;
+
+# These are temporary files.
+MNI::FileUtilities::check_output_path("${TmpDir}")
+  or exit 1;
+
+# Make sure there is only one way to compute the thickness.
+
+my $found = 0;
+if( $tlink ) { $found++; }
+if( $tnear ) { $found++; }
+if( $tnormal ) { $found++; }
+if( $tlaplace ) { $found++; }
+
+if( $found != 1 ) {
+  die "$usage\nMust specify exactly one method to compute thickness.\n\n";
+}
+
+$midSurface = "${TmpDir}/midSurface.obj";
+Spawn( [ "average_surfaces", $midSurface, "none", "none", 1, $white, $gray ] );
+
+if( $tlink ) {
+  # also: Spawn( [ "diff_surfaces", $white, $gray, "link", $output ] );
+  Spawn( [ "dump_rms", $white, $gray, $output ] );
+}
+
+if( $tnear ) {
+  Spawn( [ "diff_surfaces", $white, $gray, "near", $output ] );
+}
+
+if( $tnormal ) {
+  Spawn( [ "diff_surfaces", $white, $gray, "normal", $output ] );
+}
+
+if( $tlaplace ) {
+  Spawn( [ "laplacian_initialisation", "-icbm_model", "0.50", $gray, $white,
+           "${TmpDir}/laplace_initial.mnc" ] );
+  Spawn( [ "laplacian_thickness", "-h", "0.1", "-convergence", "0.00001", "-2nd_rk",
+           "-max_iterations", "300", "-object_eval", $midSurface, "-from_grid", 
+           "${TmpDir}/laplace_initial.mnc", "${TmpDir}/thickness_uncleaned.txt" ] );
+  Spawn( [ "vertex_stats", "-replace_nans", "${TmpDir}/thickness_uncleaned.txt",
+           $output ] );
+}
+
+

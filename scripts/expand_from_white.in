@@ -12,74 +12,190 @@ use MNI::FileUtilities qw(check_output_dirs);
 
 MNI::Spawn::RegisterPrograms
   ( [qw/  rm
-     mincmorph
-     minccalc
      subdivide_polygons
-     new_fit_3d
-     make_gradient_volume
+     surface_fit
      set_object_colour/ ] )
   or exit 1;
 
-my ($i, $step, $size, $sw, $cw, $n_iters, $iter_inc);
-my ($si_step, $oversample, $self_weight, $self_dist);
-my ($laplacian_sampling, $laplacian_factor, $laplacian_weight);
-my ($self2, $surf2_info, $n_failures, $iter, $ni, $command, $ret, $b2);
-my ($laplace_info);
-
 # --- set the help & usage strings ---
 my $help = <<HELP;
-[refine]   : give a value >0 to generate the gray surface with 327680 triangles
-
+Required parameters:
+  cls.mnc    : tissue classification file
+  white.obj  : white matter surface (used to generate Laplacian field)
+  gray.obj   : gray matter surface (output)
+  field.obj  : Laplacian field for gray matter
+Optional parameters:
+  [-quick]   : start from 20k white surface (quick but risky)
+  [-refine]  : to generate the gray surface with 327680 triangles
+  [-log]     : log file for stdout
+  [-start]   : first step in schedule (for restart)
+  [-end]     : last step in schedule (for restart)
+  [-schedule]: print the schedule to see the steps
 HELP
 
 my $usage = <<USAGE;
-usage: $ProgramName cls.mnc white.obj gray.obj field.mnc [refine]
+Usage: $ProgramName cls.mnc white.obj gray.obj field.mnc
+       [-refine] [-log log_file] [-start s] [-end e] [-schedule]
        $ProgramName -help to list options
 USAGE
 
 Getopt::Tabular::SetHelp( $help, $usage );
 
+my $quick = 0;
+my $refine = 0;
+my $start_n = -1;
+my $end_n = 9999;
+my $print_schedule = 0;
+my $logfile;
+
 # --- process options ---
-my( $masking_surface, $masked_input, $output_prefix );
 my @options = 
   ( @DefaultArgs,     # from MNI::Startup
+  ['-quick', 'boolean', 0, \$quick,
+   "Start from low-resolution 20480 polygons white surface (quick but risky)"],
+  ['-refine', 'boolean', 0, \$refine, 
+   "Create a high-resolution surface at 327680 polygons"],
+  ['-start', 'string', 1, \$start_n, "First step in schedule"],
+  ['-end', 'string', 1, \$end_n, "Last step in schedule"],
+  ['-log', 'string', 1, \$logfile, "Log file" ],
+  ['-schedule', 'boolean', 0, \$print_schedule, "Print schedule"],
   );
 
 GetOptions( \@options, \@ARGV ) 
   or exit 1;
 die "$usage\n" unless @ARGV >= 4;
 
+    my ($i, $step, $size, $sw, $cw, $n_iters, $iter_inc);
+    my ($si_step, $oversample, $self_weight, $self_dist);
+    my ($laplacian_sampling, $laplacian_factor, $laplacian_weight);
+    my ($self2, $surf2_info, $n_failures, $iter, $ni, $command, $ret, $b2);
+    my ($laplace_info);
+
     my $cls = shift;
     my $white_surface = shift;
-    my $input = shift;
+    my $gray_surface = shift;
     my $laplacian_file = shift;
 
-    my $refine = shift;
-
-    my $logfile = shift;
-    my $start_n = shift;
-    my $end_n = shift;
-    my $dont_copy = shift;
-my $output = $input;
-    if( ! defined($laplacian_file) )
-    {
-        die "Usage: $0  input.mnc white.obj input_gray.obj output1_pref field.mnc [log_file] [start] [end] [dont copy]\n";
+    my $log = "";
+    if( defined($logfile) ) {
+      $log = " -log $logfile";
     }
 
-#---------
-    check_output_dirs($TmpDir);
+    my @schedule;
+    @schedule = (
+      #size   sw        n_it  inc  si over   sw   self   l_s  l_d   l_w
+      #----- ----       ----  ---  -- ----  ----  ----   ---  ---  ----
+       20480, 1e1,   0,  100,  50, 1.0,  1,  1e1,  .25,  1.0, 0.0, 2e-5,
+       20480, 1e1,   0,  200,  50, 1.0,  1,  1e1,  .25,  0.0, 0.0, 4e-5,
+       20480, 1e1,   0,  200,  50, 1.0,  1,  1e1,  .25,  0.0, 0.0, 8e-5,
+       20480, 1e1,   0,  200,  50, 1.0,  1,  1e1,  .25,  0.0, 0.0, 1e-4,
+       81920, 1e1,   0,  200,  50,  .5,  1,  1e1,  .25,  1.0, 0.0, 5e-6, 
+       81920, 1e1,   0,  200,  50,  .5,  1,  1e1,  .25,  1.0, 0.0, 1e-4, 
+       81920, 1e1,   0,  300,  50,  .5,  1,  1e1,  .25,  1.0, 0.0, 5e-4, 
+       81920, 1e1,   0,  800,  50,  .5,  1,  1e1,  .25,  1.0, 1.0, 1e-2,
+      327680, 1e1,   0,  500,  50,  .5,  1,  1e1,  .25,  1.0, 1.0, 2e-3,
+    );
 
-    my $fit = "new_fit_3d ";
+    my $sched_size =  12;
+    my $num_steps = @schedule / $sched_size;
 
-    my $oversample_reference = 20480;
+    if( $print_schedule ) {
+        for( $i = 0;  $i < @schedule;  $i += $sched_size ) {
+            $step = $i / $sched_size;
+            ( $size, $sw, $cw, $n_iters, $iter_inc,
+              $si_step, $oversample, $self_weight, $self_dist, 
+              $laplacian_sampling, $laplacian_factor, $laplacian_weight ) =
+                         @schedule[$i..$i+$sched_size-1];
+            print( "Step $step : $size polygons, stetch weight $sw, " );
+            print( "Laplace weight $laplacian_weight\n" );
+        }
+        die "\n";
+    }
+
+    if( $start_n < 0 ) {
+      $start_n = 0;
+    }
+    if( $end_n >= $num_steps ) {
+      $end_n = @schedule / $sched_size - 1;
+    }
+    if( $end_n < $start_n ) {
+      die "Nothing to do, all steps are done.\n";
+    }
+
+    # ignore initial few steps if no lo-res surface is desired;
+    # replace these iterations by 81920.
+    if( !( $quick ) ) {
+      for( $i = 0;  $i < @schedule;  $i += $sched_size ) {
+        if( $schedule[$i] == 20480 ) {
+          $schedule[$i] = 81920;
+        }
+      }
+    }
+
+    # ignore last few steps if no hi-res surface is desired.
+    if( !( $refine ) ) {
+      for( $i = 0;  $i < @schedule;  $i += $sched_size ) {
+        $step = $i / $sched_size;
+        if( $schedule[$i] == 327680 ) {
+          if( $step - 1 < $end_n ) {
+            $end_n = $step - 1;
+          }
+          last;
+        }
+      }
+    }
+
+    if( ! defined($cls) ) {
+      die "$usage\n";
+    }
+    if( ! defined($laplacian_file) ) {
+      die "$usage\n";
+    }
+    if( ! defined($gray_surface) ) {
+      die "$usage\n";
+    }
+    if( ! defined($white_surface) ) {
+      die "$usage\n";
+    }
+
+    #--- remove whatever suffix name may have
+    my $gray_prefix = `basename $gray_surface ".obj"`;
+    chop( $gray_prefix );
+    $gray_prefix = `basename $gray_prefix _320`;
+    chop( $gray_prefix );
+    $gray_prefix = `basename $gray_prefix _1280`;
+    chop( $gray_prefix );
+    $gray_prefix = `basename $gray_prefix _5120`;
+    chop( $gray_prefix );
+    $gray_prefix = `basename $gray_prefix _20480`;
+    chop( $gray_prefix );
+    $gray_prefix = `basename $gray_prefix _81920`;
+    chop( $gray_prefix );
+    $gray_prefix = `basename $gray_prefix _327680`;
+    chop( $gray_prefix );
+
+    #--- remove whatever suffix name may have
+    my $white_prefix = `basename $white_surface .obj`;
+    chop( $white_prefix );
+    $white_prefix = `basename $white_prefix _320`;
+    chop( $white_prefix );
+    $white_prefix = `basename $white_prefix _1280`;
+    chop( $white_prefix );
+    $white_prefix = `basename $white_prefix _5120`;
+    chop( $white_prefix );
+    $white_prefix = `basename $white_prefix _20480`;
+    chop( $white_prefix );
+    $white_prefix = `basename $white_prefix _81920`;
+    chop( $white_prefix );
+    $white_prefix = `basename $white_prefix _327680`;
+    chop( $white_prefix );
+
     my $n_polygons = `print_n_polygons $white_surface`;
     chop( $n_polygons );
 
-    my $model_data_dir = MNI::DataDir::dir('CLASP');
-    MNI::DataDir::check_data($model_data_dir, ["ellipsoid_${n_polygons}.obj.gz"]);
+    check_output_dirs($TmpDir);
 
-    my $model = $white_surface;
-    $model = "${model_data_dir}/ellipsoid_${n_polygons}.obj.gz";
+    my $fit = "surface_fit ";
 
     my $self_dist2 = 0.01;
     my $n_selfs = 9;
@@ -88,7 +204,6 @@ my $output = $input;
     my $stop_threshold = 3e-2;
     my $stop_iters = 10;
 
-    my $filter = 0;
     my $n_per = 1;
     my $tolerance = 1.0e-2;
     $tolerance = 1.0e-10;
@@ -97,64 +212,76 @@ my $output = $input;
 
     my $iters_scale = 1.0;
     my $break_scale = 1.0;
+    my $oversample_reference = 20480;
     my $oo_scale = 1.0 * sqrt( $oversample_reference / $n_polygons );
     my $iters_override = 0;
 
     my $stretch_scale = 1;
     my $curvature_scale = 0;
 
-    if( ! defined($refine) )
-        { $refine = 0; }
+    my $prev_n;
 
-    my @schedule;
-    if( $refine <= 81920 )
-    {
-      @schedule = (
-#size   sw        n_it  inc  si over   sw   self   l_s  l_d   l_w
-#----- ----       ----  ---  -- ----  ----  ----   ---  ---  ----
- 81920, 1e1,   0,  200,  50,  .5,  1,  1e1,  .25, , 1.0, 0.0, 5e-6, 
- 81920, 1e1,   0,  200,  50,  .5,  1,  1e1,  .25, , 1.0, 0.0, 1e-4, 
- 81920, 1e1,   0,  300,  50,  .5,  1,  1e1,  .25, , 1.0, 0.0, 5e-4, 
- 81920, 1e1,   0,  800,  50,  .5,  1,  1e1,  .25, , 1.0, 1.0, 1e-2,
-  );
+    # Check for a restart.
+    if( $start_n == 0 ) {
+      #--- no restart: start at beginning of schedule
+
+      #--- Create a starting gray surface at $prev_n polygons
+      #--- from the corresponding white surface.
+
+      $prev_n = $schedule[0];
+      $size = $prev_n;
+      $white_surface = "${white_prefix}_${size}.obj";
+      $gray_surface = "${gray_prefix}_${size}.obj";
+      Spawn(["set_object_colour", $white_surface, $gray_surface, "white"]);
+
+    } else {
+      #--- continue execution, starting at this step.
+      $prev_n = $schedule[($start_n-1)*$sched_size];
+      $size = $schedule[$start_n*$sched_size];
+      $gray_surface = "${gray_prefix}_${size}.obj";
+      $white_surface = "${white_prefix}_${size}.obj";
+
+      if( $prev_n < $size ) {
+        # obtain a starting white surface at new size
+        if( ! ( -e $white_surface ) ) {
+          if( ! ( -e "${white_prefix}_${prev_n}.obj" ) ) {
+            die "White surface $white_surface does not exist.\n";
+          } else {
+            Spawn( ["subdivide_polygons", "${white_prefix}_${prev_n}.obj",
+                    $white_surface, $size] );
+          }
+        }
+        # subdivide previous gray surface to new size. if it does not exist,
+        # create one from the white at the new size. if the gray surface
+        # already exists, continue from it.
+        if( ! ( -e "${gray_prefix}_${prev_n}.obj" ) ) {
+          Spawn(["set_object_colour", $white_surface, $gray_surface, "white"]);
+        } else {
+          Spawn( ["subdivide_polygons", "${gray_prefix}_${prev_n}.obj",
+                  $gray_surface, $size] );
+        }
+        $prev_n = $size;
+      } else {
+        # continue from current gray surface. if it does not exist,
+        # create one from the white.
+        if( ! ( -e $white_surface ) ) {
+          die "White surface $white_surface does not exist.\n";
+        }
+        if( ! ( -e $gray_surface ) ) {
+          Spawn(["set_object_colour", $white_surface, $gray_surface, "white"]);
+        }
+      }
     }
-    else
-    {
-      @schedule = (
-#size   sw        n_it  inc  si over   sw   self   l_s  l_d   l_w
-#----- ----       ----  ---  -- ----  ----  ----   ---  ---  ----
-327680, 1e1,   0,  200,  50,  .5,  1,  1e1,  .25, , 1.0, 0.0, 5e-6, 
-327680, 1e1,   0,  200,  50,  .5,  1,  1e1,  .25, , 1.0, 0.0, 1e-5, 
-327680, 1e1,   0,  300,  50,  .5,  1,  1e1,  .25, , 1.0, 0.0, 1e-4, 
-327680, 1e1,   0,  800,  50,  .5,  1,  1e1,  .25, , 1.0, 1.0, 1e-3,
-327680, 1e1,   0,  500,  50,  .5,  1,  1e1,  .25, , 1.0, 1.0, 2e-3,
-  );
-    }
-
-
-    my $sched_size =  12;
-
-    my $log = "";
-    if( defined($logfile) )
-        { $log = " -log $logfile"; }
-
-    if( ! defined($start_n) )
-        { $start_n = 0; }
-
-    if( ! defined($end_n) )
-        { $end_n = @schedule / $sched_size - 1; }
 
 #------ loop over each schedule
 
-    if( !$dont_copy && $start_n <= 0 ) {
-        Spawn(["set_object_colour", $white_surface, $output, "white"]);
-    }
-
-    my $prev_n = $schedule[0];
     my $movie_num = 1;
-    for( $i = 0;  $i < @schedule;  $i += $sched_size )
-    {
+    for( $i = 0;  $i < @schedule;  $i += $sched_size ) {
+
         $step = $i / $sched_size;
+        if( $step > $end_n ) {
+          last;
+        }
 
         #--- get the components of the deformation schedule entry
 
@@ -163,15 +290,20 @@ my $output = $input;
           $laplacian_sampling, $laplacian_factor, $laplacian_weight ) =
                      @schedule[$i..$i+$sched_size-1];
 
+        if( $step < $start_n ) {
+            $prev_n = $size;
+            next;
+        }
+
         $sw *= $stretch_scale;
         $cw *= $curvature_scale;
         $oversample *= $oo_scale;
-        #$value_oversample = $oversample * $value_oo_scale;
 
-        if( $iters_override > 0 )
-            { $n_iters = $iters_override; }
-        else
-            { $n_iters = int( $n_iters * $iters_scale ); }
+        if( $iters_override > 0 ) {
+            $n_iters = $iters_override;
+        } else { 
+            $n_iters = int( $n_iters * $iters_scale );
+        }
 
         $self_weight *= $self_factor;
 
@@ -180,41 +312,58 @@ my $output = $input;
 
         #--- if the schedule size is greater than the current number of
         #--- polygons in the deforming surface, subdivide the deforming surface
-        if( $step < $start_n || $step > $end_n )
-            { $prev_n = $size;  next; }
-        if( $size != $prev_n && (!$dont_copy || $step > $start_n) )
-        {
-          Spawn(["subdivide_polygons", $white_surface, "${TmpDir}/white_${size}.obj", $size]);
-          Spawn(["subdivide_polygons", $output, "${output}_${size}.obj", 
-                  $size]);
-          $input = $output = "${output}_${size}.obj";
-          $white_surface = "${TmpDir}/white_${size}.obj";
+
+        if( $size > $prev_n ) {
+
+          #--- subdivide corresponding white surface, needed by surface_fit
+          #--- in surf_surf check
+
+          $white_surface = "${white_prefix}_${size}.obj";
+          if( ! ( -e $white_surface ) ) {
+            if( ! ( -e "${white_prefix}_${prev_n}.obj" ) ) {
+              die "Cannot create $white_surface from ${white_prefix}_${prev_n}.obj.\n";
+            } else {
+              Spawn( ["subdivide_polygons", "${white_prefix}_${prev_n}.obj",
+                      $white_surface, $size] );
+            }
+          }
+
+          # subdivide current gray surface to new size. if it does not exist,
+          # create one from the white at the new size. if the gray surface
+          # already exists, continue from it.
+
+          $gray_surface = "${gray_prefix}_${size}.obj";
+          if( ! ( -e "${gray_prefix}_${prev_n}.obj" ) ) {
+            Spawn(["set_object_colour", $white_surface, $gray_surface, "white"]);
+          } else {
+            Spawn( ["subdivide_polygons", "${gray_prefix}_${prev_n}.obj",
+                    $gray_surface, $size] );
+          }
+
         }
         $prev_n = $size;
 
-        print( "Fitting polygons at filter ${filter}, " .
-               "max $n_iters iters.\n" );
+        print( "Fitting polygons, max $n_iters iters.\n" );
 
-        $b2 = " -boundary 1 1 $cls " .
-          " 1.5 - 0 0 0 0 $oversample";
-        $laplace_info = " -laplacian $laplacian_file $laplacian_weight 0 10 $laplacian_factor $laplacian_sampling ";
+        $b2 = " -boundary 1 1 $cls 1.5 - 0 0 0 0 $oversample";
+        $laplace_info = " -laplacian $laplacian_file $laplacian_weight 0 10 " .
+                        " $laplacian_factor $laplacian_sampling ";
 
         $iter_inc *= $break_scale;
         if( $iter_inc <= 0 )  { $iter_inc = $n_iters; }
 
-        $surf2_info = " -surface ${input} ${output} ${white_surface}" .
+        $surf2_info = " -surface ${gray_surface} ${gray_surface} ${white_surface}" .
           " -equal_lengths".
-          " -stretch $sw ${input} -1.0 0 0 0".
+          " -stretch $sw ${white_surface} -1.0 0 0 0".
           " $b2 ".
           " $self2 ".
           " $laplace_info ";
 
         $n_failures = 0;
 
-        for( $iter = 0;  $iter < $n_iters;  $iter += $iter_inc )
-        {
-            system( "echo Step: $iter / $n_iters    $sw $cw" );
-	
+        for( $iter = 0;  $iter < $n_iters;  $iter += $iter_inc ) {
+            system( "echo Step ${size}: $iter / $n_iters    $sw $cw" );
+
             $ni = $n_iters - $iter;
             if( $ni > $iter_inc )  { $ni = $iter_inc; }
 
@@ -228,20 +377,17 @@ my $output = $input;
 
             $ret = system_call( "$command", 1 );
 
-            system_call( "measure_surface_area $output" );
+            system_call( "measure_surface_area $gray_surface" );
             #$string_num = sprintf "%04s", ${movie_num};
             $movie_num = ${movie_num} + 1;
-            #system_call( "cp -f ${output} movie/gray_${string_num}.obj" );
+            #system_call( "cp -f ${gray_surface} movie/gray_${string_num}.obj" );
 
-            if( $ret == 1 )
-            {
+            if( $ret == 1 ) {
                 ++$n_failures;
 
                 if( $n_failures == 2 )
                     { last; }
-            }
-            else
-            {
+            } else {
                 $n_failures = 0;
             }
         }

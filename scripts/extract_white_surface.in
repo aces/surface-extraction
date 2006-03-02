@@ -1,5 +1,8 @@
 #! @PERL@
 
+use strict;
+use warnings "all";
+
 # Part of the ASP cortex extraction suite. For a description of the
 # algorithms used here see MacDonald et. al. "Automated 3-D Extraction
 # of Inner and Outer Surfaces of Cerebral Cortex from MRI" in
@@ -15,222 +18,366 @@
 #    * uses MNI::DataDir
 #    * soften the stretch weight constraint on last iteration for slightly 
 #      better fitting.
-
-use warnings "all";
+#                Nov 2005, Claude Lepage <claude@bic.mni.mcgill.ca>
+#    * improve support for restart and add refinement to 320K surface
+#
 
 require "xINCDIRx/deform_utils.pl";
+use Getopt::Tabular;
+use MNI::Startup;
+use MNI::FileUtilities;
+use MNI::Spawn;
 use MNI::DataDir;
+use MNI::FileUtilities qw(check_output_dirs);
 
-    $volume = shift;
-    $output_file2 = shift;
-    $isovalue2 = shift;
-    $initial_model2 = shift;
+MNI::Spawn::RegisterPrograms
+  ( [qw/  rm
+     subdivide_polygons
+     surface_fit
+     set_object_colour/ ] )
+  or exit 1;
 
-    $start_n = shift;
-    $end_n = shift;
-    $dont_copy = shift;
+# --- set the help & usage strings ---
+my $help = <<HELP;
+Required parameters:
+  cls_mask.mnc : tissue classification file
+  white.obj    : white matter surface (output)
+  isovalue     : gray-white border value
+  model.obj    : model file (initial white surface)
+Optional parameters:
+  [-refine]    : to generate the white surface with 327680 triangles
+  [-log]       : log file for stdout
+  [-start]     : first step in schedule (for restart)
+  [-end]       : last step in schedule (for restart)
+  [-schedule]  : print the schedule to see the steps
+HELP
 
-    if( ! defined($isovalue2) )
-    {
-        die "Usage: $0  input.mnc output_prefix  isovalue [model]  [start] [end] [dont copy]\n";
-    }
+my $usage = <<USAGE;
+Usage: $ProgramName cls_mask.mnc white.obj isovalue [model.obj]
+       [-refine] [-log log_file] [-start s] [-end e] [-schedule]
+       $ProgramName -help to list options
+USAGE
 
-#--------- initialize volumes
+Getopt::Tabular::SetHelp( $help, $usage );
 
-#---------
+my $refine = 0;
+my $start_n = -1;
+my $end_n = 9999;
+my $print_schedule = 0;
+my $logfile;
 
-    $output2 = &get_prefix( $output_file2 );
-
-    if( !defined( $initial_model2 ) )
-    {
-      $model_data_dir = MNI::DataDir::dir('CLASP');
-      MNI::DataDir::check_data($model_data_dir, [qw(white_model_320.obj)]);
-      $initial_model2 = "${model_data_dir}/white_model_320.obj";
-    }
-
-    $fit = "new_fit_3d ";
-    $refine = "refine_mesh";
-
-    $self_dist2 = 0.01;
-    $n_selfs = 9;
-    $self_factor = 1.0;
-
-    $stop_threshold = 3e-2;
-    $stop_iters = 10;
-
-    $filter = 0;
-    $n_per = 5;
-    $tolerance = 1.0e-2;
-    $tolerance = 1.0e-10;
-    $f_tolerance = 1.0e-2;
-    $f_tolerance = 1.0e-10;
-
-    $iters_scale = 1.0;
-    $break_scale = 1.0;
-    $oo_scale = 0.5;
-    $iters_override = 0;
-
-    $stretch_scale = 1;
-    $curvature_scale = 0;
-
-    $wo = 100;
-
-    @schedule = (
-
-#size    sw    cw  n_itr  inc  offo offi  si over   sw   self
-#-----  ----  ---- -----  ---- ---- ----  -- ----  ----  ----
-   320, 1e3,   0,   1000,  50, $wo,  1, .5,  40,  1e0,  1,
-  1280, 1e3,   0,   1000,  50, $wo,  1, .5,  20,  1e0,  1,
-  1280, 1e2,   0,   2000,  50, $wo,  1,  1,  20,  1e0,  5,
-  5120, 1e2,   0,   2000,  50, $wo,  1,  1,  10,  1e0,  3,
-  5120, 1e1,   0,   2000,  50, $wo,  1,  1,  10,  1e0,  3,
- 20480, 1e1,   0,   5000,  50, $wo,  1,  1,   5,  1e0,  1.5,
- 81920, 2,     0,   1000,  50, $wo,  1,  1,   2,  1e0,  .75,
+# --- process options ---
+my @options =
+  ( @DefaultArgs,     # from MNI::Startup
+  ['-refine', 'boolean', 0, \$refine,
+   "Create a high-resolution surface at 327680 polygons"],
+  ['-start', 'string', 1, \$start_n, "First step in schedule"],
+  ['-end', 'string', 1, \$end_n, "Last step in schedule"],
+  ['-log', 'string', 1, \$logfile, "Log file" ],
+  ['-schedule', 'boolean', 0, \$print_schedule, "Print schedule"],
   );
 
+GetOptions( \@options, \@ARGV )
+  or exit 1;
+die "$usage\n" unless @ARGV >= 3;
 
-    $sched_size =  11;
+    my ($i, $step);
+    my ($size, $sw, $cw, $n_iters, $iter_inc, $offo, $offi, $si_step);
+    my ($in_dist, $out_dist, $oversample, $self_weight, $self_dist );
 
-    $st = $schedule[0];
+    my $volume = shift;
+    my $output_file2 = shift;
+    my $isovalue2 = shift;
+    my $initial_model = shift;
 
-    if( ! defined($start_n) )
-        { $start_n = 0; }
+    my $log = "";
+    if( defined($logfile) ) {
+      $log = " -log $logfile";
+    }
 
-    if( ! defined($end_n) )
-        { $end_n = @schedule / $sched_size - 1; }
+    my $wo = 100;   # weight for outside points
+
+# sw   = weight for mesh stretching (bigger means less stretch)
+# cw   = ???
+# n_iter = number of iterations at this step
+# inc  = do iterations by blocks of inc
+# offo = weight for outside direction (the larger the better)
+# offi = weight for inside direction (the smaller the better)
+# si   = max step increment (large is faster, but risk of intersection)
+# in   = inward boundary search distance
+# out  = outward boundary search distance
+# over = oversampling rate (large is slow, but more accurate)
+# sw   = weight for surface self-intersection
+# self = min distance to check for surface self-intersection
+#
+#size    sw    cw  n_itr  inc   offo  offi  si  in  out  over  sw   self
+#-----  ----  ---- -----  ----  ----  ----  --  --  ---  ---- ----  ----
+    my @schedule;
+    @schedule = (
+
+#  size   sw    cw  n_itr  inc    offo   offi  si  in  out  over   sw   self
+#  ----- ----  ---- -----  ----   ----   ----  --  --  ---  ----  ----  ----
+    320, 1e3,   0,   1000,  50,   $wo,    1,   2,  50,  3,   40,  1e0,  1,
+   1280, 1e3,   0,   1000,  50,   $wo,    1,   2,  50,  3,   20,  1e0,  1,
+   1280, 1e2,   0,   2000,  50,   $wo,    1,   1,  50,  3,   20,  1e0,  5,
+   5120, 1e2,   0,   2000,  50,   $wo,    1, 1.5,  50,  3,   10,  1e0,  3,
+   5120, 1e1,   0,   2000,  50,   $wo,    1, 1.5,  50,  3,   10,  1e0,  3,
+  20480, 1e1,   0,   5000,  50,   $wo,    1,   1,  40,  3,    5,  1e0,  1.5,
+  81920, 2,     0,   1000,  50, 0.5*$wo,  1,   1,  30,  3,    2,  1e0,  .75,
+ 327680, 2,     0,   1000,  50, 0.5*$wo,  1,   1,  20,  3,    1,  1e0,  .75,
+  );
+
+    my $sched_size =  13;
+    my $num_steps = @schedule / $sched_size;
+
+    if( $print_schedule ) {
+        for( $i = 0;  $i < @schedule;  $i += $sched_size ) {
+            $step = $i / $sched_size;
+            ( $size, $sw, $cw, $n_iters, $iter_inc, $offo, $offi,
+              $si_step, $in_dist, $out_dist, $oversample, 
+              $self_weight, $self_dist ) =
+                         @schedule[$i..$i+$sched_size-1];
+            print( "Step $step : $size polygons, stetch weight $sw \n" );
+        }
+        die "\n";
+    }
+
+    if( $start_n < 0 ) {
+      $start_n = 0;
+    }
+    if( $end_n >= $num_steps ) {
+      $end_n = @schedule / $sched_size - 1;
+    }
+    if( $end_n < $start_n ) {
+      die "Nothing to do, all steps are done.\n";
+    }
+
+    # ignore last few steps if no hi-res surface is desired.
+    if( !( $refine ) ) {
+      for( $i = 0;  $i < @schedule;  $i += $sched_size ) {
+        $step = $i / $sched_size;
+        if( $schedule[$i] == 327680 ) {
+          if( $step - 1 < $end_n ) {
+            $end_n = $step - 1;
+          }
+          last;
+        }
+      }
+    }
+
+    system( "echo Step $start_n to $end_n" );
+
+    if( ! defined($volume) ) {
+      die "$usage\n";
+    }
+    if( ! defined($output_file2) ) {
+      die "$usage\n";
+    }
+    if( ! defined($isovalue2) ) {
+      die "$usage\n";
+    }
+
+    #--- remove whatever suffix name may have
+    my $white_prefix = `basename $output_file2 .obj`;
+    chop( $white_prefix );
+    $white_prefix = `basename $white_prefix _320`;
+    chop( $white_prefix );
+    $white_prefix = `basename $white_prefix _1280`;
+    chop( $white_prefix );
+    $white_prefix = `basename $white_prefix _5120`;
+    chop( $white_prefix );
+    $white_prefix = `basename $white_prefix _20480`;
+    chop( $white_prefix );
+    $white_prefix = `basename $white_prefix _81920`;
+    chop( $white_prefix );
+    $white_prefix = `basename $white_prefix _327680`;
+    chop( $white_prefix );
+
+    if( !defined( $initial_model ) ) {
+      my $model_data_dir = MNI::DataDir::dir('CLASP');
+      MNI::DataDir::check_data($model_data_dir, [qw(white_model_320.obj)]);
+      $initial_model = "${model_data_dir}/white_model_320.obj";
+    }
+
+    my $fit = "surface_fit ";
+
+    my $self_dist2 = 0.01;
+    my $n_selfs = 9;
+    my $self_factor = 1.0;
+
+    my $stop_threshold = 3e-2;
+    my $stop_iters = 10;
+
+    my $filter = 0;
+    my $n_per = 5;
+    my $tolerance = 1.0e-03;
+    my $f_tolerance = 1.0e-06;
+
+    my $iters_scale = 1.0;
+    my $break_scale = 1.0;
+    my $oo_scale = 0.5;
+    my $iters_override = 0;
+
+    my $stretch_scale = 1;
+    my $curvature_scale = 0;
+
+    my $prev_n;
+    my $white_surface;
+
+    # Check for a restart.
+    if( $start_n == 0 ) {
+      #--- no restart: start at beginning of schedule
+
+      #--- Create a starting white surface at $prev_n polygons
+      #--- from the corresponding model white surface.
+
+      $prev_n = $schedule[0];
+      $size = $prev_n;
+      $white_surface = "${white_prefix}_${size}.obj";
+      system_call( "set_object_colour $initial_model ${white_surface} white" );
+      system_call( "set_object_colour $initial_model ${white_prefix}_m_${size}.obj white" );
+
+    } else {
+      #--- continue execution, starting at this step.
+      $prev_n = $schedule[($start_n-1)*$sched_size];
+      $size = $schedule[$start_n*$sched_size];
+      $white_surface = "${white_prefix}_${prev_n}.obj";
+
+      if( ! ( -e $white_surface ) ) {
+        die "White surface $white_surface does not exist.\n";
+      }
+
+      if( $prev_n < $size ) {
+        # subdivide previous white surface to new size
+        $white_surface = "${white_prefix}_${size}.obj";
+        if( ! ( -e $white_surface ) ) {
+          Spawn( ["subdivide_polygons", "${white_prefix}_${prev_n}.obj",
+                  $white_surface, $size] );
+        }
+
+        $prev_n = $size;
+
+      } else {
+        # continue from current white surface.
+      }
+    }
 
 #------ loop over each schedule
 
-    if( !$dont_copy && $start_n <= 0 ) {
-
-        if( $output_file2 ne "-" )
-        {
-
-
-            system_call( "set_object_colour $initial_model2 ${output2}_${st}.obj white" );
-            system_call( "set_object_colour $initial_model2 ${output2}_m_${st}.obj white" );
-
-        }
-    }
-
-    $prev_n = $st;
-
-    for( $i = 0;  $i < @schedule;  $i += $sched_size )
-    {
+    for( $i = 0;  $i < @schedule;  $i += $sched_size ) {
         $step = $i / $sched_size;
 
-        #--- get the 14 components of the deformation schedule entry
+        #--- get the components of the deformation schedule entry
 
         ( $size, $sw, $cw, $n_iters, $iter_inc, $offo, $offi,
-          $si_step, $oversample, $self_weight, $self_dist ) =
+          $si_step, $in_dist, $out_dist, $oversample, $self_weight, $self_dist ) =
                      @schedule[$i..$i+$sched_size-1];
+
+        if( $step < $start_n ) {
+            $prev_n = $size;
+            next;
+        }
+        if( $step > $end_n ) {
+            $size = $prev_n;
+            next;
+        }
 
         $sw *= $stretch_scale;
         $cw *= $curvature_scale;
         $oversample *= $oo_scale;
 
-        if( $iters_override > 0 )
-            { $n_iters = $iters_override; }
-        else
-            { $n_iters = int( $n_iters * $iters_scale ); }
+        if( $iters_override > 0 ) {
+            $n_iters = $iters_override;
+        } else {
+            $n_iters = int( $n_iters * $iters_scale );
+        }
 
         $self_weight *= $self_factor;
 
-        $self2 = get_self_intersect( $self_weight, $n_selfs, $self_dist,
-                                     $self_dist2 );
-
-        if( $step < $start_n || $step > $end_n )
-            { $prev_n = $size;  next; }
-
-        if( $size != $prev_n && (!$dont_copy || $step > $start_n) )
-        {
-            if( $size < 320 )
-            {
-                system_call( "$refine ${output2}_${prev_n}.obj " .
-                             " ${output2}_m_${prev_n}.obj" .
-                             " ${output2}_m_${size}.obj $size " );
-                system_call( "$refine ${output2}_${prev_n}.obj " .
-                             " ${output2}_${prev_n}.obj" .
-                             " ${output2}_${size}.obj $size " );
-            }
-            else
-            {
-                system_call( "subdivide_polygons " .
-                             " ${output2}_m_${prev_n}.obj" .
-                             " ${output2}_m_${size}.obj $size " );
-                system_call( "subdivide_polygons " .
-                             " ${output2}_${prev_n}.obj" .
-                             " ${output2}_${size}.obj $size " );
-            }
-        }
-
-        $prev_n = $size;
+        my $self2 = get_self_intersect( $self_weight, $n_selfs, $self_dist,
+                                        $self_dist2 );
 
         #--- if the schedule size is greater than the current number of
         #--- polygons in the deforming surface, subdivide the deforming surface
 
-        print( "Fitting $size-sized polygons at filter ${filter}, " .
-               "max $n_iters iters.\n" );
+        if( $size > $prev_n ) {
 
-        $b2 = " -boundary $offo $offi $volume " .
-                           " $isovalue2 - 3 50 0 0 $oversample ";
+          #--- subdivide white surface
+
+          $white_surface = "${white_prefix}_${size}.obj";
+          Spawn( ["subdivide_polygons", "${white_prefix}_${prev_n}.obj",
+                  $white_surface, $size] );
+
+          #--- subdivide model white surface
+
+          if( ! ( -e "${white_prefix}_m_${size}.obj" ) ) {
+            if( -e "${white_prefix}_m_${prev_n}.obj" ) {
+              Spawn( ["subdivide_polygons", "${white_prefix}_m_${prev_n}.obj",
+                      "${white_prefix}_m_${size}.obj", $size] );
+              system_call( "rm -f ${white_prefix}_m_${prev_n}.obj" );
+            } else {
+              Spawn( ["subdivide_polygons", $initial_model,
+                      "${white_prefix}_m_${size}.obj", $size] );
+	      system_call( "set_object_colour ${white_prefix}_m_${size}.obj " .
+                           " ${white_prefix}_m_${size}.obj white" );
+            }
+          }
+
+        }
+
+        $prev_n = $size;
+
+        system( "echo Fitting polygons, max $n_iters iters." );
+
+        my $b2 = " -boundary $offo $offi $volume " .
+                 " $isovalue2 - $out_dist $in_dist 0 0 $oversample ";
 
         $iter_inc *= $break_scale;
         if( $iter_inc <= 0 )  { $iter_inc = $n_iters; }
 
-        $n_failures = 0;
+        my $n_failures = 0;
+        my $iter;
 
-        for( $iter = 0;  $iter < $n_iters;  $iter += $iter_inc )
-        {
+        for( $iter = 0;  $iter < $n_iters;  $iter += $iter_inc ) {
             system( "echo Step ${size}: $iter / $n_iters    $sw $cw" );
 
-            if( $size < 320 )
-            {
-                system_call( "$refine  ${output2}_${size}.obj " .
-                             " ${output2}_m_${size}.obj" .
-                             " ${output2}_m_${size}.obj $size " );
-                system_call( "$refine  ${output2}_${size}.obj " .
-                             " ${output2}_${size}.obj" .
-                             " ${output2}_${size}.obj $size " );
-            }
-
-
-            $ni = $n_iters - $iter;
+            my $ni = $n_iters - $iter;
             if( $ni > $iter_inc )  { $ni = $iter_inc; }
 
-            $sw2 = $sw;
+            my $surf2_info = " -surface ${white_surface} ${white_surface} " .
+                             " -stretch $sw ${white_prefix}_m_$size -.9 0 0 0".
+                             " $b2 ".
+                             " $self2 ";
 
-            $surf2_info = " -surface ${output2}_$size ${output2}_$size " .
-              " -stretch $sw2 ${output2}_m_$size -.9 0 0 0".
-              " $b2 ".
-              " $self2 ";
+            my $command = "$fit -mode two ".
+                          " $surf2_info ".
+                          " -print_deriv " .
+                          " -step $si_step " .
+                          " -fitting $ni $n_per $tolerance " .
+                          " -ftol $f_tolerance " .
+                          " -stop $stop_threshold $stop_iters " .
+                          " $log ";
 
-            $command = "$fit -mode two ".
-                       " $surf2_info ".
-                       " -print_deriv " .
-                       " -step $si_step " .
-                       " -fitting $ni $n_per $tolerance " .
-                       " -ftol $f_tolerance " .
-                       " -stop $stop_threshold $stop_iters ";
+            my $ret = system_call( "$command", 1 );
 
-            $ret = system_call( "$command", 1 );
+            system_call( "measure_surface_area ${white_surface}" );
 
-            system_call( "measure_surface_area ${output2}_$size" );
-
-            if( $ret == 1 )
-            {
+            if( $ret == 1 ) {
                 ++$n_failures;
 
                 if( $n_failures == 2 )
                     { last; }
-            }
-            else
-            {
+            } else {
                 $n_failures = 0;
             }
         }
     }
 
-    print( "Surface extraction finished.\n" );
+    system( "echo Surface extraction finished." );
 
-    &clean_up();
+    # remove last model file which has not been deleted yet.
+    if( -e "${white_prefix}_m_${size}.obj" ) {
+      system_call( "rm -f ${white_prefix}_m_${size}.obj" );
+    }
+
+    clean_up();

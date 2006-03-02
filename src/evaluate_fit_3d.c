@@ -151,25 +151,19 @@ private  Real   evaluate_laplacian_fit(
     Real         deriv_factor,
     Real         from,
     Real         to,
+    int          n_neighbours[],
+    int        * neighbours[],
+    Real         sampling,
     Real         parameter[],
     int          start_point,
     int          end_point)
 {
   int         point, p_index;
   Real        fit=0.0f;
-  Real        value, gradient;
-  Real        dx, dy, dz, dist;
-  Real        deriv, dxyz[3];
-  Real        offset = 10;
-  Real        max_deriv = sqrt(3*to*to);
-  int         num = 0;
-  //clock_t     start, end;
+  Real        value;
 
-  //start = clock();
-  if( weight > 0 )
-  {
-    for_less( point, start_point, end_point )
-    {
+  if( weight > 0 ) {
+    for_less( point, start_point, end_point ) {
 
       p_index = IJ( point, 0, 3 );
       evaluate_volume_in_world( laplacian_map,
@@ -179,35 +173,96 @@ private  Real   evaluate_laplacian_fit(
                                 0, FALSE,
                                 0.0, &value,
                                 NULL, NULL, NULL,
-                                //dxyz, dxyz+1, dxyz+2,
                                 NULL, NULL, NULL, NULL, NULL, NULL );
 
-        gradient = 1;
-
-      //deriv = sqrt(dxyz[0]*dxyz[0] + dxyz[1]*dxyz[1] + dxyz[2]*dxyz[2]);
-
-      if( value >= to )
-      {
-        //deriv = (gradient>4) ? (max_deriv-gradient)/(max_deriv-4) : 5-gradient;
-        fit += weight * (0.1+value-to);//* (deriv);
-      }
-      else if( deriv_factor==0 )
-      {
-        //deriv = (gradient>5) ? 5 : gradient;
-        fit += weight*(exp(to-value)-1);//*(0.2*(5-deriv));
-      }
-      else if( deriv_factor>0 )
-      {
-        //deriv = (gradient>4) ? (max_deriv-gradient)/(max_deriv-4) : 5-gradient;
-        fit += weight * (to-value);// * (deriv);
+      if( value >= to ) {
+        fit += value-to;
+      } else if( deriv_factor==0 ) {
+        fit += exp(to-value)-1.0;
+      } else if( deriv_factor>0 ) {
+        fit += to-value;
       }
     }
+
+    // Do oversampling. This is useful, but slows down the code.
+
+    if( sampling > 0 ) {
+
+      int  n, neigh1, neigh2, p0, p1, p2, w1, w2;
+      Real alpha1, alpha2, N0, N1, N2, xp, yp, zp;
+
+      weight /= ((sampling+1.0)*(sampling+1.0));
+
+      for( point = start_point; point < end_point; point++ ) {
+
+        for_less( n, 0, n_neighbours[point] ) {
+          neigh1 = neighbours[point][n];
+          neigh2 = neighbours[point][(n+1)%n_neighbours[point]];
+
+          if( point > neigh1 || point > neigh2 ) continue;
+
+          p0 = 3*point;
+          p1 = 3*neigh1;
+          p2 = 3*neigh2;
+
+          for( w1 = 0; w1 <= sampling; w1++ ) {
+
+            alpha1 = (Real) w1 / (Real) (sampling+1);
+
+            for( w2 = 1; w2 <= sampling - w1 + 1; w2++ ) {
+              if( ( w1 == 0 && w2 == sampling + 1 ) ||
+                  ( w2 == sampling - w1 + 1 && neigh1 < neigh2 ) ) {
+                continue;
+              }
+
+              alpha2 = (Real) w2 / (Real) (sampling - w1 +1);
+              N0 = (1.0 - alpha1) * (1.0 - alpha2);
+              N1 = alpha1;
+              N2 = (1.0 - alpha1) * alpha2;
+              xp = N0 * parameter[p0] + N1 * parameter[p1] + N2 * parameter[p2];
+              yp = N0 * parameter[p0+1] + N1 * parameter[p1+1] + N2 * parameter[p2+1];
+              zp = N0 * parameter[p0+2] + N1 * parameter[p1+2] + N2 * parameter[p2+2];
+
+              evaluate_volume_in_world( laplacian_map, xp, yp, zp,
+                                        1, FALSE, 0.0, &value,
+                                        NULL, NULL, NULL,
+                                        NULL, NULL, NULL, NULL, NULL, NULL );
+
+
+              if( value >= to ) {
+                fit += value-to;            // linear
+                // fit += exp(value-to)-1.0;   // exponential is too much!
+              } else if( deriv_factor==0 ) {
+                fit += exp(to-value)-1.0;   // exponential
+              } else if( deriv_factor>0 ) {
+                fit += to-value;            // linear
+              }
+            }
+          }
+        }
+      }
+    }
+
+    fit *= weight;
   }
 
-  //end = clock();
-  //printf("lap=%f,%f ",((double)(end - start))/CLOCKS_PER_SEC, fit);
   return fit;
 }
+
+//
+// Note: In the old code, the evaluation of the derivative would check
+//       the tissue classification value against a threshold=1.5. However
+//       the cls_correct file does not contain pve_csf values, thus it
+//       reports value=2.0 (gray) in a sulcus, with phi >= 10 (uses
+//       pve_csf to build Laplacian field). So to get the good gray
+//       surface boundary, use the information from phi only to decide
+//       to move inwards or outwards and ignore the cls value. There is
+//       another confusing case where the white surface cuts through the
+//       ventricules, with cls values < 1.5 but with possibly phi<10.
+//       No matter what we do in this case, go inwards or outwards,
+//       we'll never get it really right. So go outwards by default.
+//       The old code would not assign a derivative to this node. CL.
+//
 
 private  Real   evaluate_laplacian_fit_deriv(
     Real         weight,
@@ -221,10 +276,10 @@ private  Real   evaluate_laplacian_fit_deriv(
     Real         parameter[],
     int          start_point,
     int          end_point,
+    int          n_neighbours[],
+    int          *neighbours[],
     Real         sampling,
     Real         deriv[])
-    //int          n_neighbours[],
-    //int          *neighbours[])
 {
     Real         value1, value2, volume_value;
     Real         dxyz[3];
@@ -235,9 +290,17 @@ private  Real   evaluate_laplacian_fit_deriv(
     int          n_neighs, n, ind, *neigh_ptr, neigh;
     Real         max_deriv = sqrt(to*to*3);
 
+    int          count_res = 0;
+    Real         phi_res = 0.0;
+    Real         phi_min = MAX( to, from );
+    Real         phi_max = MIN( to, from );
+
     if( weight > 0 ){
-      for_less( point, start_point, end_point )
-      {
+      if( sampling > 0 ) {
+        weight /= (Real)((sampling+1)*(sampling+1));
+      }
+      count_res = end_point - start_point;
+      for_less( point, start_point, end_point ) {
         p_index = IJ( point, 0, 3 );
 
         evaluate_volume_in_world( laplacian_map,
@@ -248,45 +311,119 @@ private  Real   evaluate_laplacian_fit_deriv(
                                   0.0, &value1,
                                   dxyz, dxyz+1, dxyz+2,
                                   NULL, NULL, NULL, NULL, NULL, NULL );
-        evaluate_volume_in_world( volume,
-                                parameter[p_index+0],
-                                parameter[p_index+1],
-                                parameter[p_index+2],
-                                0, FALSE,
-                                0.0, &volume_value,
-                                NULL, NULL, NULL,
-                                NULL, NULL, NULL, NULL, NULL, NULL );
 
-        factor = sqrt(dxyz[0]*dxyz[0] + dxyz[1]*dxyz[1] + dxyz[2]*dxyz[2]);
-        // if direction<0, inward. if direction>0, outward.
-        if( volume_value>threshold && deriv_factor == 0 )
-        {
-          /*factor = (factor>to) ? 0 : to-factor;
-          //deriv_factor *= ((Real)to-value1) / (to*2);
-          deriv[p_index+0] += (-dxyz[0]) * weight * factor * deriv_factor;
-          deriv[p_index+1] += (-dxyz[1]) * weight * factor * deriv_factor;
-          deriv[p_index+2] += (-dxyz[2]) * weight * factor * deriv_factor;*/
+        phi_res += ABS( to - value1 );
+        if( value1 < phi_min ) phi_min = value1;
+        if( value1 > phi_max ) phi_max = value1;
 
-          factor = (factor>5) ? 5 : factor;
-          deriv[p_index+0] += (-dxyz[0])*(exp(to-value1+deriv_factor)-1)*(5-factor)*weight;
-          deriv[p_index+1] += (-dxyz[1])*(exp(to-value1+deriv_factor)-1)*(5-factor)*weight;
-          deriv[p_index+2] += (-dxyz[2])*(exp(to-value1+deriv_factor)-1)*(5-factor)*weight;
+        factor = weight;
+        if( value1 == to ) {
+          factor = 0.0;       // do not move the point
+        } else if( value1 > to ) {          // go inwards
+          // f(phi) = phi - to;     (linear)
+          // df/dphi = 1
+          // factor *= 1.0;   // do nothing
+        } else {
+          if( deriv_factor == 0 ) {         // go outwards
+            // f(phi) = exp(to-phi)-1;
+            // df/dphi = -exp(to-phi)
+            factor *= -exp(to-value1);
+          } else if( deriv_factor > 0) {
+            // f(phi) = to - phi;
+            // df/dphi = -1
+            factor *= -deriv_factor;
+          }
         }
-        else if( volume_value>threshold && deriv_factor > 0)
-        {
-          factor = (factor>4) ? (max_deriv-factor)/(max_deriv-4) : 5-factor;
-          deriv[p_index+0] +=(-dxyz[0])*(factor)*weight*deriv_factor;
-          deriv[p_index+1] +=(-dxyz[1])*(factor)*weight*deriv_factor;
-          deriv[p_index+2] +=(-dxyz[2])*(factor)*weight*deriv_factor;
-        }
-        else if( value1 >= to )
-        {
-          factor = (factor>4) ? (max_deriv-factor)/(max_deriv-4) : 5-factor;
-          deriv[p_index+0] +=(dxyz[0])*(factor)*weight;
-          deriv[p_index+1] +=(dxyz[1])*(factor)*weight;
-          deriv[p_index+2] +=(dxyz[2])*(factor)*weight;
+        deriv[p_index+0] += dxyz[0]*factor;
+        deriv[p_index+1] += dxyz[1]*factor;
+        deriv[p_index+2] += dxyz[2]*factor;
+      }
+
+      // Do oversampling. This is useful, but slows down the code.
+
+      if( sampling > 0 ) {
+
+        int  n, neigh1, neigh2, p0, p1, p2, w1, w2;
+        Real dx0, dy0, dz0, dx1, dy1, dz1, nx, ny, nz, mag;
+        Real alpha1, alpha2, N0, N1, N2, xp, yp, zp;
+
+        for( point = start_point; point < end_point; point++ ) {
+
+          for_less( n, 0, n_neighbours[point] ) {
+            neigh1 = neighbours[point][n];
+            neigh2 = neighbours[point][(n+1)%n_neighbours[point]];
+
+            if( point > neigh1 || point > neigh2 ) continue;
+
+            p0 = 3*point;
+            p1 = 3*neigh1;
+            p2 = 3*neigh2;
+
+            for( w1 = 0; w1 <= sampling; w1++ ) {
+
+              alpha1 = (Real) w1 / (Real) (sampling+1);
+
+              for( w2 = 1; w2 <= sampling - w1 + 1; w2++ ) {
+                if( ( w1 == 0 && w2 == sampling + 1 ) ||
+                    ( w2 == sampling - w1 + 1 && neigh1 < neigh2 ) ) {
+                  continue;
+                }
+
+                alpha2 = (Real) w2 / (Real) (sampling - w1 +1);
+                N0 = (1.0 - alpha1) * (1.0 - alpha2);
+                N1 = alpha1;
+                N2 = (1.0 - alpha1) * alpha2;
+                xp = N0 * parameter[p0] + N1 * parameter[p1] + N2 * parameter[p2];
+                yp = N0 * parameter[p0+1] + N1 * parameter[p1+1] + N2 * parameter[p2+1];
+                zp = N0 * parameter[p0+2] + N1 * parameter[p1+2] + N2 * parameter[p2+2];
+
+                evaluate_volume_in_world( laplacian_map, xp, yp, zp,
+                                          1, FALSE, 0.0, &value1,
+                                          dxyz, dxyz+1, dxyz+2,
+                                          NULL, NULL, NULL, NULL, NULL, NULL );
+
+                count_res++;
+                phi_res += ABS( to - value1 );
+                if( value1 < phi_min ) phi_min = value1;
+                if( value1 > phi_max ) phi_max = value1;
+
+                factor = weight;
+
+                if( value1 == to ) {
+                  factor = 0.0;       // do not move the point
+                } else if( value1 > to ) {          // go inwards
+                  // f(phi) = phi - to;     (linear)
+                  // df/dphi = 1
+                  // factor *= 1.0;   // do nothing
+                } else {
+                  if( deriv_factor == 0 ) {         // go outwards
+                    // f(phi) = exp(to-phi)-1;
+                    // df/dphi = -exp(to-phi)
+                    factor *= -exp(to-value1);
+                  } else if( deriv_factor > 0) {
+                    // f(phi) = to - phi;
+                    // df/dphi = -1
+                    factor *= -deriv_factor;
+                  }
+                }
+
+                deriv[p0+0] += dxyz[0]*factor*N0;
+                deriv[p0+1] += dxyz[1]*factor*N0;
+                deriv[p0+2] += dxyz[2]*factor*N0;
+                deriv[p1+0] += dxyz[0]*factor*N1;
+                deriv[p1+1] += dxyz[1]*factor*N1;
+                deriv[p1+2] += dxyz[2]*factor*N1;
+                deriv[p2+0] += dxyz[0]*factor*N2;
+                deriv[p2+1] += dxyz[1]*factor*N2;
+                deriv[p2+2] += dxyz[2]*factor*N2;
+              }
+            }
+          }
         }
       }
+
+      printf( "phi_res(%d) = %g  min = %g  max = %g\n", (end_point-start_point),
+              phi_res/(float)(count_res), phi_min, phi_max );
     }
 }
 
@@ -1935,8 +2072,7 @@ private  Real   evaluate_stretch_fit(
     Real          max_stretch,
     Real          differential_offset,
     Real          differential_ratio,
-    int           start_point,
-    int           end_point,
+    int           n_points,
     Real          parameters[],
     Smallest_int  active_flags[],
     int           n_neighbours[],
@@ -1953,27 +2089,14 @@ private  Real   evaluate_stretch_fit(
 
     fit1 = 0.0;
     fit2 = 0.0;
+
+    // Starting edge
     ind = 0;
-    for_less( point, 0, start_point )
-    {
-        neigh_ptr = neighbours[point];
-        n_neighs = n_neighbours[point];
-
-        for_less( n, 0, n_neighs )
-        {
-            neigh = neigh_ptr[n];
-
-            if( !THIS_IS_UNIQUE_EDGE( point, neigh ) )
-                continue;
-
-            ++ind;
-        }
-    }
 
     if( active_flags == NULL &&
         (min_stretch >= max_stretch || max_stretch_weight <= 0.0) )
     {
-        for_less( point, start_point, end_point )
+        for_less( point, 0, n_points )
         {
             ind0 = IJ(point,0,3);
             x1 = parameters[ind0+0];
@@ -2016,7 +2139,7 @@ private  Real   evaluate_stretch_fit(
     {
         ln_start_weight = log( differential_ratio );
 
-        for_less( point, start_point, end_point )
+        for_less( point, 0, n_points )
         {
             ind0 = IJ(point,0,3);
             x1 = parameters[ind0+0];
@@ -2095,6 +2218,8 @@ private  void   evaluate_stretch_fit_deriv(
 
     if( stretch_weight < 0.0 )
         return;
+
+    // Starting edge
 
     ind = 0;
 
@@ -5329,6 +5454,9 @@ private  int   private_evaluate_fit(
                            deform->surfaces[surface].laplacian->deriv_factor,
                            deform->surfaces[surface].laplacian->from_value,
                            deform->surfaces[surface].laplacian->to_value,
+                           deform->surfaces[surface].surface.n_neighbours,
+                           deform->surfaces[surface].surface.neighbours,
+                           deform->surfaces[surface].laplacian->oversample,
                            this_parms,
                            0,
                            deform->surfaces[surface].surface.n_points);
@@ -5558,7 +5686,7 @@ private  int   private_evaluate_fit(
                                       stretch->max_stretch,
                                       stretch->differential_offset,
                                       stretch->differential_ratio,
-                                      0, stretch->n_points,
+                                      stretch->n_points,
                                       this_parms, this_active,
                                       stretch->n_neighbours,
                                       stretch->neighbours,
@@ -6085,10 +6213,10 @@ public  void   evaluate_fit_deriv(
                            this_parms,
                            0,
                            deform->surfaces[surface].surface.n_points,
+                           deform->surfaces[surface].surface.n_neighbours,
+                           deform->surfaces[surface].surface.neighbours,
                            deform->surfaces[surface].laplacian->oversample,
                            this_deriv);
-        //deform->surfaces[surface].stretch[i].n_neighbours,
-        //deform->surfaces[surface].stretch[i].neighbours);
       }
     }
     eval.laplacian_fit = compute_deriv_mag( n_parameters, derivative );

@@ -78,7 +78,7 @@ if ( !defined $output_prefix ) {
 #                       matter
 #---------------------------------------------------------------------------
 
-# Deforms from model file `white_matter_mask.obj' using new_fit_3d
+# Deforms from model file `white_matter_mask.obj' using surface_fit
 Spawn( "mask_cortical_white_matter $input_volume  $masking_surface  2.5");
 
 
@@ -104,7 +104,7 @@ Spawn("mask_volume    $masked_input $masked_input $masked_input 1 2.5 0");
 #                            white_surface_m_{320,1280,5120,20480,81920}.obj
 #---------------------------------------------------------------------------
 
-# Deforms from model file `white_model_320.obj' using new_fit_3d
+# Deforms from model file `white_model_320.obj' using surface_fit
 Spawn("extract_white_surface  $masked_input   ${output_prefix}_white  2.5");
 #Spawn("rm -f $masked_input");
 

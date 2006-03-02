@@ -1,3 +1,19 @@
+
+2006-03-01  Claude Lepage      <claude@bic.mni.mcgill.ca>
+        * surface_qc.pl: new file, for surface quality checks
+        * cortical_thickness.pl: new file, for easy calculation
+          of cortical thickness using tlink, tnear, tnormal,
+          tlaplace
+        * most scripts: allow 328K surfaces, add mincdefrag,
+          more iterations and use linear weights for gray
+          expansion, remove a white matter masking step that
+          was chopping the left occipital lobe, etc.
+        * evaluate_fit_3d.c (functions evaluate_laplacian_fit
+          and evaluate_laplacian_fit_deriv): add oversampling,
+          remove check on tissue type in derivative, clean-up
+          calculation of derivative, print residual to measure
+          convergence.
+
 2005-11-01  Andrew Janke  <a.janke@gmail.com>
 
 	* renamed to surface-extraction for release

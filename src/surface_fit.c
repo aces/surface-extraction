@@ -97,6 +97,7 @@ Usage:     %s  help not implemented yet \n\
 static  int   n_surfaces_read = 0;
 static  int  n_volumes_read = 0;
 static  STRING log_filename = "";
+static  int   n_recompute_intersect = 0;
 
 private FILE *open_file_to_write_info(char *);
 private int  write_file_info(FILE *, fit_eval_struct *);
@@ -2460,6 +2461,7 @@ private  void   get_line_lookup(
         for_less( i, 0, n_parameters )
             line_point[i] = parameters[i] + centre * line_dir[i];
 
+        n_recompute_intersect++;
         closest_dist = recompute_self_intersects( deform,
                                    line_lookup->point_grid_size,
                                    line_lookup->start_parameter,
@@ -2796,6 +2798,7 @@ private  Real   minimize_along_line(
     }
 
     n_init = n_evals;
+    n_recompute_intersect = 0;
 
     *changed = FALSE;
 
@@ -3012,8 +3015,9 @@ private  Real   minimize_along_line(
     FREE( test_parameters );
 
     if( getenv( "BRACKET_RATIO" ) != NULL )
-        print( "N evals: %d (%d)     %g   (%.17g %.17g)\n", n_evals, n_init, t1, t0, t2 );
-
+        print( "N evals: %d (%d) [%d]    %g   (%.17g %.17g)\n", 
+        n_evals, n_init, n_recompute_intersect, t1, t0, t2 );
+ 
 #ifdef DEBUG
     output_list( n_in_list, t_list, f_list );
 
