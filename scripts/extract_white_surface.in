@@ -22,7 +22,7 @@ use warnings "all";
 #    * improve support for restart and add refinement to 320K surface
 #
 
-require "xINCDIRx/deform_utils.pl";
+require "@prefix@/lib/@PACKAGE@/deform_utils.pl";
 use Getopt::Tabular;
 use MNI::Startup;
 use MNI::FileUtilities;

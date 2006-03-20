@@ -3,7 +3,12 @@ ACLOCAL_AMFLAGS = -I m4
 
 SUBDIRS = src
 
-bin_SCRIPTS = scripts/asp \
+pkglib_SCRIPTS = \
+   scripts/utils.pl \
+   scripts/deform_utils.pl
+
+bin_SCRIPTS = \
+   scripts/asp \
    scripts/calibrate_white \
    scripts/clasp \
    scripts/classify_correct \
@@ -13,7 +18,6 @@ bin_SCRIPTS = scripts/asp \
    scripts/make_asp_grid \
    scripts/mask_cortical_white_matter \
    scripts/surface_qc
-
 
 pkgdata_DATA = models/white_matter_mask.obj \
    models/white_model_320.obj \
@@ -34,13 +38,24 @@ pkgdata_DATA = models/white_matter_mask.obj \
    models/ellipsoid_327680.obj.gz \
    models/ellipsoid_8192.obj.gz
 
-
 EXTRA_DIST = \
    $(pkgdata_DATA) \
-   $(bin_SCRIPTS) \
    epm-header.in \
    m4/smr_WITH_BUILD_PATH.m4 \
    m4/mni_REQUIRE_LIB.m4 \
-   m4/mni_REQUIRE_MNILIBS.m4
+   m4/mni_REQUIRE_MNILIBS.m4 \
+   scripts/asp.in \
+   scripts/calibrate_white.in \
+   scripts/clasp.in \
+   scripts/classify_correct.in \
+   scripts/cortical_thickness.in \
+   scripts/expand_from_white.in \
+   scripts/extract_white_surface.in \
+   scripts/make_asp_grid.in \
+   scripts/mask_cortical_white_matter.in \
+   scripts/surface_qc.in \
+   scripts/utils.pl.in \
+   scripts/deform_utils.pl.in
 
+CLEANFILES = $(bin_SCRIPTS) $(pkglib_SCRIPTS)
 

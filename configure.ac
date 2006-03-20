@@ -26,6 +26,8 @@ AC_PATH_PROGS(PERL, [perl], no)
 
 # Finish up by writing output files.
 AC_OUTPUT(
+scripts/utils.pl
+scripts/deform_utils.pl
 scripts/asp
 scripts/calibrate_white
 scripts/clasp

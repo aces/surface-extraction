@@ -1,4 +1,10 @@
 
+2006-03-10  Claude Lepage      <claude@bic.mni.mcgill.ca>
+	* fixed Makefile.am to add scripts to distribution;
+	* fixed xINCDIRx and xPERLx inside scripts 
+	* fixed configure.ac to create scripts (replace .plib
+          by .pl.in to produce .pl)
+
 2006-03-01  Claude Lepage      <claude@bic.mni.mcgill.ca>
         * surface_qc.pl: new file, for surface quality checks
         * cortical_thickness.pl: new file, for easy calculation
