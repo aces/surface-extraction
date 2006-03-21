@@ -38,12 +38,19 @@ pkgdata_DATA = models/white_matter_mask.obj \
    models/ellipsoid_327680.obj.gz \
    models/ellipsoid_8192.obj.gz
 
+m4_files = m4/mni_REQUIRE_LIB.m4 \
+           m4/mni_REQUIRE_MNILIBS.m4 \
+           m4/mni_REQUIRE_OPENINVENTOR.m4 \
+           m4/mni_cxx_have_koenig_lookup.m4 \
+           m4/smr_CGAL_MAKEFILE.m4 \
+           m4/smr_OPTIONAL_LIB.m4 \
+           m4/smr_REQUIRED_LIB.m4 \
+           m4/smr_WITH_BUILD_PATH.m4
+
 EXTRA_DIST = \
    $(pkgdata_DATA) \
+   $(m4_files) \
    epm-header.in \
-   m4/smr_WITH_BUILD_PATH.m4 \
-   m4/mni_REQUIRE_LIB.m4 \
-   m4/mni_REQUIRE_MNILIBS.m4 \
    scripts/asp.in \
    scripts/calibrate_white.in \
    scripts/clasp.in \
