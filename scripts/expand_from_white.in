@@ -159,6 +159,7 @@ die "$usage\n" unless @ARGV >= 4;
     }
 
     #--- remove whatever suffix name may have
+    my $gray_dir = dirname($gray_surface);
     my $gray_prefix = `basename $gray_surface ".obj"`;
     chop( $gray_prefix );
     $gray_prefix = `basename $gray_prefix _320`;
@@ -173,8 +174,10 @@ die "$usage\n" unless @ARGV >= 4;
     chop( $gray_prefix );
     $gray_prefix = `basename $gray_prefix _327680`;
     chop( $gray_prefix );
+    $gray_prefix ="${gray_dir}/${gray_prefix}";
 
     #--- remove whatever suffix name may have
+    my $white_dir = dirname($white_surface);
     my $white_prefix = `basename $white_surface .obj`;
     chop( $white_prefix );
     $white_prefix = `basename $white_prefix _320`;
@@ -189,6 +192,7 @@ die "$usage\n" unless @ARGV >= 4;
     chop( $white_prefix );
     $white_prefix = `basename $white_prefix _327680`;
     chop( $white_prefix );
+    $white_prefix ="${white_dir}/${white_prefix}";
 
     my $n_polygons = `print_n_polygons $white_surface`;
     chop( $n_polygons );

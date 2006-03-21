@@ -178,6 +178,7 @@ die "$usage\n" unless @ARGV >= 3;
     }
 
     #--- remove whatever suffix name may have
+    my $white_dir = dirname($output_file2);
     my $white_prefix = `basename $output_file2 .obj`;
     chop( $white_prefix );
     $white_prefix = `basename $white_prefix _320`;
@@ -192,6 +193,7 @@ die "$usage\n" unless @ARGV >= 3;
     chop( $white_prefix );
     $white_prefix = `basename $white_prefix _327680`;
     chop( $white_prefix );
+    $white_prefix ="${white_dir}/${white_prefix}";
 
     if( !defined( $initial_model ) ) {
       my $model_data_dir = MNI::DataDir::dir('CLASP');
