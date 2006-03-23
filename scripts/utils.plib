@@ -1,0 +1,243 @@
+#!xPERLx -w
+
+sub print_out_script_info
+{
+    local( $d ) = `date`;
+    print( "Execution started at  $d" );
+    print( "Command executed:  $0 @ARGV\n" );
+    print( "\n" );
+
+    if( -e $0 )
+    {
+        $out = `cat $0`;
+        print( "\n" );
+        print( "----------------------------------\n" );
+        print( "\n" );
+        print( "$out" );
+        print( "\n" );
+        print( "----------------------------------\n" );
+        print( "\n" );
+    }
+}
+
+sub system_call
+{
+    local( $command, $valid_ret ) = @_;
+    local( $ret );
+
+    system( "echo $command" );
+    $ret = system( $command );
+    if( $ret != 0 && (!defined($valid_ret) || $ret != $valid_ret * 256) )
+    {
+        @separate = split( /\s+/, $command );
+        $com = $separate[0];
+        if( $ret == 2 )
+            { &clean_up_and_die( "System command <$com> was interrupted.\n" ); }
+        elsif( $ret == 65280 )
+            { &clean_up_and_die( "System command <$com> was not found.\n" ); }
+        else
+            { &clean_up_and_die( "System command <$com> failed with return value <$ret>.\n" ); }
+    }
+    $ret / 256;
+}
+
+sub  get_filename_base
+{
+    local( $file ) = @_;
+    $file =~ s/.*\///;
+    $file =~ s/\..*//;
+    $file;
+}
+
+sub  get_prefix
+{
+    local( $file ) = @_;
+    $file =~ s/\.[^\.]*$//;   
+    $file;
+}
+
+sub  copy
+{
+    local( $src, $dest ) = @_;
+    &system_call( "cp $src $dest" );
+}
+
+sub  get_surface_model
+{
+    local( $file, $tess ) = @_;
+
+    $tmp_file = "/tmp/tmp_david_surface_model_$$.obj";
+
+    &system_call( "subdivide_polygons $file $tmp_file $tess" );
+
+    $tmp_file;
+}
+
+@all_tmp_files = ();
+
+sub  register_tmp_files
+{
+    if( ! @all_tmp_files )
+    {
+        $SIG{INT} = 'catch_interrupt_and_delete_tmp';
+        $SIG{QUIT} = 'catch_interrupt_and_delete_tmp';
+        $SIG{ABRT} = 'catch_interrupt_and_delete_tmp';
+        $SIG{KILL} = 'catch_interrupt_and_delete_tmp';
+        $SIG{SEGV} = 'catch_interrupt_and_delete_tmp';
+        $SIG{STOP} = 'catch_interrupt_and_delete_tmp';
+        $SIG{TERM} = 'catch_interrupt_and_delete_tmp';
+    }
+
+    @all_tmp_files = ( @all_tmp_files, @_ );
+}
+
+sub  unregister_tmp_files
+{
+    local( $index, $arg );
+
+    foreach $arg ( @_ )
+    {
+        for( $index = 0;  $index < @all_tmp_files;  ++$index )
+        {
+            if( $all_tmp_files[$index] eq $arg )
+            {
+                last;
+            }
+        }
+
+        if( $index >= @all_tmp_files )
+        {
+            print( "Error in unregister_tmp_files( $arg )\n" );
+        }
+        else
+        {
+            @all_tmp_files = ( @all_tmp_files[1..$index-1],
+                               @all_tmp_files[$index+1..$#all_tmp_files] );
+        }
+    }
+}
+
+sub  clean_up
+{
+    local( $file );
+
+    foreach $file ( @all_tmp_files )
+    {
+        if( -e "$file" )
+        {
+            unlink( $file );
+        }
+    }
+}
+
+sub  clean_up_and_die
+{
+    &clean_up();
+    die( @_ , "\n" );
+}
+
+sub catch_interrupt_and_delete_tmp
+{
+    local( $signame ) = shift;
+
+    &clean_up_and_die( "Received SIG$signame\n" );
+}
+
+sub get_directory
+{
+    local( $filename ) = @_;
+    local( $dir );
+
+    $dir = $filename;
+
+    $dir =~ s/[^\/]*$//;
+
+    if( ! $dir )  { $dir = "."; }
+
+    if( substr( $dir, -1, 1 ) ne "/" )
+        { $dir = $dir . "/"; }
+
+    $dir;
+}
+
+sub get_filename_no_dirs
+{
+    local( $filename ) = @_;
+    local( $no_dirs );
+
+    $no_dirs = $filename;
+
+    $no_dirs =~ s/.*\///;
+
+    if( ! $no_dirs )  { $no_dirs = "."; }
+
+    $no_dirs;
+}
+
+sub  cubic_interpolate
+{
+    local( $u, $v0, $v1, $v2, $v3 ) = @_;
+    local( $result, $u2, $u3, $w0, $w1, $w2, $w3 );
+
+    $u2 = $u * $u;
+    $u3 = $u * $u2;
+
+    $w0 = 0 - 0.5 * $u + 1.0 * $u2 - 0.5 * $u3;
+    $w1 = 1            - 2.5 * $u2 + 1.5 * $u3;
+    $w2 = 0 + 0.5 * $u + 2.0 * $u2 - 1.5 * $u3;
+    $w3 = 0 +           -0.5 * $u2 + 0.5 * $u3;
+
+    $result = $w0 * $v0 + $w1 * $v1 + $w2 * $v2 + $w3 * $v3;
+
+    $result;
+}
+
+sub  evaluate_cubic_spline
+{
+    local( $pos, @cvs ) = @_;
+    local( $n, $knot, $v0, $v1, $v2, $v3, $result );
+
+    $n = @cvs;
+    $knot = 0;
+    while( $knot < $n - 2 && $knot + 1 <= $pos )
+        { ++$knot; }
+
+    if( $knot == 0 )
+        { $v0 = $cvs[0]; }
+    else
+        { $v0 = $cvs[$knot-1]; }
+
+    $v1 = $cvs[$knot];
+    $v2 = $cvs[$knot+1];
+
+    if( $knot == $n-2 )
+        { $v3 = $cvs[$knot+1]; }
+    else
+        { $v3 = $cvs[$knot+2]; }
+
+    $result = &cubic_interpolate( $pos - $knot, $v0, $v1, $v2, $v3 );
+
+    $result;
+}
+
+sub  evaluate_closed_cubic_spline
+{
+    local( $pos, @cvs ) = @_;
+    local( $n, $knot, $v0, $v1, $v2, $v3, $result );
+
+    $n = @cvs;
+    $knot = 0;
+    while( $knot < $n - 1 && $knot + 1 <= $pos )
+        { ++$knot; }
+
+    $v0 = $cvs[($knot-1+$n) % $n];
+    $v1 = $cvs[($knot+0) % $n];
+    $v2 = $cvs[($knot_1) % $n];
+    $v3 = $cvs[($knot_2) % $n];
+
+    $result = &cubic_interpolate( $pos - $knot, $v0, $v1, $v2, $v3 );
+
+    $result;
+}
+
+1;
