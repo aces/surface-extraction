@@ -9,6 +9,7 @@ use MNI::FileUtilities;
 use MNI::Spawn;
 use MNI::DataDir;
 use MNI::FileUtilities qw(check_output_dirs);
+use File::Basename;
 
 MNI::Spawn::RegisterPrograms
   ( [qw/  rm

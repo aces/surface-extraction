@@ -29,6 +29,7 @@ use MNI::FileUtilities;
 use MNI::Spawn;
 use MNI::DataDir;
 use MNI::FileUtilities qw(check_output_dirs);
+use File::Basename;
 
 MNI::Spawn::RegisterPrograms
   ( [qw/  rm
@@ -196,7 +197,7 @@ die "$usage\n" unless @ARGV >= 3;
     $white_prefix ="${white_dir}/${white_prefix}";
 
     if( !defined( $initial_model ) ) {
-      my $model_data_dir = MNI::DataDir::dir('CLASP');
+      my $model_data_dir = MNI::DataDir::dir('surface-extraction');
       MNI::DataDir::check_data($model_data_dir, [qw(white_model_320.obj)]);
       $initial_model = "${model_data_dir}/white_model_320.obj";
     }
