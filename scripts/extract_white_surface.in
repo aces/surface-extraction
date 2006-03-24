@@ -179,22 +179,11 @@ die "$usage\n" unless @ARGV >= 3;
     }
 
     #--- remove whatever suffix name may have
-    my $white_dir = dirname($output_file2);
-    my $white_prefix = `basename $output_file2 .obj`;
-    chop( $white_prefix );
-    $white_prefix = `basename $white_prefix _320`;
-    chop( $white_prefix );
-    $white_prefix = `basename $white_prefix _1280`;
-    chop( $white_prefix );
-    $white_prefix = `basename $white_prefix _5120`;
-    chop( $white_prefix );
-    $white_prefix = `basename $white_prefix _20480`;
-    chop( $white_prefix );
-    $white_prefix = `basename $white_prefix _81920`;
-    chop( $white_prefix );
-    $white_prefix = `basename $white_prefix _327680`;
-    chop( $white_prefix );
-    $white_prefix ="${white_dir}/${white_prefix}";
+
+    my @objsuffix = ( ".obj", "_320", "_1280", "_5120", "_20480", "_81920", "_327680" );
+    my $white_dir = dirname( $output_file2 );
+    my $white_prefix = basename( $output_file2, @objsuffix ) ;
+    $white_prefix = "${white_dir}/${white_prefix}";
 
     if( !defined( $initial_model ) ) {
       my $model_data_dir = MNI::DataDir::dir('surface-extraction');
