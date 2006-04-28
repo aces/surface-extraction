@@ -1,6 +1,8 @@
 #! @PERL@
 
-require "@prefix@/lib/@PACKAGE@/utils.pl";
+use FindBin;
+
+require "$FindBin::Bin/utils.pl";
 
 sub  get_self_intersect( $$$$ )
 {

@@ -1,0 +1,76 @@
+#! @PERL@
+
+# Part of the ASP cortex extraction suite. For a description of the
+# algorithms used here see MacDonald et. al. "Automated 3-D Extraction
+# of Inner and Outer Surfaces of Cerebral Cortex from MRI" in
+# NeuroImage, 12, 340-356, 2000
+
+# Run defrag on the pve tissue intensities in the strictly dilated region 
+# of the cortical mask. This is to remove hanging islands of non-cortical
+# tissue.
+
+# Author: Claude Lepage
+# Last Modified: 
+
+use warnings "all";
+
+use FindBin;
+require "$FindBin::Bin/../lib/@PACKAGE@/deform_utils.pl";
+
+use MNI::Startup;
+use MNI::Spawn;
+use MNI::DataDir;
+use MNI::FileUtilities qw(check_output_dirs);
+
+MNI::Spawn::RegisterPrograms
+  ( [ qw/ 
+      minccalc
+      mincdefrag
+      mv/ ] )
+  or exit 1;
+
+    my $cls_correct = shift;
+    my $mask = shift;
+    my $maskD = shift;
+    my $pve_wm = shift;
+    my $pve_gm = shift;
+    my $pve_csf = shift;
+
+    if( ! defined($pve_csf) ) {
+      die "Usage: $0  cls_correct mask maskD pve_wm pve_gm pve_csf\n";
+    }
+
+    # create necessary tmp directory
+    check_output_dirs($TmpDir);
+
+    # Eliminate islands of white and gray voxels.
+    my $cls_frag = "${TmpDir}/cls_frag.mnc";
+    Spawn(["mincdefrag", $cls_correct, $cls_frag, "2", "6"] );
+    Spawn(["mincdefrag", $cls_frag, $cls_frag, "3", "6"] );
+ 
+    # Identify voxels to reset as csf in dilated region (maskD-mask).
+    Spawn(["minccalc", "-expression",
+           'if(A[3]>A[2] && A[0]>1.5 && A[1]<1.5){out=1;}else{out=0;}',
+           "$cls_correct", $cls_frag, $mask, $maskD,
+           "${TmpDir}/reset_mask.mnc"] );
+  
+    Spawn(["minccalc", "-expression", 'if(A[1]>0.5){out=0.0;}else{out=A[0];}',
+          $cls_correct, "${TmpDir}/reset_mask.mnc", "${TmpDir}/reset_cls.mnc"] );
+    Spawn(["mv", "-f", "${TmpDir}/reset_cls.mnc", $cls_correct]);
+  
+    # Remove white voxels.
+    Spawn(["minccalc", "-expression", 'if(A[1]>0.5){out=0.0;}else{out=A[0];}',
+          $pve_wm, "${TmpDir}/reset_mask.mnc", "${TmpDir}/reset_wm.mnc"] );
+    Spawn(["mv", "-f", "${TmpDir}/reset_wm.mnc", $pve_wm]);
+  
+    # Remove gray voxels.
+    Spawn(["minccalc", "-expression", 'if(A[1]>0.5){out=0.0;}else{out=A[0];}',
+          $pve_gm, "${TmpDir}/reset_mask.mnc", "${TmpDir}/reset_gm.mnc"] );
+    Spawn(["mv", "-f", "${TmpDir}/reset_gm.mnc", $pve_gm]);
+ 
+    # Removed white/gray voxels become csf.
+    Spawn(["minccalc", "-expression", 'if(A[1]>0.5){out=1.0;}else{out=A[0];}',
+          $pve_csf, "${TmpDir}/reset_mask.mnc", "${TmpDir}/reset_csf.mnc"] );
+    Spawn(["mv", "-f", "${TmpDir}/reset_csf.mnc", $pve_csf]);
+  
+    clean_up();

@@ -16,7 +16,10 @@
 #    * new approach: no more surface_fit mask, used pve info with mincdefrag
 
 use warnings "all";
-require "@prefix@/lib/@PACKAGE@/deform_utils.pl";
+
+use FindBin;
+require "$FindBin::Bin/../lib/@PACKAGE@/deform_utils.pl";
+
 use MNI::Startup;
 use MNI::DataDir;
 use MNI::FileUtilities qw(check_output_dirs);

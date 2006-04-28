@@ -2,7 +2,11 @@
 
 use strict;
 use warnings "all";
-require "@prefix@/lib/@PACKAGE@/deform_utils.pl";
+
+use FindBin;
+
+require "$FindBin::Bin/../lib/@PACKAGE@/deform_utils.pl";
+
 use Getopt::Tabular;
 use MNI::Startup;
 use MNI::FileUtilities;
