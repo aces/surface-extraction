@@ -13,13 +13,6 @@ use MNI::Startup;
 use MNI::FileUtilities;
 use MNI::Spawn;
 
-# Several of the sub-programs will look for static files using
-# MNI::DataDir.  Set the directory here if the user does not have
-# their own.
-#
-$ENV{MNI_DATAPATH} = 'xDATADIRx'
-  unless defined $ENV{MNI_DATAPATH};
-
 MNI::Spawn::RegisterPrograms
   ( [qw/  rm
      mv

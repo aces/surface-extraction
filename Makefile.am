@@ -17,6 +17,7 @@ bin_SCRIPTS = \
    scripts/extract_white_surface \
    scripts/make_asp_grid \
    scripts/mask_cortical_white_matter \
+   scripts/pve_defrag \
    scripts/surface_qc
 
 pkgdata_DATA = models/white_matter_mask.obj \
@@ -60,6 +61,7 @@ EXTRA_DIST = \
    scripts/extract_white_surface.in \
    scripts/make_asp_grid.in \
    scripts/mask_cortical_white_matter.in \
+   scripts/pve_defrag.in \
    scripts/surface_qc.in \
    scripts/utils.pl.in \
    scripts/deform_utils.pl.in

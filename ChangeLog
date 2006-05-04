@@ -1,3 +1,5 @@
+2006-05-04  Claude Lepage      <claude@bic.mni.mcgill.ca>
+	* clean-up perl scripts for MNI::DataDir
 
 2006-03-10  Claude Lepage      <claude@bic.mni.mcgill.ca>
 	* fixed Makefile.am to add scripts to distribution;

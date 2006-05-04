@@ -10,11 +10,7 @@ use Getopt::Tabular;
 use MNI::Startup qw(cputimes);
 use MNI::PathUtilities qw(split_path);
 use MNI::FileUtilities qw(check_output_dirs check_output_path);
-use MNI::DataDir;
 use MNI::Spawn;
-
-$ENV{MNI_DATAPATH} = 'xDATADIRx'
-  unless defined $ENV{MNI_DATAPATH};
 
 MNI::Spawn::RegisterPrograms
   ( [qw/  rm

@@ -21,7 +21,6 @@ use FindBin;
 require "$FindBin::Bin/../lib/@PACKAGE@/deform_utils.pl";
 
 use MNI::Startup;
-use MNI::DataDir;
 use MNI::FileUtilities qw(check_output_dirs);
 
     $pve_prefix = shift;

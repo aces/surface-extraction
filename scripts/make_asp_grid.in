@@ -13,7 +13,6 @@ use warnings "all";
 use MNI::Startup;
 use Getopt::Tabular;
 use MNI::Spawn;
-use MNI::DataDir;
 use MNI::FileUtilities qw(check_output_dirs);
 
 # ===== Global Variables =====

@@ -189,7 +189,8 @@ die "$usage\n" unless @ARGV >= 3;
     $white_prefix = "${white_dir}/${white_prefix}";
 
     if( !defined( $initial_model ) ) {
-      my $model_data_dir = MNI::DataDir::dir('surface-extraction');
+      my $model_data_dir = "$FindBin::Bin/../share/surface-extraction/";
+      #my $model_data_dir = MNI::DataDir::dir('surface-extraction');
       MNI::DataDir::check_data($model_data_dir, [qw(white_model_320.obj)]);
       $initial_model = "${model_data_dir}/white_model_320.obj";
     }

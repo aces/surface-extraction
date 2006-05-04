@@ -1,3 +1,7 @@
+New in Release 2.2.1
+--------------------
+        * clean-up perl scripts for MNI::DataDir
+
 New in Release 2.2
 ------------------
 	* first public release

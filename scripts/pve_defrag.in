@@ -19,7 +19,6 @@ require "$FindBin::Bin/../lib/@PACKAGE@/deform_utils.pl";
 
 use MNI::Startup;
 use MNI::Spawn;
-use MNI::DataDir;
 use MNI::FileUtilities qw(check_output_dirs);
 
 MNI::Spawn::RegisterPrograms
