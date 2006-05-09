@@ -24,6 +24,7 @@ use warnings "all";
 
 use FindBin;
 
+require "$FindBin::Bin/../lib/@PACKAGE@/utils.pl";
 require "$FindBin::Bin/../lib/@PACKAGE@/deform_utils.pl";
 
 use Getopt::Tabular;

@@ -1,9 +1,5 @@
 #! @PERL@
 
-use FindBin;
-
-require "$FindBin::Bin/utils.pl";
-
 sub  get_self_intersect( $$$$ )
 {
     my( $self_weight, $n_selfs, $self_dist, $self_dist2 ) = @_;

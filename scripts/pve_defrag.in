@@ -15,7 +15,7 @@
 use warnings "all";
 
 use FindBin;
-require "$FindBin::Bin/../lib/@PACKAGE@/deform_utils.pl";
+require "$FindBin::Bin/../lib/@PACKAGE@/utils.pl";
 
 use MNI::Startup;
 use MNI::Spawn;
