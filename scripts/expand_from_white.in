@@ -190,10 +190,8 @@ die "$usage\n" unless @ARGV >= 4;
     my $stop_iters = 10;
 
     my $n_per = 1;
-    my $tolerance = 1.0e-2;
-    $tolerance = 1.0e-10;
-    my $f_tolerance = 1.0e-2;
-    $f_tolerance = 1.0e-10;
+    my $tolerance = 1.0e-3;
+    my $f_tolerance = 1.0e-6;
 
     my $iters_scale = 1.0;
     my $break_scale = 1.0;

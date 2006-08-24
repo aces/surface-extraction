@@ -1,3 +1,7 @@
+
+2006-08-24  Claude Lepage      <claude@bic.mni.mcgill.ca>
+        * major speed optimizations, clean-up, code documentation
+
 2006-05-04  Claude Lepage      <claude@bic.mni.mcgill.ca>
 	* clean-up perl scripts for MNI::DataDir
 

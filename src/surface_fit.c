@@ -1,10 +1,10 @@
+// #include  <sys/time.h>
 #include  <fit_3d.h>
 #include  <conjugate.h>
 
-#define  DEFAULT_TOLERANCE           1.0e-4
+#define  GOLDEN_RATIO   0.618034
+#define  DEFAULT_TOLERANCE           1.0e-3
 #define  DEFAULT_FUNCTION_TOLERANCE  1.0e-4
-#define  INITIAL_STEP           1.0e-4
-#define  SEARCH_RATIO           5.0
 
 private  Status  input_surface(
     STRING    filename,
@@ -12,9 +12,11 @@ private  Status  input_surface(
     int       *n_points,
     Point     *points[],
     int       *n_polygons,
+    int       *polygons[],
     int       *n_neighbours[],
     int       **neighbours[] );
 
+// not used anywhere.
 private  Status  input_surface_with_normals(
     STRING    filename,
     BOOLEAN   model_flag,
@@ -97,7 +99,6 @@ Usage:     %s  help not implemented yet \n\
 static  int   n_surfaces_read = 0;
 static  int  n_volumes_read = 0;
 static  STRING log_filename = "";
-static  int   n_recompute_intersect = 0;
 
 private FILE *open_file_to_write_info(char *);
 private int  write_file_info(FILE *, fit_eval_struct *);
@@ -273,7 +274,7 @@ int  main(
           }
             if( input_surface( input_filename, FALSE,
                                &surface.n_points, &surface.points,
-                               &surface.n_polygons,
+                               &surface.n_polygons, &surface.triangles,
                                &surface.n_neighbours, &surface.neighbours )
                                != OK )
             {
@@ -308,7 +309,7 @@ int  main(
             {
               if( input_surface( surf_surf_filename, FALSE,
                                &surface.n_points, &surface.points,
-                               &surface.n_polygons,
+                               &surface.n_polygons, &surface.triangles,
                                &surface.n_neighbours, &surface.neighbours )
                   != OK )
               {
@@ -332,9 +333,7 @@ int  main(
               ADD_ELEMENT_TO_ARRAY( deform.surfaces, deform.n_surfaces,
                                     surf, 1);
             }
-        }
-	else if( equal_strings( arg, "-ban_wm" ) )
-	{
+        } else if( equal_strings( arg, "-ban_wm" ) ) {
 	  if( !get_string_argument( NULL, &wm_obj_filename ) ||
           !get_string_argument( NULL, &wm_masked_filename ) ||
 	      !get_real_argument( 0.0, &intersect_wm.weight) )
@@ -473,8 +472,7 @@ int  main(
             }
 
             if( lookup_volume( volume_filename, &bound.volume,
-                               &bound.voxel_lookup ) != OK )
-            {
+                               &bound.voxel_lookup ) != OK ) {
               return( 1 );
             }
 
@@ -682,21 +680,15 @@ int  main(
             stretch.differential_offset = stretch_differential_offset;
             stretch.differential_ratio = stretch_differential_ratio;
 
-            if( stretch_factor_name[0] == '+' )
-            {
-                if( sscanf( &stretch_factor_name[1], "%lf", &stretch_factor )
-                    != 1 )
-                {
+            if( stretch_factor_name[0] == '+' ) {
+                if( sscanf( &stretch_factor_name[1], "%lf", &stretch_factor ) != 1 ) {
                     print_error( "Error in -stretch arguments.\n" );
                     usage( argv[0] );
                     return( 1 );
                 }
                 add_to_flag = TRUE;
-            }
-            else
-            {
-                if( sscanf( stretch_factor_name, "%lf", &stretch_factor ) != 1)
-                {
+            } else {
+                if( sscanf( stretch_factor_name, "%lf", &stretch_factor ) != 1) {
                     print_error( "Error in -stretch arguments.\n" );
                     usage( argv[0] );
                     return( 1 );
@@ -722,33 +714,31 @@ int  main(
 
 
             if( input_surface( model_filename, TRUE,
-                               &stretch.n_points, &points, NULL,
+                               &stretch.n_points, &points, NULL, NULL,
                                &stretch.n_neighbours, &stretch.neighbours )
-                               != OK )
-            {
+                               != OK ) {
                 return( 1 );
             }
 
             if( stretch.n_points >
-                deform.surfaces[deform.n_surfaces-1].surface.n_points )
-            {
-              printf("stretch model=%d, surface=%d\n",stretch.n_points, 
-                     deform.surfaces[deform.n_surfaces-1].surface.n_points);
+                deform.surfaces[deform.n_surfaces-1].surface.n_points ) {
                 print_error( "Stretch model has more points than surface.\n" );
                 return( 1 );
             }
 
+            /* Count number of edges in stretch model. */
+
+            stretch.n_edges = count_edges( stretch.n_points, stretch.n_neighbours,
+                                           stretch.neighbours );
+
             /*--- check for special case, where we want to assign a scale
                   automatically */
 
-            if( stretch_factor < 0.0 )
-            {
+            if( stretch_factor < 0.0 ) {
                 sum_model_len = 0.0;
                 sum_surface_len = 0.0;
-                for_less( p, 0, stretch.n_points )
-                {
-                    for_less( n, 0, stretch.n_neighbours[p] )
-                    {
+                for_less( p, 0, stretch.n_points ) {
+                    for_less( n, 0, stretch.n_neighbours[p] ) {
                         neigh = stretch.neighbours[p][n];
                         sum_model_len += distance_between_points( &points[p],
                                                       &points[neigh] );
@@ -772,45 +762,34 @@ int  main(
                                                           points,
                                                           stretch_factor,
                                                           use_equal_lengths );
-
-            if( add_to_flag )
-            {
+            if( add_to_flag ) {
                 n_stretch = deform.surfaces[deform.n_surfaces-1].n_stretch;
                 if( deform.surfaces[deform.n_surfaces-1].n_stretch == 0 ||
                     stretch.n_points !=
                     deform.surfaces[deform.n_surfaces-1].stretch[n_stretch-1].
-                         n_points )
-                {
+                         n_points ) {
                     print_error( "Error in stretch argument.\n" );
                     return( 1 );
                 }
 
-                n_edges = count_edges( stretch.n_points, stretch.n_neighbours,
-                                       stretch.neighbours );
-                for_less( ind, 0, n_edges )
-                {
+                for_less( ind, 0, stretch.n_edges ) {
                     deform.surfaces[deform.n_surfaces-1].stretch[n_stretch-1].
                          model_lengths[ind] += stretch.model_lengths[ind];
                 }
 
                 FREE( stretch.model_lengths );
-            }
-            else
-            {
+            } else {
                 ADD_ELEMENT_TO_ARRAY(
                       deform.surfaces[0/*deform.n_surfaces-1*/].stretch,
                       deform.surfaces[0/*deform.n_surfaces-1*/].n_stretch, stretch, 1);
             }
-        }
-        else if( equal_strings( arg, "-curvature" ) )
-        {
+        } else if( equal_strings( arg, "-curvature" ) ) {
             if( !get_real_argument( 0.0, &curvature.curvature_weight ) ||
                 !get_string_argument( NULL, &model_filename ) ||
                 !get_string_argument( NULL, &curvature_factor_name ) ||
                 !get_real_argument( 0.0, &factor ) ||
                 !get_real_argument( 0.0, &curvature.min_curvature ) ||
-                !get_real_argument( 0.0, &curvature.max_curvature ) )
-            {
+                !get_real_argument( 0.0, &curvature.max_curvature ) ) {
                 print_error( "Error in -curvature arguments.\n" );
                 usage( argv[0] );
                 return( 1 );
@@ -819,22 +798,17 @@ int  main(
             if( curvature.curvature_weight <= 0.0 && factor <= 0.0 )
                 continue;
 
-            if( curvature_factor_name[0] == '+' )
-            {
+            if( curvature_factor_name[0] == '+' ) {
                 if( sscanf( &curvature_factor_name[1], "%lf",
-                             &curvature_factor ) != 1 )
-                {
+                             &curvature_factor ) != 1 ) {
                     print_error( "Error in -curvature arguments.\n" );
                     usage( argv[0] );
                     return( 1 );
                 }
                 add_to_flag = TRUE;
-            }
-            else
-            {
+            } else {
                 if( sscanf( curvature_factor_name, "%lf", &curvature_factor )
-                                                != 1 )
-                {
+                                                != 1 ) {
                     print_error( "Error in -curvature arguments.\n" );
                     usage( argv[0] );
                     return( 1 );
@@ -851,7 +825,7 @@ int  main(
                 curvature.max_curvature_weight = factor;
 
             if( input_surface( model_filename, TRUE,
-                               &curvature.n_points, &points, NULL,
+                               &curvature.n_points, &points, NULL, NULL,
                                &curvature.n_neighbours, &curvature.neighbours )
                                != OK )
             {
@@ -939,7 +913,7 @@ int  main(
                 bend.max_bend_weight = factor;
 
             if( input_surface( model_filename, TRUE,
-                               &bend.n_points, &points, NULL,
+                               &bend.n_points, &points, NULL, NULL,
                                &bend.n_neighbours, &bend.neighbours )
                                != OK )
             {
@@ -1345,15 +1319,14 @@ int  main(
                 return( 1 );
             }
 
-            if( deform.surfaces[0/*deform.n_surfaces-1*/].n_self_intersects == 0 )
-            {
+            if( deform.surfaces[0/*deform.n_surfaces-1*/].n_self_intersects == 0 ) {
               ALLOC( deform.surfaces[0/*deform.n_surfaces-1*/].self_intersects, 1);
-                deform.surfaces[0/*deform.n_surfaces-1*/].n_self_intersects = 1;
+              deform.surfaces[0/*deform.n_surfaces-1*/].n_self_intersects = 1;
 
-                deform.surfaces[0/*deform.n_surfaces-1*/].self_intersects[0].
-                                     n_weights = 0;
-                deform.surfaces[0/*deform.n_surfaces-1*/].self_intersects[0].
-                                     use_tri_tri_dist = use_tri_tri_dist;
+              deform.surfaces[0/*deform.n_surfaces-1*/].self_intersects[0].
+                                   n_weights = 0;
+              deform.surfaces[0/*deform.n_surfaces-1*/].self_intersects[0].
+                                   use_tri_tri_dist = use_tri_tri_dist;
             }
 
             self = &deform.surfaces[0/*deform.n_surfaces-1*/].self_intersects[0];
@@ -1443,6 +1416,11 @@ int  main(
                 usage( argv[0] );
                 return( 1 );
             }
+            if( tolerance <= 0.0 ) {
+                tolerance = DEFAULT_TOLERANCE;
+                print_error( "Warning: tol < 0.0 reset to default value %f.\n",
+                             tolerance );
+            }
         }
         else if( equal_strings( arg, "-deriv_smoothing" ) )
         {
@@ -1461,6 +1439,11 @@ int  main(
                 print_error( "Error in -ftol arguments.\n" );
                 usage( argv[0] );
                 return( 1 );
+            }
+            if( function_tolerance <= 0.0 ) {
+                function_tolerance = DEFAULT_FUNCTION_TOLERANCE;
+                print_error( "Warning: ftol < 0.0 reset to default value %f.\n",
+                             function_tolerance );
             }
         }
         else if( equal_strings( arg, "-max_step" ) )
@@ -1552,6 +1535,21 @@ int  main(
             usage( argv[0] );
             return( 1 );
         }
+    }
+
+    // Check if we want to override the number of derivatives
+    // smoothing steps.
+
+    char * sg;
+    if( sg = getenv( "DERIV_SMOOTH" ) ) {
+      if( strlen( sg ) > 0 ) {
+        int  n_deriv_iters;
+        Real fraction;
+        if( sscanf( sg, "%d %lf", &n_deriv_iters, &fraction ) == 2 ) {
+          n_deriv_smoothing_steps = n_deriv_iters;
+          deriv_smoothing = fraction;
+        }
+      }
     }
 
     delete_surface_lookup_model_points();
@@ -1809,6 +1807,7 @@ static  struct    {
   // Add one line for normals
                       Vector  *normals;
                       int     n_polygons;
+                      int     *polygons;
                       int     *n_neighbours;
                       int     **neighbours;
                       BOOLEAN model_flag;
@@ -1820,6 +1819,7 @@ private  Status  input_surface(
     int       *n_points,
     Point     *points[],
     int       *n_polygons,
+    int       *polygons[],
     int       *n_neighbours[],
     int       **neighbours[] )
 {
@@ -1860,11 +1860,13 @@ private  Status  input_surface(
         surface_lookup[n_surfaces_read].n_points = surface->n_points;
         surface_lookup[n_surfaces_read].points = surface->points;
         surface_lookup[n_surfaces_read].n_polygons = surface->n_items;
+        surface_lookup[n_surfaces_read].polygons = surface->indices;
         surface_lookup[n_surfaces_read].model_flag = model_flag;
         surface_lookup[n_surfaces_read].n_neighbours = *n_neighbours;
         surface_lookup[n_surfaces_read].neighbours = *neighbours;
 
         ALLOC( surface->points, 1 );
+        ALLOC( surface->indices, 1 );
         delete_object_list( n_objects, object_list );
         ++n_surfaces_read;
     }
@@ -1880,12 +1882,16 @@ private  Status  input_surface(
     if( n_polygons != NULL )
         *n_polygons = surface_lookup[i].n_polygons;
 
+    if( polygons != NULL )
+        *polygons = surface_lookup[i].polygons;
+
     *n_neighbours = surface_lookup[i].n_neighbours;
     *neighbours = surface_lookup[i].neighbours;
 
     return( OK );
 }
 
+// not used anywhere.
 private  Status  input_surface_with_normals(
     STRING    filename,
     BOOLEAN   model_flag,
@@ -2051,8 +2057,8 @@ private  Status  lookup_volume(
         volume_lookup[n_volumes_read].filename = expanded;
         volume_lookup[n_volumes_read].volume = in_volume;
         ALLOC( volume_lookup[n_volumes_read].voxel_lookup, 1 );
-        initialize_lookup_volume_coeficients( volume_lookup[n_volumes_read].
-                                              voxel_lookup, in_volume );
+        initialize_lookup_volume_coeficients( volume_lookup[n_volumes_read].voxel_lookup,
+                                              in_volume );
 
         ++n_volumes_read;
     }
@@ -2281,372 +2287,310 @@ private  void   create_model_bends(
     }
 }
 
-typedef struct
-{
-    int                           min_interval;
-    int                           max_interval;
-    Real                          interval_size;
-    Real                          max_movement;
-    int                           point_grid_size;
-    int                           *start_parameter;
-
-    BOOLEAN                       self_intersect_present;
-    self_intersect_lookup_struct  ***si_lookups;
-
-    BOOLEAN                       surf_surf_present;
-    surf_surf_lookup_struct       **ss_lookups;
-} line_lookup_struct;
-
+// ---------------------------------------------------------------------
+// Initialize a new line lookup structure for the self-surface and/or
+// surface-surface intersects.
+//
 private  void  initialize_line_lookup(
     line_lookup_struct  *line_lookup,
     Deform_struct       *deform,
     Real                max_movement,
-    Real                movement_per_unit_line,
     int                 point_grid_size,
-    int                 start_parameter[] )
-{
+    int                 start_parameter[] ) {
+
     int      s;
     BOOLEAN  self_intersect_present;
 
     self_intersect_present = FALSE;
-    for_less( s, 0, deform->n_surfaces )
-    {
+    for_less( s, 0, deform->n_surfaces ) {
         if( deform->surfaces[s].n_self_intersects > 0 )
             self_intersect_present = TRUE;
     }
 
     line_lookup->self_intersect_present = self_intersect_present;
     line_lookup->surf_surf_present = deform->n_surf_surfs > 0;
-
-    if( !self_intersect_present && !line_lookup->surf_surf_present )
-        return;
-
+    line_lookup->closest_dist = 0.0;
     line_lookup->max_movement = max_movement;
-    line_lookup->min_interval = 0;
-    line_lookup->max_interval = -1;
     line_lookup->point_grid_size = point_grid_size;
     line_lookup->start_parameter = start_parameter;
     line_lookup->si_lookups = NULL;
     line_lookup->ss_lookups = NULL;
-
-    if( movement_per_unit_line == 0.0 )
-        line_lookup->interval_size = 1.0e30;
-    else
-        line_lookup->interval_size = 2.0 * max_movement / movement_per_unit_line;
 }
 
-static  Real  closest_distance1 = 0.0;
-static  Real  closest_distance2 = 0.0;
 
+// ---------------------------------------------------------------------
+// Recompute the line lookup tables (deform->n_surfaces of them) 
+// for the self-surface and/or surface-surface intersects. The
+// lookup tables (pairs of close triangles) are evaluated at the
+// current surface position xyz.
+//
 private  void   get_line_lookup(
     line_lookup_struct  *line_lookup,
     Deform_struct       *deform,
     int                 n_parameters,
     Real                parameters[],
-    Real                line_pos,
-    Real                line_dir[],
-    Real                *relative_pos,
-    self_intersect_lookup_struct  ***self_lookup,
-    surf_surf_lookup_struct       **surf_surf_lookup )
-{
-    int                           interval, n_insert, size, i, s;
-    Real                          centre, *line_point, closest_dist;
-    self_intersect_lookup_struct  **si_lookup;
-    surf_surf_lookup_struct       *ss_lookup;
+    Real                line_dir[] ) {
 
-    *self_lookup = NULL;
-    *surf_surf_lookup = NULL;
+    int                 size, i, s;
+    Real                closest_dist;
+    Real                max_step_size, gradient, max_gradient;
 
-    if( !line_lookup->self_intersect_present &&
-        !line_lookup->surf_surf_present )
-    {
-        *relative_pos = 0.0;
-        return;
+    // Estimate a maximum step size.
+    max_gradient = 0.0;
+    for( i = 0; i < n_parameters; i+=3 ) {
+      gradient = line_dir[i]*line_dir[i] + line_dir[i+1]*line_dir[i+1] +
+                 line_dir[i+2]*line_dir[i+2];
+      if( gradient > max_gradient ) max_gradient = gradient;
+    }
+    if( max_gradient > 0.0 ) {
+      max_step_size = line_lookup->max_movement / sqrt( max_gradient );
+    } else {
+      max_step_size = 1.0e+30;
     }
 
-    interval = FLOOR( line_pos / line_lookup->interval_size + 0.5 );
+    line_lookup->closest_dist = line_lookup->max_movement;
 
-    if( interval < line_lookup->min_interval ||
-        interval > line_lookup->max_interval )
-    {
-        if( line_lookup->min_interval > line_lookup->max_interval )
-        {
-            line_lookup->min_interval = interval;
-            line_lookup->max_interval = interval;
-            if( line_lookup->self_intersect_present )
-            {
-                SET_ARRAY_SIZE( line_lookup->si_lookups, 0, 1,
-                                DEFAULT_CHUNK_SIZE );
-                line_lookup->si_lookups[0] = NULL;
+    if( line_lookup->self_intersect_present ) {
+        if( line_lookup->si_lookups == NULL ) {
+          ALLOC( line_lookup->si_lookups, deform->n_surfaces );
+          for_less( s, 0, deform->n_surfaces ) {
+            if( deform->surfaces[s].n_self_intersects > 0 ) {
+              ALLOC( line_lookup->si_lookups[s],
+                     deform->surfaces[s].n_self_intersects );
+              for( i = 0; i < deform->surfaces[s].n_self_intersects; i++ ) {
+                // We pre-allocate memory for the lookup table, of
+                // size 6 * n_polygons. This seems to be a safe upper
+                // bound, but it can be made larger. It assumes 6
+                // pairs per triangle, on average.
+                line_lookup->si_lookups[s][i].n_pairs = 0;
+                line_lookup->si_lookups[s][i].n_pairs_alloc = 
+                    6*deform->surfaces[s].surface.n_polygons;
+                ALLOC( line_lookup->si_lookups[s][i].p1s,
+                       line_lookup->si_lookups[s][i].n_pairs_alloc );
+                ALLOC( line_lookup->si_lookups[s][i].p2s,
+                       line_lookup->si_lookups[s][i].n_pairs_alloc );
+                ALLOC( line_lookup->si_lookups[s][i].cases,
+                       line_lookup->si_lookups[s][i].n_pairs_alloc );
+                ALLOC( line_lookup->si_lookups[s][i].min_line_dists,
+                       line_lookup->si_lookups[s][i].n_pairs_alloc );
+              }
             }
-            if( line_lookup->surf_surf_present )
-            {
-                SET_ARRAY_SIZE( line_lookup->ss_lookups, 0, 1,
-                                DEFAULT_CHUNK_SIZE );
-                line_lookup->ss_lookups[0] = NULL;
-            }
+          }
         }
-        else if( interval < line_lookup->min_interval )
-        {
-            n_insert = line_lookup->min_interval - interval;
-            size = line_lookup->max_interval - line_lookup->min_interval + 1;
-
-            if( line_lookup->self_intersect_present )
-            {
-                SET_ARRAY_SIZE( line_lookup->si_lookups, size, size + n_insert,
-                                DEFAULT_CHUNK_SIZE );
-                for_down( i, size-1, 0 )
-                    line_lookup->si_lookups[i+n_insert] =
-                                       line_lookup->si_lookups[i];
-                for_less( i, 0, n_insert )
-                    line_lookup->si_lookups[i] = NULL;
-            }
-
-            if( line_lookup->surf_surf_present )
-            {
-                SET_ARRAY_SIZE( line_lookup->ss_lookups, size, size + n_insert,
-                                DEFAULT_CHUNK_SIZE );
-                for_down( i, size-1, 0 )
-                    line_lookup->ss_lookups[i+n_insert] =
-                                       line_lookup->ss_lookups[i];
-                for_less( i, 0, n_insert )
-                    line_lookup->ss_lookups[i] = NULL;
-            }
-
-            line_lookup->min_interval = interval;
-        }
-        else
-        {
-            n_insert = interval - line_lookup->max_interval;
-            size = line_lookup->max_interval - line_lookup->min_interval + 1;
-
-            if( line_lookup->self_intersect_present )
-            {
-                SET_ARRAY_SIZE( line_lookup->si_lookups, size, size + n_insert,
-                                DEFAULT_CHUNK_SIZE );
-                for_less( i, 0, n_insert )
-                    line_lookup->si_lookups[size + i] = NULL;
-            }
-
-            if( line_lookup->surf_surf_present )
-            {
-                SET_ARRAY_SIZE( line_lookup->ss_lookups, size, size + n_insert,
-                                DEFAULT_CHUNK_SIZE );
-                for_less( i, 0, n_insert )
-                    line_lookup->ss_lookups[size + i] = NULL;
-            }
-
-            line_lookup->max_interval = interval;
-        }
-    }
-
-    if( line_lookup->self_intersect_present &&
-        line_lookup->si_lookups[interval-line_lookup->min_interval] == NULL )
-    {
-        ALLOC( si_lookup, deform->n_surfaces );
-        for_less( s, 0, deform->n_surfaces )
-        {
-            if( deform->surfaces[s].n_self_intersects > 0 )
-            {
-                ALLOC( si_lookup[s],
-                       deform->surfaces[s].n_self_intersects );
-            }
-        }
-
-        line_lookup->si_lookups[interval-line_lookup->min_interval] = si_lookup;
-
-        centre = (Real) interval * line_lookup->interval_size;
-
-        ALLOC( line_point, n_parameters );
-        for_less( i, 0, n_parameters )
-            line_point[i] = parameters[i] + centre * line_dir[i];
-
-        n_recompute_intersect++;
         closest_dist = recompute_self_intersects( deform,
-                                   line_lookup->point_grid_size,
-                                   line_lookup->start_parameter,
-                                   line_point, line_lookup->max_movement,
-                                   line_dir, si_lookup );
-
-        FREE( line_point );
-
-        if( interval == 0 )
-            closest_distance1 = closest_dist;
+                                     line_lookup->start_parameter,
+                                     parameters, line_lookup->max_movement,
+                                     line_dir, line_lookup->si_lookups );
+        if( closest_dist < line_lookup->closest_dist ) {
+          line_lookup->closest_dist = closest_dist;
+        }
     }
 
-    if( line_lookup->surf_surf_present &&
-        line_lookup->ss_lookups[interval-line_lookup->min_interval] == NULL )
-    {
-        ALLOC( ss_lookup, deform->n_surf_surfs );
-
-        line_lookup->ss_lookups[interval-line_lookup->min_interval] = ss_lookup;
-
-        centre = (Real) interval * line_lookup->interval_size;
-
-        ALLOC( line_point, n_parameters );
-        for_less( i, 0, n_parameters )
-            line_point[i] = parameters[i] + centre * line_dir[i];
-
+    if( line_lookup->surf_surf_present ) {
+        if( line_lookup->ss_lookups == NULL ) {
+          ALLOC( line_lookup->ss_lookups, deform->n_surf_surfs );
+          for_less( s, 0, deform->n_surf_surfs ) {
+            // We pre-allocate memory for the lookup table, of
+            // size 6 * n_polygons. This seems to be a safe upper
+            // bound, but it can be made larger. It assumes 6
+            // pairs per triangle, on average.
+            line_lookup->ss_lookups[s].n_pairs = 0;
+            line_lookup->ss_lookups[s].n_pairs_alloc = 
+                6*deform->surfaces[s].surface.n_polygons;
+            ALLOC( line_lookup->ss_lookups[s].p1s,
+                   line_lookup->ss_lookups[s].n_pairs_alloc );
+            ALLOC( line_lookup->ss_lookups[s].p2s,
+                   line_lookup->ss_lookups[s].n_pairs_alloc );
+            ALLOC( line_lookup->ss_lookups[s].cases,
+                   line_lookup->ss_lookups[s].n_pairs_alloc );
+            ALLOC( line_lookup->ss_lookups[s].min_line_dists,
+                   line_lookup->ss_lookups[s].n_pairs_alloc );
+          }
+        }
         closest_dist = recompute_surf_surfs( deform,
                                       line_lookup->start_parameter,
-                                      line_point, line_lookup->max_movement,
-                                      line_dir, ss_lookup );
-
-        if( interval == 0 )
-            closest_distance2 = closest_dist;
-
-        FREE( line_point );
+                                      parameters, line_lookup->max_movement,
+                                      line_dir, &max_step_size,
+                                      line_lookup->ss_lookups );
+        if( closest_dist < line_lookup->closest_dist ) {
+          line_lookup->closest_dist = closest_dist;
+        }
     }
 
-    *relative_pos = line_pos - (Real) interval * line_lookup->interval_size;
+    // Update interval_size to reflect closest_dist and avoid intersection:
+    // [-step_size,+step_size]
+    line_lookup->interval_size = 2.0 * max_step_size;  
 
-    if( line_lookup->self_intersect_present )
-    {
-        *self_lookup = line_lookup->si_lookups
-                            [interval-line_lookup->min_interval];
-    }
-
-    if( line_lookup->surf_surf_present )
-    {
-        *surf_surf_lookup = line_lookup->ss_lookups
-                            [interval-line_lookup->min_interval];
-    }
 }
 
-private  void  narrow_line_lookup_range(
-    line_lookup_struct  *line_lookup,
-    Deform_struct       *deform,
-    Real                t_min,
-    Real                t_max )
-{
-    int                            i, s, m, interval_min, interval_max;
-    self_intersect_lookup_struct   **si_lookup;
-    surf_surf_lookup_struct        *ss_lookup;
+// ---------------------------------------------------------------------
+// 
+// 
+private void compute_min_line_dists( Deform_struct * deform,
+                                     line_lookup_struct * line_lookup,
+                                     int start_parameter[],
+                                     int n_parameters,
+                                     Real * derivative ) {
 
-    if( !line_lookup->self_intersect_present &&
-        !line_lookup->surf_surf_present )
-        return;
+    int        surface, i, w, which1, which2;
+    Real     * line_dir;
+    int      * triangles;
+    int        parms1[3], parms2[3];
+    Real       dx, dy, dz, d, movement_sq, t_min;
+    Real       gradient, max_gradient, max_step_size;
+    self_intersect_struct         * self;
+    self_intersect_lookup_struct  * si_lookup;
 
-    interval_min = FLOOR( t_min / line_lookup->interval_size + 0.5 );
-    interval_max = FLOOR( t_max / line_lookup->interval_size + 0.5 );
+    // Estimate a maximum step size based on the search distance.
+    // This is usually smaller than the step size based on the pairs
+    // of triangles. The purpose of this calculation is to prevent
+    // pairs of faces which are farther apart than the search 
+    // distance to intersect within the step increment, due to
+    // large gradient (since if such pairs are not stored, we
+    // cannot check for intersection). We take 0.5*max_movement
+    // since two points can move towards one another in opposite
+    // directions (so they will meet half way).
 
-    for_less( i, line_lookup->min_interval, interval_min )
-    {
-        if( line_lookup->self_intersect_present &&
-            line_lookup->si_lookups[i-line_lookup->min_interval] != NULL )
-        {
-            si_lookup = line_lookup->si_lookups[i-line_lookup->min_interval];
-
-            for_less( s, 0, deform->n_surfaces )
-            {
-                for_less( m, 0, deform->surfaces[s].n_self_intersects )
-                    delete_self_intersect_lookup( &si_lookup[s][m] );
-                if( deform->surfaces[s].n_self_intersects > 0 )
-                    FREE( si_lookup[s] );
-            }
-
-            FREE( si_lookup );
-            line_lookup->si_lookups[i-line_lookup->min_interval] = NULL;
-        }
-
-        if( line_lookup->surf_surf_present &&
-            line_lookup->ss_lookups[i-line_lookup->min_interval] != NULL )
-        {
-            ss_lookup = line_lookup->ss_lookups[i-line_lookup->min_interval];
-
-            for_less( s, 0, deform->n_surf_surfs )
-                delete_surf_surf_lookup( &ss_lookup[s] );
-
-            FREE( ss_lookup );
-
-            line_lookup->ss_lookups[i-line_lookup->min_interval] = NULL;
-        }
+    max_gradient = 0.0;
+    for( i = 0; i < n_parameters; i+=3 ) {
+      gradient = derivative[i]*derivative[i] + derivative[i+1]*derivative[i+1] +
+                 derivative[i+2]*derivative[i+2];
+      if( gradient > max_gradient ) max_gradient = gradient;
+    }
+    if( max_gradient > 0.0 ) {
+      max_step_size = 0.5 * line_lookup->max_movement / sqrt( max_gradient );
+    } else {
+      max_step_size = 1.0e+30;
     }
 
-    for_inclusive( i, interval_max+1, line_lookup->max_interval )
-    {
-        if( line_lookup->self_intersect_present &&
-            line_lookup->si_lookups[i-line_lookup->min_interval] != NULL )
-        {
-            si_lookup = line_lookup->si_lookups[i-line_lookup->min_interval];
+    // Here, we calculate the critical step increment for each
+    // pair of close triangles. This allows to ignore the evaluation
+    // of the fit function for some pairs if we know they do not
+    // contribute to the weighed function fit. Also, this step
+    // increment may, very rarely, be smaller than the above
+    // max_step_size.
+    // Note: On entry, min_line_dists contains dist_sq as computed
+    //       during the determination of the pairs of triangles.
+    //       On exit, it contains the max step size for each pair.
 
-            for_less( s, 0, deform->n_surfaces )
-            {
-                for_less( m, 0, deform->surfaces[s].n_self_intersects )
-                    delete_self_intersect_lookup( &si_lookup[s][m] );
-                if( deform->surfaces[s].n_self_intersects > 0 )
-                    FREE( si_lookup[s] );
+    if( line_lookup->self_intersect_present ) {
+      for_less( surface, 0, deform->n_surfaces ) {
+        if( line_lookup->si_lookups[surface] == NULL ) continue;
+        line_dir = &derivative[start_parameter[surface]];
+        triangles = deform->surfaces[surface].surface.triangles;
+
+        for_less( i, 0, deform->surfaces[surface].n_self_intersects ) {
+
+          self = &deform->surfaces[surface].self_intersects[i];
+
+          si_lookup = &line_lookup->si_lookups[surface][i];
+
+          if( si_lookup ) {
+
+            Real min_distance = 0.0;
+            for_less( w, 0, self->n_weights ) {
+              min_distance = MAX( min_distance, self->min_distances[w] );
             }
+            Real min_distance_sq = min_distance * min_distance;
 
-            FREE( si_lookup );
-            line_lookup->si_lookups[i-line_lookup->min_interval] = NULL;
+            int n_candidates = get_n_self_intersect_candidate( si_lookup );
+
+            for_less( i, 0, n_candidates ) {
+
+              Real dist_sq = si_lookup->min_line_dists[i];
+
+              if( dist_sq <= min_distance_sq || line_dir == NULL ) {
+                si_lookup->min_line_dists[i] = 0.0;
+              } else {
+                int poly1 = si_lookup->p1s[i];
+                parms1[0] = 3*triangles[3*poly1];
+                parms1[1] = 3*triangles[3*poly1+1];
+                parms1[2] = 3*triangles[3*poly1+2];
+                int poly2 = si_lookup->p2s[i];
+                parms2[0] = 3*triangles[3*poly2];
+                parms2[1] = 3*triangles[3*poly2+1];
+                parms2[2] = 3*triangles[3*poly2+2];
+
+                movement_sq = 0.0;
+                for_less( which1, 0, 3 ) {
+                  for_less( which2, 0, 3 ) {
+                    dx = line_dir[parms1[which1]+0] -
+                         line_dir[parms2[which2]+0];
+                    dy = line_dir[parms1[which1]+1] -
+                         line_dir[parms2[which2]+1];
+                    dz = line_dir[parms1[which1]+2] -
+                         line_dir[parms2[which2]+2];
+                    d = dx * dx + dy * dy + dz * dz;
+                    if( d > movement_sq ) movement_sq = d;
+                  }
+                }
+                if( movement_sq == 0.0 ) {
+                  t_min = 1.0e30;
+                } else {
+                  Real movement = sqrt( movement_sq );
+                  Real dist = sqrt( dist_sq );
+                  t_min = (dist - min_distance) / movement;
+                  max_step_size = MIN( max_step_size, dist/movement );
+                }
+                si_lookup->min_line_dists[i] = (float) (t_min * 0.999);
+              }
+            }
+          }
         }
-
-        if( line_lookup->surf_surf_present &&
-            line_lookup->ss_lookups[i-line_lookup->min_interval] != NULL )
-        {
-            ss_lookup = line_lookup->ss_lookups[i-line_lookup->min_interval];
-
-            for_less( s, 0, deform->n_surf_surfs )
-                delete_surf_surf_lookup( &ss_lookup[s] );
-
-            FREE( ss_lookup );
-            line_lookup->ss_lookups[i-line_lookup->min_interval] = NULL;
-        }
+      }
     }
+
+    // Update interval_size to reflect closest_dist and avoid intersection:
+    // [-step_size,+step_size]
+
+    line_lookup->interval_size = 2.0 * max_step_size;  
 }
 
-private  void  delete_line_lookup(
-    line_lookup_struct  *line_lookup,
-    Deform_struct       *deform )
-{
+// ---------------------------------------------------------------------
+// Free the data structures for the line lookup table after we
+// are all done.
+//
+private  void  delete_line_lookup( line_lookup_struct  *line_lookup,
+                                   Deform_struct       *deform ) {
+
     int                            i, s, m;
     self_intersect_lookup_struct   **si_lookup;
-    surf_surf_lookup_struct        *ss_lookup;
 
     if( !line_lookup->self_intersect_present &&
-        !line_lookup->surf_surf_present )
+        !line_lookup->surf_surf_present ) {
         return;
-
-    for_inclusive( i, line_lookup->min_interval, line_lookup->max_interval )
-    {
-        if( line_lookup->self_intersect_present &&
-            line_lookup->si_lookups[i-line_lookup->min_interval] != NULL )
-        {
-            si_lookup = line_lookup->si_lookups[i-line_lookup->min_interval];
-
-            for_less( s, 0, deform->n_surfaces )
-            {
-                for_less( m, 0, deform->surfaces[s].n_self_intersects )
-                    delete_self_intersect_lookup( &si_lookup[s][m] );
-                if( deform->surfaces[s].n_self_intersects > 0 )
-                    FREE( si_lookup[s] );
-            }
-
-            FREE( si_lookup );
-        }
-
-        if( line_lookup->surf_surf_present &&
-            line_lookup->ss_lookups[i-line_lookup->min_interval] != NULL )
-        {
-            ss_lookup = line_lookup->ss_lookups[i-line_lookup->min_interval];
-
-            for_less( s, 0, deform->n_surf_surfs )
-                delete_surf_surf_lookup( &ss_lookup[s] );
-
-            FREE( ss_lookup );
-        }
     }
-        
+
     if( line_lookup->self_intersect_present &&
-        line_lookup->min_interval <= line_lookup->max_interval )
-        FREE( line_lookup->si_lookups );
-        
-    if( line_lookup->surf_surf_present &&
-        line_lookup->min_interval <= line_lookup->max_interval )
+        line_lookup->si_lookups != NULL ) {
+        si_lookup = line_lookup->si_lookups;
+
+        for_less( s, 0, deform->n_surfaces ) {
+            for_less( m, 0, deform->surfaces[s].n_self_intersects ) {
+                delete_self_intersect_lookup( &si_lookup[s][m] );
+            }
+            if( deform->surfaces[s].n_self_intersects > 0 ) {
+                FREE( si_lookup[s] );
+            }
+        }
+
+        FREE( si_lookup );
+        line_lookup->si_lookups = NULL;
+    }
+
+    if( line_lookup->surf_surf_present && line_lookup->ss_lookups != NULL ) {
+
+        for_less( s, 0, deform->n_surf_surfs ) {
+            delete_surf_surf_lookup( &line_lookup->ss_lookups[s] );
+        }
+
         FREE( line_lookup->ss_lookups );
+        line_lookup->ss_lookups = NULL;
+    }
 }
 
+// Check how good the displaced surface would be.
+//
 private  Real   evaluate_along_line(
     Deform_struct        *deform,        
     int                  n_parameters,
@@ -2657,32 +2601,35 @@ private  Real   evaluate_along_line(
     Real                 line_dir[],
     Real                 buffer[],
     Real                 dist,
+    Real                 dist_from_computed_self_intersect,
     Real                 boundary_t_coefs[],
     Smallest_int         boundary_flags[],
     Point                boundary_points[],
     Real                 max_value,
-    line_lookup_struct   *line_lookup,
-    fit_eval_struct      *fit_info  )
-{
+    self_intersect_lookup_struct  **si_lookup,
+    surf_surf_lookup_struct       *ss_lookup,
+    fit_eval_struct      *fit_info  ) {
+
     int                           p;
-    Real                          fit, offset;
-    self_intersect_lookup_struct  **si_lookup;
-    surf_surf_lookup_struct       *ss_lookup;
+    Real                          fit;
+
+    // Advance the surface front to its new position
+    // - parameters are the current (x,y,z) positions.
+    // - line_dir is the gradient in the direction of the movement.
+    // - dist is the distance of motion.
 
     for_less( p, 0, n_parameters ){
       buffer[p] = parameters[p] + dist * line_dir[p];
     }
 
-    get_line_lookup( line_lookup, deform, n_parameters,
-                     parameters, dist, line_dir, &offset,
-                     &si_lookup, &ss_lookup );
+    // Evaluate the fit of the moved surface
 
     fit = evaluate_fit( deform, start_parameter, buffer,
                         active_flags, evaluate_flags,
                         boundary_t_coefs, dist,
                         boundary_flags, boundary_points,
-                        max_value, FABS(offset), si_lookup,
-                        ss_lookup, fit_info );
+                        max_value, dist_from_computed_self_intersect,
+                        si_lookup, ss_lookup, fit_info );
 
     return( fit );
 }
@@ -2773,257 +2720,501 @@ private  Real   minimize_along_line(
     Real                tolerance,
     Real                function_tolerance,
     line_lookup_struct  *line_lookup,
-    Real                *step_taken,
     BOOLEAN             *changed,
-    fit_eval_struct     *current_fit_info )
-{
-    static           int n_evals = 0;
-    int              p, n_init;
-    Real             t0, t1, t2, f0, f1, f2, t_next, f_next, step, fsize;
-    Real             *test_parameters, swap, bottom, new_size, old_size;
-    static Real      initial_step_forward = INITIAL_STEP;
-    static Real      search_ratio = SEARCH_RATIO;
-    fit_eval_struct  t0_fit_info, fit_info, t2_fit_info;
-    BOOLEAN          done, prev_failed;
-#ifdef DEBUG
-    int              n_in_list = 0;
-    Real             *t_list;
-    Real             *f_list;
-#endif
+    fit_eval_struct     *current_fit_info ) {
 
-    if( getenv("SEARCH_RATIO") == NULL ||
-        sscanf( getenv( "SEARCH_RATIO" ), "%lf", &search_ratio ) != 1 )
-    {
-        search_ratio = SEARCH_RATIO;
-    }
+    static int       n_evals = 0;
+    int              k, p, n_init;
+    int              max_iter;
+    Real             t0, t1, t2, f0, f1, f2, t_next, f_next, step, step_taken;
+    Real             dist_from_computed_self_intersect;
+    Real             *test_parameters, swap, bottom, new_size, old_size;
+    fit_eval_struct  fit_info, t0_fit_info, t2_fit_info;
+    BOOLEAN          prev_failed;
+    self_intersect_lookup_struct **si_lookup;
+    surf_surf_lookup_struct       *ss_lookup;
 
     n_init = n_evals;
-    n_recompute_intersect = 0;
 
     *changed = FALSE;
 
+    si_lookup = line_lookup->si_lookups;
+    ss_lookup = line_lookup->ss_lookups;
+
     ALLOC( test_parameters, n_parameters );
+
+    // NOTE: evaluate_along_line uses max_fit (4th last argument)
+    // as a stopping criterion for the fit function evaluation.
+    // That is, if the fit value is greater than max_fit, we 
+    // ignore processing the other components of the fit function
+    // and simply return the current value. Of course, this is
+    // done with the intention of speeding up the code, when max_fit
+    // is chosen = current_fit (old code). However, we need a 
+    // complete evaluation of the fit function (not a truncated 
+    // value) in order to get a correct estimate for t_next using
+    // a parabola. It t_next is off, we end up iterating longer,
+    // which defeats the purpose of the optimization for max_fit. 
+    // So make max_fit large enough (10 times).
+
+    Real max_fit = 10.0 * current_fit;
+    dist_from_computed_self_intersect = 0.5 * line_lookup->interval_size;
 
     t0 = 0.0;
     f0 = current_fit;
-    t0_fit_info = *current_fit_info;
 
-    t1 = initial_step_forward;
-    f1 = evaluate_along_line( deform, n_parameters, start_parameter,
+    // The valid interval for line_lookup is:
+    //   [-0.5*line_lookup->interval_size:0.5*line_lookup->interval_size].
+    // It is more efficient to stay inside the same line_lookup, 
+    // rather than recomputing a new one. So we do our best in 
+    // this lookup interval. Usually, the minimum is in the positive 
+    // interval so we check it first. We start by checking the 
+    // midpoint of the upper interval. If the fit function is 
+    // decreasing, then select the whole upper interval. If not,
+    // we try the quarter point and if it fails again then select 
+    // the quarter point of the negative interval.
+    // NOTE: To be safe and avoid self-intersection, use 0.495
+    //       of the interval.
+
+    // Find intermediate point t2 at mid point of interval.
+    // Note: 0.2475 = 0.50 * 0.4950.
+
+    t2 = 0.2475 * line_lookup->interval_size;
+    f2 = evaluate_along_line( deform, n_parameters, start_parameter,
                               parameters,
                               active_flags, evaluate_flags,
-                              line_dir,
-                              test_parameters, t1,
+                              line_dir, test_parameters, t2,
+                              dist_from_computed_self_intersect,
                               boundary_coefs, boundary_flags, boundary_points,
-                              current_fit, line_lookup, current_fit_info );
+                              max_fit, si_lookup, ss_lookup, &t2_fit_info );
     ++n_evals;
 
-    step = initial_step_forward;
-    if( f1 > f0 )
-    {
-        swap = t1;
-        t1 = t0;
-        t0 = swap;
+    // Make sure that there is no intersection at t2:
+    // evaluate_along_line returns a value > 1.0e+30 if there is
+    // an intersection. We note that intersection can occur within 
+    // this interval, since it is very difficult to estimate 
+    // exactly the maximum interval_size (since it would involve
+    // including the gradients in the calculation of the distance
+    // between two moving triangles). Anyway, if intersection 
+    // occurs, shrink the upper bound by half until we're happy.
 
-        swap = f1;
-        f1 = f0;
-        f0 = swap;
+    while( f2 > 1.0e+29 && t2 > tolerance * dist_from_computed_self_intersect ) {
 
-        *current_fit_info = t0_fit_info;
+      t2 = 0.50 * ( t0 + t2 );
+      f2 = evaluate_along_line( deform, n_parameters, start_parameter,
+                                parameters, active_flags, evaluate_flags,
+                                line_dir, test_parameters, t2,
+                                dist_from_computed_self_intersect,
+                                boundary_coefs, boundary_flags, boundary_points,
+                                max_fit, si_lookup, ss_lookup, &t2_fit_info );
+      ++n_evals;
+    }
+    if( f2 > 1.0e+29 ) {
+      // Try to recover from a self-surface intersection on the previous
+      // step by advancing in the negative interval.
+      t2 = 0.0;
+      while( f2 > 1.0e+29 && t2 > -dist_from_computed_self_intersect ) {
+        t2 -= tolerance * dist_from_computed_self_intersect;
+        f2 = evaluate_along_line( deform, n_parameters, start_parameter,
+                                  parameters, active_flags, evaluate_flags,
+                                  line_dir, test_parameters, t2,
+                                  dist_from_computed_self_intersect,
+                                  boundary_coefs, boundary_flags, boundary_points,
+                                  max_fit, si_lookup, ss_lookup, &t2_fit_info );
+        ++n_evals;
+      }
+      if( f2 > 1.0e+29 ) {
+        printf( "Error in minimize_along_line: Cannot find t2 = %g f1 = %g\n", t2, f2 );
+        exit(1);
+      } else {
+        t1 = t2;
+        while( t1 > -dist_from_computed_self_intersect ) {
+          t1 -= tolerance * dist_from_computed_self_intersect;
+          f1 = evaluate_along_line( deform, n_parameters, start_parameter,
+                                    parameters, active_flags, evaluate_flags,
+                                    line_dir, test_parameters, t1,
+                                    dist_from_computed_self_intersect,
+                                    boundary_coefs, boundary_flags, boundary_points,
+                                    max_fit, si_lookup, ss_lookup, &fit_info );
+          ++n_evals;
+          if( f1 > f2 ) break;
+          t2 = t1;
+          f2 = f1;
+          t2_fit_info = fit_info;
+        }
 
-        step = -step;
+        *changed = TRUE;
+        step_taken = t2;
+        *current_fit_info = t2_fit_info;
+        current_fit = f2;
+        for_less( p, 0, n_parameters ) {
+          parameters[p] += t2 * line_dir[p];
+        }
+        FREE( test_parameters );
+        if( getenv( "BRACKET_RATIO" ) != NULL ) {
+          n_init = n_evals - n_init;
+          print( "N evals: %d (%d)    %g   (%.17g %.17g)\n",
+          n_evals, n_init, step_taken, t1, t2 );
+        }
+        return( current_fit );
+      }
     }
 
-    done = FALSE;
-    while( !done )
-    {
-        t2 = t1 + step;
-        step *= search_ratio;
+    // If f2 is increasing: since all local mins occur in the positive 
+    // interval, except for a few cases due to the tolerances, try 
+    // t1=0.5*t2 first; if not, set t1=t0 and try t0=-0.5*t2 and this 
+    // should be very safe when the minimum is very near zero.
 
+    if( f2 > f0 ) {
+      t1 = 0.50 * t2;
+      f1 = evaluate_along_line( deform, n_parameters, start_parameter,
+                                parameters, active_flags, evaluate_flags,
+                                line_dir, test_parameters, t1,
+                                dist_from_computed_self_intersect,
+                                boundary_coefs, boundary_flags, boundary_points,
+                                max_fit, si_lookup, ss_lookup, &fit_info );
+      ++n_evals;
+
+      if( f1 > f2 ) {
+        // This is a rare case that sometimes can cause trouble if 
+        // f0 is not accurate (this can happen with a new lookup table
+        // since the number of pairs changes, etc.) So the fit value
+        // at the end of one lookup table is not always exactly the
+        // same as the fit value at the start of the next lookup table.
+        // Although these differences are very small, they can cause
+        // a lot of trouble when the surface is nearly converged and
+        // iterations will stagnate and end prematurely.
+        // Here, we ignore f0 and look in t > t1.
+        t0 = t1;
+        f0 = f1;
+        t0_fit_info = fit_info;
+        t1 = t2;
+        f1 = f2;
+        *current_fit_info = t2_fit_info;
+
+        t2 = t1 + t1;
         f2 = evaluate_along_line( deform, n_parameters, start_parameter,
-                                  parameters,
-                                  active_flags, evaluate_flags,
-                                  line_dir,
-                                  test_parameters, t2,
-                                  boundary_coefs, boundary_flags,
-                                  boundary_points,
-                                  current_fit, line_lookup, &t2_fit_info );
+                                  parameters, active_flags, evaluate_flags,
+                                  line_dir, test_parameters, t2,
+                                  dist_from_computed_self_intersect,
+                                  boundary_coefs, boundary_flags, boundary_points,
+                                  max_fit, si_lookup, ss_lookup, &t2_fit_info );
         ++n_evals;
 
-        if( f2 > f1 )
-            done = TRUE;
-        else
-        {
-            t0 = t1;
-            f0 = f1;
-            t1 = t2;
-            f1 = f2;
-            *current_fit_info = t2_fit_info;
+        // Make sure that there is no intersection at t2.
+
+        max_iter = 0;
+        while( f2 > 1.0e+29 && max_iter < 100 ) {
+          t2 = 0.50 * ( t1 + t2 );
+          f2 = evaluate_along_line( deform, n_parameters, start_parameter,
+                                    parameters, active_flags, evaluate_flags,
+                                    line_dir, test_parameters, t2,
+                                    dist_from_computed_self_intersect,
+                                    boundary_coefs, boundary_flags, boundary_points,
+                                    max_fit, si_lookup, ss_lookup, &t2_fit_info );
+          ++n_evals;
+          max_iter++;
         }
+        if( f2 > 1.0e+29 ) {
+          printf( "Error in minimize_along_line: Cannot find t2 = %g f2 = %g\n", t2, f2 );
+          exit(1);
+        }
+        // after this point, we will iterate on [t0:t2].
+
+      } else if( f1 > f0 ) {
+        // ok. It's getting tough. The minimum is very close to zero,
+        // so select the negative interval in order to englobe t=0.
+        t0 = -0.12375 * line_lookup->interval_size;  // -0.5*t1 when no intersection
+        f0 = evaluate_along_line( deform, n_parameters, start_parameter,
+                                  parameters, active_flags, evaluate_flags,
+                                  line_dir, test_parameters, t0,
+                                  dist_from_computed_self_intersect,
+                                  boundary_coefs, boundary_flags, boundary_points,
+                                  max_fit, si_lookup, ss_lookup, &t0_fit_info );
+        ++n_evals;
+
+        // Make sure that there is no intersection at t0.
+        max_iter = 0;
+        while( f0 > 1.0e+29 && max_iter < 100 ) {
+          t0 = 0.50 * t0;
+          f0 = evaluate_along_line( deform, n_parameters, start_parameter,
+                                    parameters, active_flags, evaluate_flags,
+                                    line_dir, test_parameters, t0,
+                                    dist_from_computed_self_intersect,
+                                    boundary_coefs, boundary_flags, boundary_points,
+                                    max_fit, si_lookup, ss_lookup, &t0_fit_info );
+          ++n_evals;
+          max_iter++;
+        }
+        if( f0 > 1.0e+29 ) {
+          printf( "Error in minimize_along_line: Cannot find t0 = %g f0 = %g\n", t0, f0 );
+          exit(1);
+        }
+        // after this point, we will iterate on [t0:t2].
+
+      } else {
+        // We're happy! f1 < f0 and f1 < f2. Let's iterate.
+        *current_fit_info = fit_info;
+      }
+
+    } else {
+
+      // Use full positive lookup interval. Since f0 >= f2, we know that
+      // the local minimum must be in the positive interval t > 0.
+
+      t1 = t2;
+      f1 = f2;
+      *current_fit_info = t2_fit_info;
+
+      t2 = t1 + t1;
+      f2 = evaluate_along_line( deform, n_parameters, start_parameter,
+                                parameters, active_flags, evaluate_flags,
+                                line_dir, test_parameters, t2,
+                                dist_from_computed_self_intersect,
+                                boundary_coefs, boundary_flags, boundary_points,
+                                max_fit, si_lookup, ss_lookup, &t2_fit_info );
+      ++n_evals;
+
+      // Make sure that there is no intersection at t2.
+
+      max_iter = 0;
+      while( f2 > 1.0e+29 && max_iter < 100 ) {
+        t2 = 0.50 * ( t1 + t2 );
+        f2 = evaluate_along_line( deform, n_parameters, start_parameter,
+                                  parameters, active_flags, evaluate_flags,
+                                  line_dir, test_parameters, t2,
+                                  dist_from_computed_self_intersect,
+                                  boundary_coefs, boundary_flags, boundary_points,
+                                  max_fit, si_lookup, ss_lookup, &t2_fit_info );
+        ++n_evals;
+        max_iter++;
+      }
+      if( f2 > 1.0e+29 ) {
+        printf( "Error in minimize_along_line: Cannot find t2 = %g f2 = %g\n", t2, f2 );
+        exit(1);
+      }
     }
 
-    if( t2 < t0 )
-    {
-        swap = t2;
-        t2 = t0;
-        t0 = swap;
+    // Now we have the interval t0 < t1 < t2, containing the minimum.
+    // Check if the minimum is an end point.
 
-        swap = f2;
-        f2 = f0;
-        f0 = swap;
+    t_next = t1;
+    if( f2 <= f1 || f0 <= f1 ) {
+
+      // Use a parabola through the 3 points t0, t1, t2 to estimate
+      // t_next at the minimum position. Note that t_next could be 
+      // outside [t0,t2], in which case we can select the end point.
+
+      bottom = 2.0 * ( (t2-t1)*f0 + (t1-t0)*f2 + (t0-t2)*f1 );
+      if( bottom != 0.0 ) {
+        t_next = ( (t2*t2-t1*t1)*f0 + (t0*t0-t2*t2)*f1 + (t1*t1-t0*t0)*f2 ) /
+                 bottom;
+      }
+
+      // If the function is decreasing and no apparent local minimum 
+      // in the interval, take the end point t2 as the minimum in this
+      // interval. Note: don't apply the getenv( "SHORTEN" ) relaxation
+      // here since we haven't truly achieved the minimum (see below).
+
+      if( t_next > t2 && f2 <= f1 ) {
+        *changed = TRUE;
+        step_taken = t2;
+        *current_fit_info = t2_fit_info;
+        current_fit = f2;
+        for_less( p, 0, n_parameters ) {
+          parameters[p] = test_parameters[p];
+        }
+        FREE( test_parameters );
+        if( getenv( "BRACKET_RATIO" ) != NULL ) {
+          n_init = n_evals - n_init;
+          print( "N evals: %d (%d)    %g   (%.17g %.17g)\n",
+          n_evals, n_init, step_taken, t0, t2 );
+        }
+        return( current_fit );
+      }
+
+      if( t_next < t0 && f0 <= f1 ) {
+        *changed = TRUE;
+        step_taken = t0;
+        *current_fit_info = t0_fit_info;
+        current_fit = f0;
+        for_less( p, 0, n_parameters ) {
+          parameters[p] = test_parameters[p];
+        }
+        FREE( test_parameters );
+        if( getenv( "BRACKET_RATIO" ) != NULL ) {
+          n_init = n_evals - n_init;
+          print( "N evals: %d (%d)    %g   (%.17g %.17g)\n",
+          n_evals, n_init, step_taken, t0, t2 );
+        }
+        return( current_fit );
+      }
     }
-
-#ifdef DEBUG
-    ADD_ELEMENT_TO_ARRAY( t_list, n_in_list, t0, 100 );
-    ADD_ELEMENT_TO_ARRAY( t_list, n_in_list, t1, 100 );
-    ADD_ELEMENT_TO_ARRAY( t_list, n_in_list, t2, 100 );
-    n_in_list -= 3;
-    ADD_ELEMENT_TO_ARRAY( f_list, n_in_list, f0, 100 );
-    ADD_ELEMENT_TO_ARRAY( f_list, n_in_list, f1, 100 );
-    ADD_ELEMENT_TO_ARRAY( f_list, n_in_list, f2, 100 );
-#endif
 
     n_init = n_evals - n_init;
     prev_failed = FALSE;
 
-    do
-    {
-        bottom = 2.0 * (t2*f0-t0*f2-t1*f0+t1*f2-t2*f1+t0*f1);
+    // step and function convergence thresholds
+    Real function_error = function_tolerance * current_fit;
+    Real step_error = 0.50 * tolerance * line_lookup->interval_size;
 
-        if( getenv( "USE_GOLDEN_ALWAYS" ) != NULL )
-            bottom = 0.0;
+    int use_golden_always = 0;
+    if( getenv( "USE_GOLDEN_ALWAYS" ) != NULL ) {
+      use_golden_always = 1;
+    }
 
-        if( bottom != 0.0 )
-        {
-            t_next = (-t0*t0*f2+t0*t0*f1+t1*t1*f2-f0*t1*t1+f0*t2*t2-f1*t2*t2)/
-                     bottom;
+    // Iterate on the interval [t0:t2] to find the local minimum at t1.
+
+    t_next = t1;
+    max_iter = 0;
+
+    do {
+
+        bottom = 2.0 * ( (t2-t1)*f0 + (t1-t0)*f2 + (t0-t2)*f1 );
+
+        if( use_golden_always ) bottom = 0.0;
+
+        if( bottom != 0.0 ) {
+          t_next = ( (t2*t2-t1*t1)*f0 + (t0*t0-t2*t2)*f1 + (t1*t1-t0*t0)*f2 ) /
+                   bottom;
+        }
+
+        // Check again for the possibility of a minimum at an end point.
+        // Sometimes, when f2 > f1 > f0 or f0 > f1 > f2, the parabola can
+        // predict a local min inside [t0:t2] when there is none (because
+        // the value of f0 or f2 is very large). 
+
+        if( t_next < t0 || t_next > t2 ) {
+          if( t_next < t0 && t2 < 0.0 && f0 < f1 && f1 < f2 ) {
+            // choose end point t0,f0.
+            t1 = t0;
+            f1 = f0;
+            *current_fit_info = t0_fit_info;
+            break;
+          }
+          if( t_next > t2 && t0 > 0.0 && f0 > f1 && f1 > f2 ) {
+            // choose end point t2,f2.
+            t1 = t2;
+            f1 = f2;
+            *current_fit_info = t2_fit_info;
+            break;
+          }
         }
 
         if( prev_failed || bottom == 0.0 ||
-            t_next <= t0 ||
-            t_next >= t2 ||
-            t_next == t1 )
-        {
-            if( t1 - t0 > t2 - t1 )
-                t_next = t0 + (t1 - t0) * GOLDEN_RATIO;
-            else
-                t_next = t2 + (t1 - t2) * GOLDEN_RATIO;
+            t_next <= t0 || t_next >= t2 || ABS(t_next - t1) < step_error ) {
+          if( t1 - t0 > t2 - t1 ) {
+            t_next = t0 + (t1 - t0) * GOLDEN_RATIO;
+          } else {
+            t_next = t2 + (t1 - t2) * GOLDEN_RATIO;
+          }
         }
 
         f_next = evaluate_along_line( deform, n_parameters, start_parameter,
-                                      parameters,
-                                      active_flags, evaluate_flags,
+                                      parameters, active_flags, evaluate_flags,
                                       line_dir, test_parameters, t_next,
+                                      dist_from_computed_self_intersect,
                                       boundary_coefs, boundary_flags,
                                       boundary_points,
-                                      current_fit, line_lookup, &fit_info );
+                                      max_fit, si_lookup, ss_lookup, &fit_info );
         ++n_evals;
-
-#ifdef DEBUG
-        ADD_ELEMENT_TO_ARRAY( t_list, n_in_list, t_next, 100 );
-        --n_in_list;
-        ADD_ELEMENT_TO_ARRAY( f_list, n_in_list, f_next, 100 );
-#endif
 
         old_size = t2 - t0;
 
+        // Choose next sub-interval by looking if f_next falls 
+        // inside [f0,f1] or [f1,f2].
+
         if( f_next < f1 && t_next < t1 ||
-            f_next == f1 && t_next < t1 && t1 - t0 < t2 - t_next )
-        {
-            t2 = t1;
-            f2 = f1;
-            t1 = t_next;
-            f1 = f_next;
-            *current_fit_info = fit_info;
-        }
-        else if( f_next < f1 && t_next >= t1 ||
-                 f_next == f1 && t_next >= t1 && t2 - t1 < t_next - t0 )
-        {
-            t0 = t1;
-            f0 = f1;
-            t1 = t_next;
-            f1 = f_next;
-            *current_fit_info = fit_info;
-        }
-        else if( f_next > f1 && t_next < t1 ||
-                 f_next == f1 && t_next < t1 && t1 - t0 >= t2 - t_next )
-        {
-            t0 = t_next;
-            f0 = f_next;
-        }
-        else if( f_next > f1 && t_next >= t1 ||
-                 f_next == f1 && t_next >= t1 && t2 - t1 >= t_next - t0 )
-        {
-            t2 = t_next;
-            f2 = f_next;
+            f_next == f1 && t_next < t1 && t1 - t0 < t2 - t_next ) {
+          t2 = t1;
+          f2 = f1;
+          t2_fit_info = *current_fit_info;
+          t1 = t_next;
+          f1 = f_next;
+          *current_fit_info = fit_info;
+        } else if( f_next < f1 && t_next >= t1 ||
+                   f_next == f1 && t_next >= t1 && t2 - t1 < t_next - t0 ) {
+          t0 = t1;
+          f0 = f1;
+          t0_fit_info = *current_fit_info;
+          t1 = t_next;
+          f1 = f_next;
+          *current_fit_info = fit_info;
+        } else if( f_next > f1 && t_next < t1 ||
+                   f_next == f1 && t_next < t1 && t1 - t0 >= t2 - t_next ) {
+          t0 = t_next;
+          f0 = f_next;
+          t0_fit_info = fit_info;
+        } else if( f_next > f1 && t_next >= t1 ||
+                 f_next == f1 && t_next >= t1 && t2 - t1 >= t_next - t0 ) {
+          t2 = t_next;
+          f2 = f_next;
+          t2_fit_info = fit_info;
         }
 
         new_size = t2 - t0;
-        if( (new_size / old_size) > .99 )
-            prev_failed = TRUE;
-        else
-            prev_failed = FALSE;
+        if( new_size > 0.8 * old_size ) {
+          prev_failed = TRUE;
+        } else {
+          prev_failed = FALSE;
+        }
 
-        fsize = MAX( f0, f2 ) - f1;
+        max_iter++;   // a fail-safe
+        // Note: The test on function_tolerance is tricky, since we
+        //       must also make sure that the t-interval is small
+        //       enough, when the function is mostly flat. So we 
+        //       demand that both the t-interval and the function
+        //       satisfy the convergence threshold.
 
-        narrow_line_lookup_range( line_lookup, deform, t0, t2 );
-    }
-    while( (tolerance < 0.0 || (t2 - t0) > tolerance) &&
-           (function_tolerance < 0.0 || fsize > function_tolerance) );
+    } while( ( max_iter < 100 ) && ( t2 - t0 > step_error ) );
 
-    if( getenv( "SHORTEN" ) != NULL )
-    {
+//  } while( ( max_iter < 100 ) &&
+//           ( ( t2 - t0 > step_error ) ||
+//             ( ABS( f2 - f0 ) > function_error ||
+//             ( t1 == 0.0 && t2 - t0 > 1.0e-08 ) ) ) );
+
+    // Apply some under relaxation on the displacement.
+
+    char * sg;
+    if( sg = getenv( "SHORTEN" ) ) {
         Real  shorten;
-        if( sscanf( getenv( "SHORTEN" ), "%lf", &shorten ) != 1 )
-            shorten = 1.0;
-        t1 *= shorten;
-
+        if( strlen( sg ) > 0 ) {
+          if( sscanf( sg, "%lf", &shorten ) == 1 ) {
+            t1 *= shorten;
+          }
+        }
         f1 = evaluate_along_line( deform, n_parameters, start_parameter,
                                   parameters,
                                   active_flags, evaluate_flags,
                                   line_dir, test_parameters, t1,
-                                  boundary_coefs,
-                                  boundary_flags, boundary_points,
-                                  -1.0, line_lookup, current_fit_info );
+                                  dist_from_computed_self_intersect,
+                                  boundary_coefs, boundary_flags,
+                                  boundary_points,
+                                  -1.0, si_lookup, ss_lookup, current_fit_info );
+        ++n_evals;
     }
 
-    *step_taken = t1;
+    step_taken = t1;
 
-    initial_step_forward = FABS(t1) / search_ratio;
-    if( initial_step_forward < 1.0e-6 )
-        initial_step_forward = 1.0e-6;
-
-    if( t1 != 0.0 )
-    {
-        *changed = TRUE;
-        current_fit = f1;
-        for_less( p, 0, n_parameters )
-            parameters[p] += t1 * line_dir[p];
+    // Advance surface mesh to best final position found.
+    // Note: return current_fit = f1 even when t1 = 0.0 since
+    //       sometimes f1 jumps after evaluating new boundary
+    //       terms and the convergence curve can increase a
+    //       little bit. By resetting current_fit, the next
+    //       iteration will be ok.
+    current_fit = f1;
+    if( t1 != 0.0 ) {
+      *changed = TRUE;
+      for_less( p, 0, n_parameters ) {
+        parameters[p] = test_parameters[p];
+      }
     }
-
-#ifdef PRINT_DEBUG
-{
-    int  i;
-    for_less( i, 0, n_parameters )
-        if( line_dir[i] != 0.0 )
-            break;
-
-    print( "Dist[%d] at minimum: %g\n", i, FABS(t1*line_dir[i]) );
-}
-#endif
 
     FREE( test_parameters );
 
-    if( getenv( "BRACKET_RATIO" ) != NULL )
-        print( "N evals: %d (%d) [%d]    %g   (%.17g %.17g)\n", 
-        n_evals, n_init, n_recompute_intersect, t1, t0, t2 );
- 
-#ifdef DEBUG
-    output_list( n_in_list, t_list, f_list );
-
-    FREE( t_list );
-    FREE( f_list );
-#endif
+    if( getenv( "BRACKET_RATIO" ) != NULL ) {
+      print( "N evals: %d (%d)    %g   (%.17g %.17g)\n",
+      n_evals, n_init, step_taken, t0, t2 );
+    }
 
     return( current_fit );
 }
@@ -3089,6 +3280,63 @@ private  int  find_active_points(
     return( n_done );
 }
 
+
+private void smooth_fit_deriv( Deform_struct * deform,
+                               int n_deriv_smoothing_steps,
+                               int deriv_smoothing,
+                               Real * derivative,
+                               int * start_parameter ) {
+
+    int     deriv_iter, s, n, i, neigh;
+    int     n_points, n3, n_neighs, *neighs, i3;
+    Real    *x_deriv_ptr, *y_deriv_ptr, *z_deriv_ptr;
+    Real    *x_new_deriv, *y_new_deriv, *z_new_deriv;
+    Real    one_minus_f, scale;
+    Real    avg_x, avg_y, avg_z;
+
+    if( n_deriv_smoothing_steps > 0 && deriv_smoothing > 0.0 ) {
+
+        one_minus_f = 1.0 - deriv_smoothing;
+        for_less( deriv_iter, 0, n_deriv_smoothing_steps ) {
+            for_less( s, 0, deform->n_surfaces ) {
+                x_deriv_ptr = &derivative[start_parameter[s]+0];
+                y_deriv_ptr = &derivative[start_parameter[s]+1];
+                z_deriv_ptr = &derivative[start_parameter[s]+2];
+                n_points = deform->surfaces[s].surface.n_points;
+                n3 = 3 * n_points;
+                ALLOC( x_new_deriv, n3 );
+                y_new_deriv = &x_new_deriv[1];
+                z_new_deriv = &x_new_deriv[2];
+                for_less( i, 0, n_points ) {
+                    avg_x = 0.0;
+                    avg_y = 0.0;
+                    avg_z = 0.0;
+                    neighs = deform->surfaces[s].surface.neighbours[i];
+                    n_neighs = deform->surfaces[s].surface.n_neighbours[i];
+                    for_less( n, 0, n_neighs) {
+                        neigh = 3*neighs[n];
+                        avg_x += x_deriv_ptr[neigh];
+                        avg_y += y_deriv_ptr[neigh];
+                        avg_z += z_deriv_ptr[neigh];
+                    }
+                    scale = deriv_smoothing / (Real) n_neighs;
+
+                    i3 = 3 * i;
+                    x_new_deriv[i3] = one_minus_f * x_deriv_ptr[i3] +
+                                      scale * avg_x;
+                    y_new_deriv[i3] = one_minus_f * y_deriv_ptr[i3] +
+                                      scale * avg_y;
+                    z_new_deriv[i3] = one_minus_f * z_deriv_ptr[i3] +
+                                      scale * avg_z;
+                }
+                for_less( i, 0, n3 )
+                    x_deriv_ptr[i] = x_new_deriv[i];
+                FREE( x_new_deriv );
+            }
+        }
+    }
+}
+
 private  BOOLEAN   fit_polygons(
     Deform_struct      *deform,
     Real               tolerance,
@@ -3111,15 +3359,13 @@ private  BOOLEAN   fit_polygons(
 {
     int                         point, iter, n_parameters, n_edges, w;
     int                         start, n_points1, n_points2;
-    int                         *start_parameter, s, i;
+    int                         *start_parameter, s, i, j;
     int                         n_since_recompute, n_done;
     int                         active_point, n_active_points;
     int                         p1, oversample, n_eval_points;
-    int                         new_fit_num=0;
     Smallest_int                *active_flags, *evaluate_flags;
     STRING                      active_string;
-    Real                        fit, min_value, max_value, diff, *new_fits;
-    Real                        step_taken;
+    Real                        fit, min_value, max_value, diff;
     Real                        *derivative, *parameters, rms_movement;
     Real                        max_movement, movement;
     Real                        dx, dy, dz, boundary_coefs[3], max_step, delta;
@@ -3131,13 +3377,10 @@ private  BOOLEAN   fit_polygons(
     Point                       *boundary_points;
     BOOLEAN                     boundary_searching;
     int                         n_boundary_points;
-    Real                        offset;
     Real                        max_move_per_unit_line;
     Real                        closest_self_intersect, active_threshold;
     int                         *start_points, active_level;
     fit_eval_struct             fit_info, deriv_info;
-    self_intersect_lookup_struct  **si_lookup;
-    surf_surf_lookup_struct     *ss_lookup;
     line_lookup_struct          line_lookup;
     int                         current_origin;
     int                         one_at_a_time_method, n_steps_before_change;
@@ -3146,41 +3389,36 @@ private  BOOLEAN   fit_polygons(
     int                         *n_cross_terms, **cross_parms;
     Real                        constant, *linear, *square, **cross_terms;
     Real                        start_time, current_time;
-    int                         n_deriv_iters, n, neigh, deriv_iter;
-    Real                        fraction, avg_x, avg_y, avg_z;
     FILE                        *parameter_log;
 
     ALLOC( start_parameter, deform->n_surfaces );
-    ALLOC( new_fits, 400 );
-
-    for_less( s, 0, 100 )
-    {
-        new_fits[s] = 0;
-    }
 
     n_parameters = 0;
-    for_less( s, 0, deform->n_surfaces )
-    {
+    for_less( s, 0, deform->n_surfaces ) {
         start_parameter[s] = n_parameters;
-        n_parameters += 3 * deform->surfaces[s].surface.n_points;
+        n_parameters += N_DIMENSIONS * deform->surfaces[s].surface.n_points;
     }
 
-    one_at_a_time = (getenv( "ONE_AT_A_TIME" ) != NULL);
+    char * one_at_a_time_string = getenv( "ONE_AT_A_TIME" );
+    one_at_a_time = ( one_at_a_time_string != NULL );
     active_string = getenv( "ACTIVE_POINT" );
 
-    if( one_at_a_time )
-    {
-        if( sscanf( getenv( "ONE_AT_A_TIME" ), "%d %d %d %lf",
-                              &one_at_a_time_method,
-                              &active_level,
-                              &n_steps_before_change,
-                              &active_threshold ) != 4 )
+    if( one_at_a_time ) {
+        if( strlen( one_at_a_time_string ) > 0 ) {
+          if( sscanf( one_at_a_time_string, "%d %d %d %lf",
+                      &one_at_a_time_method,
+                      &active_level,
+                      &n_steps_before_change,
+                      &active_threshold ) != 4 ) {
             handle_internal_error( "one at a time" );
+          }
+        } else {
+          handle_internal_error( "one at a time" );
+        }
 
         last_change = 0;
 
-        if( one_at_a_time_method == 2 )
-        {
+        if( one_at_a_time_method == 2 ) {
             ALLOC( start_points, n_parameters / N_DIMENSIONS );
             n_active_points = 0;
         }
@@ -3193,16 +3431,13 @@ private  BOOLEAN   fit_polygons(
         ALLOC( evaluate_flags, n_parameters / N_DIMENSIONS );
 
         current_origin = -1;
-    }
-    else if( active_string != NULL )
-    {
+    } else if( active_string != NULL ) {
         int   ind;
 
         ALLOC( active_flags, n_parameters / N_DIMENSIONS );
         ALLOC( evaluate_flags, n_parameters / N_DIMENSIONS );
 
-        for_less( s, 0, n_parameters / N_DIMENSIONS )
-        {
+        for_less( s, 0, n_parameters / N_DIMENSIONS ) {
             active_flags[s] = FALSE;
             evaluate_flags[s] = FALSE;
         }
@@ -3212,8 +3447,7 @@ private  BOOLEAN   fit_polygons(
 
         while( s < deform->n_surfaces &&
                sscanf( active_string, "%d %d %n",
-                       &active_point, &active_level, &ind ) == 2 )
-        {
+                       &active_point, &active_level, &ind ) == 2 ) {
             n_done = find_active_points( deform->surfaces[s].surface.n_points,
                                 deform->surfaces[s].surface.n_neighbours,
                                 deform->surfaces[s].surface.neighbours,
@@ -3226,19 +3460,15 @@ private  BOOLEAN   fit_polygons(
             ++s;
             active_string += ind;
         }
-    }
-    else
-    {
+    } else {
         active_flags = NULL;
         evaluate_flags = NULL;
     }
 
     ALLOC( parameters, n_parameters );
 
-    for_less( s, 0, deform->n_surfaces )
-    {
-        for_less( point, 0, deform->surfaces[s].surface.n_points )
-        {
+    for_less( s, 0, deform->n_surfaces ) {
+        for_less( point, 0, deform->surfaces[s].surface.n_points ) {
             parameters[start_parameter[s]+IJ(point,0,3)] =
                    RPoint_x(deform->surfaces[s].surface.points[point]);
             parameters[start_parameter[s]+IJ(point,1,3)] =
@@ -3249,40 +3479,37 @@ private  BOOLEAN   fit_polygons(
     }
 
     closest_self_intersect = -1.0;
-    for_less( s, 0, deform->n_surfaces )
-    {
+    for_less( s, 0, deform->n_surfaces ) {
         n_edges = count_edges( deform->surfaces[s].surface.n_points,
                                deform->surfaces[s].surface.n_neighbours,
                                deform->surfaces[s].surface.neighbours );
 
         deform->surfaces[s].surface.n_edges = n_edges;
 
-        for_less( i, 0, deform->surfaces[s].n_bound )
-        {
+        for_less( i, 0, deform->surfaces[s].n_bound ) {
             oversample = deform->surfaces[s].bound[i].oversample;
 
             deform->surfaces[s].bound[i].image_weight_out /= (Real)
                          (deform->surfaces[s].surface.n_points +
                           oversample * n_edges +
-                          oversample * (oversample-1) / 2 *
+                          ( oversample * (oversample-1) ) / 2 *
                           deform->surfaces[s].surface.n_polygons );
 
             deform->surfaces[s].bound[i].image_weight_in /= (Real)
                          (deform->surfaces[s].surface.n_points +
                           oversample * n_edges +
-                          oversample * (oversample-1) / 2 *
+                          ( oversample * (oversample-1) ) / 2 *
                           deform->surfaces[s].surface.n_polygons );
         }
 
-        for_less( i, 0, deform->surfaces[s].n_value )
-        {
+        for_less( i, 0, deform->surfaces[s].n_value ) {
             get_volume_real_range( deform->surfaces[s].value[i].volume,
                                    &min_value, &max_value );
             diff = (max_value - min_value) / 10.0;
             oversample = deform->surfaces[s].value[i].oversample;
             n_eval_points = deform->surfaces[s].surface.n_points +
                             deform->surfaces[s].surface.n_polygons *
-                            ((oversample+3) * (oversample+2)/2 - 3) -
+                            (((oversample+3) * (oversample+2))/2 - 3) -
                             oversample * deform->surfaces[s].surface.n_edges;
 
             deform->surfaces[s].value[i].image_weight /=
@@ -3293,26 +3520,21 @@ private  BOOLEAN   fit_polygons(
                                    diff * diff;
         }
 
-        for_less( i, 0, deform->surfaces[s].n_stretch )
-        {
-            n_edges = count_edges( deform->surfaces[s].stretch[i].n_points,
-                                   deform->surfaces[s].stretch[i].n_neighbours,
-                                   deform->surfaces[s].stretch[i].neighbours );
+        for_less( i, 0, deform->surfaces[s].n_stretch ) {
+            n_edges = deform->surfaces[s].stretch[i].n_edges;
 
             deform->surfaces[s].stretch[i].stretch_weight /= (Real) n_edges;
             deform->surfaces[s].stretch[i].max_stretch_weight /= (Real) n_edges;
         }
 
-        for_less( i, 0, deform->surfaces[s].n_curvature )
-        {
+        for_less( i, 0, deform->surfaces[s].n_curvature ) {
             deform->surfaces[s].curvature[i].curvature_weight /=
                             (Real) deform->surfaces[s].curvature[i].n_points;
             deform->surfaces[s].curvature[i].max_curvature_weight /=
                             (Real) deform->surfaces[s].curvature[i].n_points;
         }
 
-        for_less( i, 0, deform->surfaces[s].n_bend )
-        {
+        for_less( i, 0, deform->surfaces[s].n_bend ) {
             n_edges = count_edges( deform->surfaces[s].bend[i].n_points,
                                    deform->surfaces[s].bend[i].n_neighbours,
                                    deform->surfaces[s].bend[i].neighbours );
@@ -3321,16 +3543,13 @@ private  BOOLEAN   fit_polygons(
             deform->surfaces[s].bend[i].max_bend_weight /= (Real) n_edges;
         }
 
-        for_less( i, 0, deform->surfaces[s].n_self_intersects )
-        {
-            for_less( w, 0, deform->surfaces[s].self_intersects[i].n_weights )
-            {
+        for_less( i, 0, deform->surfaces[s].n_self_intersects ) {
+            for_less( w, 0, deform->surfaces[s].self_intersects[i].n_weights ) {
                 deform->surfaces[s].self_intersects[i].weights[w] /=
                           (Real) deform->surfaces[s].surface.n_points;
                 if( closest_self_intersect < 0.0 ||
                     deform->surfaces[s].self_intersects[i].min_distances[w] <
-                    closest_self_intersect )
-                {
+                    closest_self_intersect ) {
                     closest_self_intersect =
                        deform->surfaces[s].self_intersects[i].min_distances[w];
                 }
@@ -3338,28 +3557,24 @@ private  BOOLEAN   fit_polygons(
         }
     }
 
-    for_less( i, 0, deform->n_surf_surfs )
-    {
+    for_less( i, 0, deform->n_surf_surfs ) {
         int  s1, s2;
 
         s1 = deform->surf_surfs[i].surface_index1;
         s2 = deform->surf_surfs[i].surface_index2;
-        for_less( w, 0, deform->surf_surfs[i].n_weights )
-        {
+        for_less( w, 0, deform->surf_surfs[i].n_weights ) {
             deform->surf_surfs[i].weights[w] /=
                       (Real) (deform->surfaces[s1].surface.n_points +
                               deform->surfaces[s2].surface.n_points);
 
             if( closest_self_intersect < 0.0 ||
-                deform->surf_surfs[i].min_distances[w] < closest_self_intersect)
-            {
+                deform->surf_surfs[i].min_distances[w] < closest_self_intersect) {
                 closest_self_intersect = deform->surf_surfs[i].min_distances[w];
             }
         }
     }
 
-    for_less( i, 0, deform->n_inter_surfaces )
-    {
+    for_less( i, 0, deform->n_inter_surfaces ) {
         n_points1 = deform->surfaces[deform->inter_surfaces[i].surface_index1].
                     surface.n_points;
         n_points2 = deform->surfaces[deform->inter_surfaces[i].surface_index2].
@@ -3367,18 +3582,15 @@ private  BOOLEAN   fit_polygons(
 
         oversample = deform->inter_surfaces[i].oversample;
 
-        if( oversample > 0 )
-        {
+        if( oversample > 0 ) {
             n_eval_points = n_points1 +
                             deform->surfaces[deform->inter_surfaces[i].
                                  surface_index1].surface.n_polygons *
-                            ((oversample+3) * (oversample+2)/2 - 3) -
+                            (((oversample+3) * (oversample+2))/2 - 3) -
                             oversample * deform->surfaces[
                       deform->inter_surfaces[i].surface_index1].surface.n_edges;
 
-        }
-        else
-        {
+        } else {
             n_eval_points = n_points1 + n_points2;
         }
 
@@ -3392,42 +3604,40 @@ private  BOOLEAN   fit_polygons(
 
     boundary_searching = FALSE;
     n_boundary_points = 0;
-    for_less( s, 0, deform->n_surfaces )
-    {
-        for_less( i, 0, deform->surfaces[s].n_bound )
-        {
-            if( deform->surfaces[s].bound[i].max_dist_weight > 0.0 )
-            {
+    for_less( s, 0, deform->n_surfaces ) {
+        for_less( i, 0, deform->surfaces[s].n_bound ) {
+            if( deform->surfaces[s].bound[i].max_dist_weight > 0.0 ) {
                 oversample = deform->surfaces[s].bound[i].oversample;
 
                 n_boundary_points += deform->surfaces[s].surface.n_points +
                             oversample * deform->surfaces[s].surface.n_edges +
-                            oversample * (oversample-1) / 2 *
+                            ( oversample * (oversample-1) ) / 2 *
                             deform->surfaces[s].surface.n_polygons;
             }
             boundary_searching = TRUE;
         }
     }
 
-    if( n_boundary_points > 0 )
-    {
+    if( n_boundary_points > 0 ) {
         print( "Allocating %d boundary points\n", n_boundary_points );
         ALLOC( boundary_points, n_boundary_points );
         ALLOC( boundary_flags, n_boundary_points );
     }
 
-    ALLOC( derivative, n_parameters );
-    for_less( p1, 0, n_parameters )
-        derivative[p1] = 0.0;
+    // On the first iteration, set the value to any non-zero
+    // value to tell get_line_lookup that all faces are moving
+    // and to include them in the pairs of triangles.
 
-    if( boundary_searching )
-    {
+    ALLOC( derivative, n_parameters );
+    for_less( p1, 0, n_parameters ) {
+        derivative[p1] = 1.0;
+    }
+
+    if( boundary_searching ) {
         initialize_quadratic_real( n_parameters, &constant,
                                    &linear, &square, &n_cross_terms,
                                    &cross_parms, &cross_terms );
-    }
-    else
-    {
+    } else {
         linear = NULL;
         square = NULL;
         n_cross_terms = NULL;
@@ -3438,8 +3648,7 @@ private  BOOLEAN   fit_polygons(
     conj = initialize_conjugate_gradient( n_parameters );
 
     bound_present = FALSE;
-    for_less( s, 0, deform->n_surfaces )
-    {
+    for_less( s, 0, deform->n_surfaces ) {
         if( deform->surfaces[s].n_bound > 0 )
             bound_present = TRUE;
     }
@@ -3455,20 +3664,13 @@ private  BOOLEAN   fit_polygons(
     if( point_grid_size < 1 )
         point_grid_size = 1;
 
-    initialize_line_lookup( &line_lookup, deform,
-                            si_step, 0.0, point_grid_size, start_parameter );
-
-    get_line_lookup( &line_lookup, deform, n_parameters,
-                     parameters, 0.0,
-                     parameters, &offset, &si_lookup, &ss_lookup );
-
-    step_taken = 0.0;
+    initialize_line_lookup( &line_lookup, deform, si_step, 
+                            point_grid_size, start_parameter);
 
     if( timing_flag )
         start_time = current_cpu_seconds();
 
-    if( movement_threshold > 0.0 && n_movements > 0 )
-    {
+    if( movement_threshold > 0.0 && n_movements > 0 ) {
         ALLOC( prev_parms, n_parameters );
         for_less( i, 0, n_parameters )
             prev_parms[i] = parameters[i];
@@ -3477,29 +3679,22 @@ private  BOOLEAN   fit_polygons(
     
     position_changed = TRUE;
     iter = 0;
-    while( iter < n_iters )
-    {
+    while( iter < n_iters ) {
         ++iter;
 
-        if( one_at_a_time )
-        {
-            if( iter == 1 || iter == n_iters )
-            {
+        if( one_at_a_time ) {
+            if( iter == 1 || iter == n_iters ) {
                 current_origin = -1;
                 last_change = n_steps_before_change;
-            }
-            else
-            {
+            } else {
                 ++last_change;
-                if( last_change >= n_steps_before_change )
-                {
+                if( last_change >= n_steps_before_change ) {
                     last_change = 0;
                     n_since_recompute = recompute_every;
 
-                    if( one_at_a_time_method == 1 )
+                    if( one_at_a_time_method == 1 ) {
                         current_origin = get_random_int( n_parameters / 3 );
-                    else if( one_at_a_time_method == 0 )
-                    {
+                    } else if( one_at_a_time_method == 0 ) {
                         ++current_origin;
                         if( current_origin >= n_parameters / 3 )
                             current_origin = -1;
@@ -3507,27 +3702,20 @@ private  BOOLEAN   fit_polygons(
                 }
             }
 
-            if( iter != 1 && iter != n_iters && one_at_a_time_method == 2 )
-            {
+            if( iter != 1 && iter != n_iters && one_at_a_time_method == 2 ) {
                 n_done = find_active_points(
                            deform->surfaces[0].surface.n_points,
                            deform->surfaces[0].surface.n_neighbours,
                            deform->surfaces[0].surface.neighbours,
                            n_active_points, start_points,
                            active_level, active_flags, evaluate_flags );
-
-                print( "N active: %d %d (%d)\n", n_active_points, n_done,
-                                                 start_points[0] );
-            }
-            else
-            {
+            } else {
                 n_done = find_active_points(
                            deform->surfaces[0].surface.n_points,
                            deform->surfaces[0].surface.n_neighbours,
                            deform->surfaces[0].surface.neighbours,
                            1, &current_origin, active_level, active_flags,
                            evaluate_flags );
-                print( "Current: %d %d\n", current_origin, n_done );
             }
         }
 
@@ -3535,10 +3723,11 @@ private  BOOLEAN   fit_polygons(
 
         // Modified by June 15/08/2003
         if( recompute_every > 0 && n_since_recompute >= recompute_every  && 
-            (deform->surfaces[0].bound->max_outward!=0 || deform->surfaces[0].bound->max_inward!=0 || deform->surfaces[0].bound->max_dist_weight!=0) )
-        {
-            n_since_recompute = 0;
+            (deform->surfaces[0].bound->max_outward != 0 || 
+             deform->surfaces[0].bound->max_inward != 0 || 
+             deform->surfaces[0].bound->max_dist_weight != 0) ) {
 
+            n_since_recompute = 0;
             find_boundary_points( deform, n_parameters,
                                   start_parameter, parameters,
                                   (one_at_a_time && one_at_a_time_method == 2) ?
@@ -3548,141 +3737,88 @@ private  BOOLEAN   fit_polygons(
                                   &n_cross_terms, &cross_parms,
                                   &cross_terms );
 
-            recomputed = TRUE;
+	    recomputed = TRUE;
+// ppppp Clean this up! We know the exact size of these arrays from
+// the node neighbours. Use it to allocate the initial memory and get
+// rid of this crap below.
 
-            if( iter == 1 && boundary_searching )
-            {
+            if( iter == 1 && boundary_searching ) {
                 realloc_quadratic_cross_terms_real( n_parameters, n_cross_terms,
-                                               &cross_parms, &cross_terms );
+                                                    &cross_parms, &cross_terms );
             }
 
         }
 
-        get_line_lookup( &line_lookup, deform, n_parameters,
-                         parameters,
-                         step_taken, derivative, &offset,
-                         &si_lookup, &ss_lookup );
+        // On the first iteration, override the derivatives for
+        // the boundary points (non-moving).
 
-        compute_boundary_line_coefficients(
-                            n_parameters, parameters,
-                            constant, linear, square, n_cross_terms,
-                            cross_parms, cross_terms,
-                            derivative, boundary_coefs );
-
-        fit = evaluate_fit( deform, start_parameter,
-                            parameters,  
-                            active_flags, evaluate_flags,
-                            boundary_coefs, 0.0,
-                            boundary_flags, boundary_points,
-                            0.0, FABS(offset), si_lookup, ss_lookup,
-                            &fit_info );
-
-        if( iter == 1 || recomputed && print_initial )
-        {
-            print( "Initial:             %g ", fit );
-            print_fit_info( &fit_info );
-            print( "\n" );
-            (void) flush_file( stdout );
+        if( iter == 1 ) {
+          if( active_flags != NULL ) {
+            for_less( i, 0, n_parameters ) {
+              if( !active_flags[i/3] ) derivative[i] = 0.0;
+            }
+          }
+          for_less( s, 0, deform->n_surfaces ) {
+            if( deform->surfaces[s].static_flag ) {
+              for_less( i, 0, deform->surfaces[s].surface.n_points ) {
+                derivative[start_parameter[s] + 3*i + 0] = 0.0;
+                derivative[start_parameter[s] + 3*i + 1] = 0.0;
+                derivative[start_parameter[s] + 3*i + 2] = 0.0;
+              }
+            }
+          }
         }
+
+        // Determine the list of pairs of triangles that are
+        // candidates for intersection. For iter == 1, derivative
+        // is set to 1.0 to indicate that all faces possibly 
+        // move. For iter > 1, derivative is the value at the
+        // previous iteration. derivative is only used to 
+        // determine if a face is moving or not; its actual value,
+        // if non-zero, is not used in the calculations.
+
+        get_line_lookup( &line_lookup, deform, n_parameters,
+                         parameters, derivative );
+
+        // NOTE: The derivatives should be recalculated only when
+        //       a true local minimum has been found in the line
+        //       minimization process, since the conjugate gradient
+        //       method advances in orthogonal search directions
+        //       (need to reach the local min to achieve max
+        //       movement in each orthogonal direction).
+        //       However, this does not seem to affect much the
+        //       final outcome of the segmentation.
+        //       FIX THIS!!! CL.
+
+        // Evaluate the fit derivatives on the new lookup table
+        // at this position.
+	//
 
         evaluate_fit_deriv( deform, n_parameters, start_parameter,
                             parameters, boundary_flags, boundary_points,
                             linear, square, n_cross_terms, 
                             cross_parms, cross_terms,
-                            si_lookup, ss_lookup, derivative, &deriv_info );
+                            line_lookup.si_lookups, line_lookup.ss_lookups,
+                            derivative, &deriv_info );
 
-        if( getenv( "DERIV_SMOOTH" ) == NULL ||
-            sscanf( getenv( "DERIV_SMOOTH" ), "%d %lf", &n_deriv_iters,
-                                                        &fraction ) != 2 )
-        {
-            n_deriv_iters = n_deriv_smoothing_steps;
-            fraction = deriv_smoothing;
-        }
+        // Smooth the direction gradients (derivative).
 
-        /* Added by June */
-        //////////////////////////////////////////////////////////////
-/*        if( new_fit_num>=20 )
-        {
-            new_fit_num=0;
-        }
-        Real new_fit;
-        new_fit = 0;
-        for_less( s, 0, 19 )
-        {
-            new_fit += new_fits[s];
-        }
-        new_fit /= 20.0;
-        if(fabs(fit-new_fit)<0.00001)
-        {
-            break;
-        }
-        new_fits[new_fit_num++] = fit;
-*/		//////////////////////////////////////////////////////////////
+        smooth_fit_deriv( deform, n_deriv_smoothing_steps, deriv_smoothing,
+                          derivative, start_parameter );
 
-        if( n_deriv_iters > 0 && fraction > 0.0 )
-        {
-            int     n_points, n3, n_neighs, *neighs, i3;
-            Real    *x_deriv_ptr, *y_deriv_ptr, *z_deriv_ptr;
-            Real    *x_new_deriv, *y_new_deriv, *z_new_deriv, one_minus_f;
-            Real    scale;
+        // Impose boundary conditions on the non-moving nodes:
+        // set gradient to zero.
 
-            one_minus_f = 1.0 - fraction;
-            for_less( deriv_iter, 0, n_deriv_iters )
-            for_less( s, 0, deform->n_surfaces )
-            {
-                x_deriv_ptr = &derivative[start_parameter[s]+0];
-                y_deriv_ptr = &derivative[start_parameter[s]+1];
-                z_deriv_ptr = &derivative[start_parameter[s]+2];
-                n_points = deform->surfaces[s].surface.n_points;
-                n3 = 3 * n_points;
-                ALLOC( x_new_deriv, n3 );
-                y_new_deriv = &x_new_deriv[1];
-                z_new_deriv = &x_new_deriv[2];
-                for_less( i, 0, n_points )
-                {
-                    avg_x = 0.0;
-                    avg_y = 0.0;
-                    avg_z = 0.0;
-                    neighs = deform->surfaces[s].surface.neighbours[i];
-                    n_neighs = deform->surfaces[s].surface.n_neighbours[i];
-                    for_less( n, 0, n_neighs)
-                    {
-                        neigh = 3*neighs[n];
-                        avg_x += x_deriv_ptr[neigh];
-                        avg_y += y_deriv_ptr[neigh];
-                        avg_z += z_deriv_ptr[neigh];
-                    }
-                    scale = fraction / (Real) n_neighs;
-
-                    i3 = 3 * i;
-                    x_new_deriv[i3] = one_minus_f * x_deriv_ptr[i3] +
-                                      scale * avg_x;
-                    y_new_deriv[i3] = one_minus_f * y_deriv_ptr[i3] +
-                                      scale * avg_y;
-                    z_new_deriv[i3] = one_minus_f * z_deriv_ptr[i3] +
-                                      scale * avg_z;
-                }
-                for_less( i, 0, n3 )
-                    x_deriv_ptr[i] = x_new_deriv[i];
-                FREE( x_new_deriv );
-            }
-        }
-
-        if( active_flags != NULL )
-        {
-            for_less( i, 0, n_parameters )
-            {
+        if( active_flags != NULL ) {
+            for_less( i, 0, n_parameters ) {
                 if( !active_flags[i/3] )
                     derivative[i] = 0.0;
             }
         }
 
-        for_less( s, 0, deform->n_surfaces )
-        {
-            if( deform->surfaces[s].static_flag )
-            {
-                for_less( i, 0, deform->surfaces[s].surface.n_points )
-                {
+        for_less( s, 0, deform->n_surfaces ) {
+            if( deform->surfaces[s].static_flag ) {
+                for_less( i, 0, deform->surfaces[s].surface.n_points ) {
                     derivative[start_parameter[s] + 3*i + 0] = 0.0;
                     derivative[start_parameter[s] + 3*i + 1] = 0.0;
                     derivative[start_parameter[s] + 3*i + 2] = 0.0;
@@ -3691,13 +3827,11 @@ private  BOOLEAN   fit_polygons(
         }
 
         if( one_at_a_time && one_at_a_time_method == 2 &&
-            last_change >= n_steps_before_change - 1 )
-        {
+            last_change >= n_steps_before_change - 1 ) {
             Real   len, max_len;
 
             max_len = -1.0;
-            for_less( i, 0, n_parameters / 3 )
-            {
+            for_less( i, 0, n_parameters / 3 ) {
                 len = derivative[IJ(i,0,3)] * derivative[IJ(i,0,3)] +
                       derivative[IJ(i,1,3)] * derivative[IJ(i,1,3)] +
                       derivative[IJ(i,2,3)] * derivative[IJ(i,2,3)];
@@ -3708,14 +3842,12 @@ private  BOOLEAN   fit_polygons(
 
             n_active_points = 0;
             max_len *= active_threshold * active_threshold;
-            for_less( i, 0, n_parameters / 3 )
-            {
+            for_less( i, 0, n_parameters / 3 ) {
                 len = derivative[IJ(i,0,3)] * derivative[IJ(i,0,3)] +
                       derivative[IJ(i,1,3)] * derivative[IJ(i,1,3)] +
                       derivative[IJ(i,2,3)] * derivative[IJ(i,2,3)];
 
-                if( len >= max_len )
-                {
+                if( len >= max_len ) {
                     start_points[n_active_points] = i;
                     ++n_active_points;
                 }
@@ -3724,129 +3856,117 @@ private  BOOLEAN   fit_polygons(
 
         ++n_since_recompute;
 
-/*
-        if( one_at_a_time )
-        {
-            for_less( i, 0, n_parameters )
-            {
-                derivative[i] *= -1.0;
-            }
-        }
-        else */ if( !get_conjugate_unit_direction( conj, derivative, derivative,
-                                           &direction_changed ) )
-        {
-            if( recompute_every <= 0 || n_since_recompute == 1 )
-                break;
-            n_since_recompute = recompute_every;
-            continue;
+        if( !get_conjugate_unit_direction( conj, derivative, derivative,
+                                         &direction_changed ) ) {
+          if( recompute_every <= 0 || n_since_recompute == 1 )
+              break;
+          n_since_recompute = recompute_every;
+          continue;
         }
 
-        if( active_flags != NULL )
-        {
-            for_less( i, 0, n_parameters )
-            {
+        if( active_flags != NULL ) {
+            for_less( i, 0, n_parameters ) {
                 if( !active_flags[i/3] )
                     derivative[i] = 0.0;
-            }
+	    }
         }
 
-        max_move_per_unit_line = get_max_movement_per_unit_line( n_parameters,
-                                                                 derivative );
+        // recompute boundary_coefs with the latest values of
+        // derivative, at this current surface position.
 
-        delete_line_lookup( &line_lookup, deform );
-        initialize_line_lookup( &line_lookup, deform,
-                                si_step, max_move_per_unit_line,
-                                point_grid_size, start_parameter);
+        compute_boundary_line_coefficients( n_parameters, parameters,
+                                            constant, linear, square,
+                                            n_cross_terms, cross_parms,
+                                            cross_terms, derivative,
+                                            boundary_coefs );
 
-        compute_boundary_line_coefficients(
-                            n_parameters, parameters,
-                            constant, linear, square, n_cross_terms,
-                            cross_parms, cross_terms,
-                            derivative, boundary_coefs );
+        // Determine min_line_dists for each pair of triangles
+        // in the lookup table, based on the latest gradients.
+
+        compute_min_line_dists( deform, &line_lookup,
+                                start_parameter, n_parameters,
+                                derivative );
+
+        // Evaluation of the initial value of the fit function.
+
+        if( iter == 1 || recomputed ) {
+          fit = evaluate_fit( deform, start_parameter, parameters,  
+                              active_flags, evaluate_flags,
+                              boundary_coefs, 0.0,
+                              boundary_flags, boundary_points,
+                              0.0, 0.5 * line_lookup.interval_size,
+                              line_lookup.si_lookups,
+                              line_lookup.ss_lookups, &fit_info );
+          if( iter == 1 || ( recomputed && print_initial ) ) {
+              print( "Initial:             %g ", fit );
+              print_fit_info( &fit_info );
+              print( "\n" );
+              (void) flush_file( stdout );
+          }
+        }
 
         fit = minimize_along_line( fit, deform, n_parameters,
-                                   start_parameter,
-                                   parameters,
+                                   start_parameter, parameters,
                                    active_flags, evaluate_flags,
-                                   derivative,
-                                   boundary_flags, boundary_points,
-                                   boundary_coefs,
+                                   derivative, boundary_flags,
+                                   boundary_points, boundary_coefs, 
                                    tolerance, function_tolerance,
-                                   &line_lookup, &step_taken, &position_changed,
+                                   &line_lookup, &position_changed,
                                    &fit_info );
 
-        if( print_deriv )
-        {
+        if( print_deriv ) {
             print( "                      Deriv: " );
             print_fit_deriv_info( &deriv_info );
-        }
-
-        if( print_closest && closest_self_intersect >= 0.0 &&
-            (closest_distance1 >= 0.0 || closest_distance2 >= 0.0) )
-        {
-            print(    "  Closest: %.4g ", closest_distance1 );
-            print(    "  Closest: %.4g\n", closest_distance2 );
-        }
-        else if( print_deriv )
-        {
             print( "\n" );
         }
 
-        if( timing_flag )
-        {
+        if( timing_flag ) {
             current_time = current_cpu_seconds() - start_time;
             print( "%.3g ", current_time );
         }
 
-        print( "Iter %4d: %.6g \t", iter, fit );
+        print( "Iter %4d: %#.6g \t", iter, fit );
         print_fit_info( &fit_info );
         print( "\n" );
         (void) flush_file( stdout );
 
+
 /* writing file_info log file by JUNE */
-        if( !equal_strings(log_filename,"") )
-        {
+        if( !equal_strings(log_filename,"") ) {
           parameter_log = open_file_to_write_info(log_filename);
           write_file_info( parameter_log, &fit_info );
           close_file_info(parameter_log);
         }
 
         if( movement_threshold > 0.0 && n_movements > 0 &&
-            (iter % n_movements) == 0 )
-        {
-            if( iter > 0 )
-            {
+            (iter % n_movements) == 0 ) {
+            if( iter > 0 ) {
                 max_step = 0.0;
-                for_less( i, 0, n_parameters )
-                {
+                for_less( i, 0, n_parameters ) {
                     delta = FABS( parameters[i] - prev_parms[i] );
                     if( delta > max_step )
                         max_step = delta;
                 }
             }
 
-            if( max_step < movement_threshold )
-            {
+            if( max_step < movement_threshold ) {
                 print( "Maximum change in last %d iterations: %g\n",
                         n_movements, max_step );
                 break;
             }
-
             for_less( i, 0, n_parameters )
                 prev_parms[i] = parameters[i];
         }
 
-        if( !position_changed && !direction_changed )
-        {
-            if( recompute_every <= 0 || n_since_recompute == 1 )
+        if( !position_changed && !direction_changed ) {
+            if( recompute_every <= 0 || n_since_recompute == 1 ) {
                 break;
+            }
             n_since_recompute = recompute_every;
         }
-    }
+    }     // end loop on iterations
 
-
-    if( movement_threshold > 0.0 && n_movements > 0 )
-    {
+    if( movement_threshold > 0.0 && n_movements > 0 ) {
         FREE( prev_parms );
     }
 
@@ -3854,8 +3974,7 @@ private  BOOLEAN   fit_polygons(
 
     FREE( derivative );
 
-    if( boundary_searching )
-    {
+    if( boundary_searching ) {
         delete_quadratic_real( n_parameters, linear, square, n_cross_terms,
                                cross_parms, cross_terms );
     }
@@ -3865,11 +3984,9 @@ private  BOOLEAN   fit_polygons(
     rms_movement = 0.0;
     max_movement = 0.0;
 
-    for_less( s, 0, deform->n_surfaces )
-    {
+    for_less( s, 0, deform->n_surfaces ) {
         start = start_parameter[s];
-        for_less( point, 0, deform->surfaces[s].surface.n_points )
-        {
+        for_less( point, 0, deform->surfaces[s].surface.n_points ) {
             dx = RPoint_x( deform->surfaces[s].surface.points[point] ) -
                            parameters[start+IJ(point,0,3)];
             dy = RPoint_y( deform->surfaces[s].surface.points[point] ) -
@@ -3900,7 +4017,6 @@ private  BOOLEAN   fit_polygons(
 
     FREE( start_parameter );
     FREE( parameters );
-    FREE( new_fits );
 
     if( active_flags != NULL )
     {

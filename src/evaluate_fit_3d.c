@@ -1,15 +1,9 @@
 #include <time.h>
-#include  <fit_3d.h>
+#include <fit_3d.h>
+
 #define ADAPTIVE_RATIO 1
-//#define ADAPTIVE_RATIO_ANCHOR 0
-//#define ADAPTIVE_RATIO_BOUNDARY 0
-//#define VOLUME_WEIGHT 1e-4
-//#define VOLUME_MAX_WEIGHT 1e-2
 #define NO_ANCHOR 0
 #define BOUNDARY_DECREASE 1
-
-//int inside_points[20];
-//int n_inside_points=0;
 
 private  Real   evaluate_intersect_wm_fit(
     object_struct **objects,
@@ -144,6 +138,9 @@ private  Real   evaluate_intersect_wm_fit_deriv(
   }
 }
 
+// Now allow oversampling.
+// This function is valid only for "to > from" (forward direction).
+
 private  Real   evaluate_laplacian_fit(
     Real         weight,
     int          direction,
@@ -176,11 +173,12 @@ private  Real   evaluate_laplacian_fit(
                                 NULL, NULL, NULL, NULL, NULL, NULL );
 
       if( value >= to ) {
-        fit += value-to;
+        fit += value-to;            // linear
+        // fit += exp(value-to)-1.0;   // exponential is too much!
       } else if( deriv_factor==0 ) {
-        fit += exp(to-value)-1.0;
+        fit += exp(to-value)-1.0;   // exponential
       } else if( deriv_factor>0 ) {
-        fit += to-value;
+        fit += to-value;            // linear
       }
     }
 
@@ -227,7 +225,6 @@ private  Real   evaluate_laplacian_fit(
                                         1, FALSE, 0.0, &value,
                                         NULL, NULL, NULL,
                                         NULL, NULL, NULL, NULL, NULL, NULL );
-
 
               if( value >= to ) {
                 fit += value-to;            // linear
@@ -277,17 +274,14 @@ private  Real   evaluate_laplacian_fit_deriv(
     int          start_point,
     int          end_point,
     int          n_neighbours[],
-    int          *neighbours[],
+    int        * neighbours[],
     Real         sampling,
-    Real         deriv[])
-{
-    Real         value1, value2, volume_value;
+    Real         deriv[]) {
+
+    Real         value1, volume_value;
     Real         dxyz[3];
     int          point, p_index;
-    int          a,x,y,z;
     Real         factor = 1e0;
-    Real         max_laplace = (from>to)?from:to;
-    int          n_neighs, n, ind, *neigh_ptr, neigh;
     Real         max_deriv = sqrt(to*to*3);
 
     int          count_res = 0;
@@ -295,7 +289,7 @@ private  Real   evaluate_laplacian_fit_deriv(
     Real         phi_min = MAX( to, from );
     Real         phi_max = MIN( to, from );
 
-    if( weight > 0 ){
+    if( weight > 0 ) {
       if( sampling > 0 ) {
         weight /= (Real)((sampling+1)*(sampling+1));
       }
@@ -324,7 +318,7 @@ private  Real   evaluate_laplacian_fit_deriv(
           // df/dphi = 1
           // factor *= 1.0;   // do nothing
         } else {
-          if( deriv_factor == 0 ) {         // go outwards
+          if( deriv_factor == 0 ) {
             // f(phi) = exp(to-phi)-1;
             // df/dphi = -exp(to-phi)
             factor *= -exp(to-value1);
@@ -396,7 +390,7 @@ private  Real   evaluate_laplacian_fit_deriv(
                   // df/dphi = 1
                   // factor *= 1.0;   // do nothing
                 } else {
-                  if( deriv_factor == 0 ) {         // go outwards
+                  if( deriv_factor == 0 ) {
                     // f(phi) = exp(to-phi)-1;
                     // df/dphi = -exp(to-phi)
                     factor *= -exp(to-value1);
@@ -525,7 +519,6 @@ private  Real   evaluate_volume_fit_deriv(
     Vector       normal;
     Real         dxyz[3];
 
-    //n_inside_points = 0;
     if( weight > 0 || max_weight > 0 ){
       max_neighbours = 0;
       for_less( n, start_point, end_point ){
@@ -641,26 +634,24 @@ private  Real   evaluate_boundary_search_fit(
 
     fit2 = 0.0;
 
-    for_less( point, start_point, end_point )
-    {
-        if( active_flags != NULL && !active_flags[point] )
-            continue;
+    if( active_flags ) {
+      for_less( point, start_point, end_point ) {
+        if( !active_flags[point] ) continue;
 
-        if( boundary_flags[point] == BOUNDARY_NOT_FOUND )
-        {
+        if( boundary_flags[point] == BOUNDARY_NOT_FOUND ) {
           // Added by June Sic Kim 7/12/2002
 	  if(adaptive_ratio==0){
 	    fit2 += max_diff2;
 	  }
 	  else{
 /*	    adaptive_weight = (max_weight_value-weights[point])/(max_weight_value/2);
-            fit2 += max_diff2 * adaptive_weight * (adaptive_weight>=1?ADAPTIVE_RATIO_BOUNDARY:1/ADAPTIVE_RATIO_BOUNDARY);
+            fit2 += max_diff2 * adaptive_weight * 
+               (adaptive_weight>=1?ADAPTIVE_RATIO_BOUNDARY:1/ADAPTIVE_RATIO_BOUNDARY);
 */          adaptive_weight = (max_weight_value-weights[point])/max_weight_value;
 	    fit2 += max_diff2 * adaptive_weight * adaptive_ratio;
 	  }
             continue;
-        }
-        else if( boundary_flags[point] == BOUNDARY_IS_OUTSIDE )
+        } else if( boundary_flags[point] == BOUNDARY_IS_OUTSIDE )
             weight = image_weight_out;
         else
             weight = image_weight_in;
@@ -677,8 +668,7 @@ private  Real   evaluate_boundary_search_fit(
 
         dist_sq = dx * dx + dy * dy + dz * dz;
 
-        if( max_dist_sq > 0.0 && dist_sq > max_dist_sq )
-        {
+        if( max_dist_sq > 0.0 && dist_sq > max_dist_sq ) {
             dist = sqrt( dist_sq ) - max_dist_threshold;
 	    if(adaptive_ratio==0){
 	      fit2 += weight * dist * dist;
@@ -690,10 +680,10 @@ private  Real   evaluate_boundary_search_fit(
 	      fit2 += weight * dist * dist * adaptive_weight * adaptive_ratio;
 	    }
         }
+      }
     }
 
-    if( oversample > 0 )
-    {
+    if( oversample > 0 ) {
         handle_internal_error( "gotta implement this" );
 #ifdef NOT_YET
         ind = n_points;
@@ -701,8 +691,7 @@ private  Real   evaluate_boundary_search_fit(
         if( start_point > 0 )
             handle_internal_error( "gotta implement this" );
 
-        for_less( point, start_point, end_point )
-        {
+        for_less( point, start_point, end_point ) {
             p_index = IJ( point, 0, 3 );
             x = parameters[p_index+0];
             y = parameters[p_index+1];
@@ -792,7 +781,6 @@ private  Real   evaluate_boundary_search_fit(
 #endif
     }
 
-
     return( max_dist_weight * fit2 );
 }
 
@@ -846,15 +834,13 @@ private  void   evaluate_boundary_search_fit_deriv(
         dz = z - RPoint_z( boundary_points[point] );
 
         dist_sq = dx * dx + dy * dy + dz * dz;
-        if( dist_sq > max_dist_sq )
-        {
+        if( dist_sq > max_dist_sq ) {
             dist = sqrt( dist_sq );
             diff = dist - max_dist_threshold;
             // Modified by June Sic Kim at 9/12/2002
 	    if(adaptive_ratio==0){
 	      factor = weight * max_dist_weight * 2.0 * diff / dist;
-	    }
-	    else{
+	    } else{
 /*	      adaptive_weight = (max_weight_value-weights[point])/(max_weight_value/2);
 	      factor = weight * max_dist_weight * 2.0 * diff / dist * adaptive_weight * (adaptive_weight>=1?ADAPTIVE_RATIO_BOUNDARY:1/ADAPTIVE_RATIO_BOUNDARY);
 */            adaptive_weight = (max_weight_value-weights[point])/(max_weight_value);
@@ -866,30 +852,25 @@ private  void   evaluate_boundary_search_fit_deriv(
         }
     }
 
-    if( oversample > 0 )
-    {
+    if( oversample > 0 ) {
         handle_internal_error( "not yet" );
 #ifdef NOT_YET
         ind = n_points;
-        for_less( point, 0, start_point )
-        {
-            for_less( n, 0, n_neighbours[point] )
-            {
+        for_less( point, 0, start_point ) {
+            for_less( n, 0, n_neighbours[point] ) {
                 neigh = neighbours[point][n];
                 if( THIS_IS_UNIQUE_EDGE( point, neigh ) )
                     ind += oversample;
             }
         }
 
-        for_less( point, start_point, end_point )
-        {
+        for_less( point, start_point, end_point ) {
             p_index = IJ( point, 0, 3 );
             x = parameters[p_index+0];
             y = parameters[p_index+1];
             z = parameters[p_index+2];
 
-            for_less( n, 0, n_neighbours[point] )
-            {
+            for_less( n, 0, n_neighbours[point] ) {
                 neigh = neighbours[point][n];
                 if( !THIS_IS_UNIQUE_EDGE( point, neigh ) )
                     continue;
@@ -899,14 +880,11 @@ private  void   evaluate_boundary_search_fit_deriv(
                 y2 = parameters[n_index+1];
                 z2 = parameters[n_index+2];
 
-                for_less( w, 0, oversample )
-                {
-                    if( boundary_flags[ind] == BOUNDARY_NOT_FOUND )
-                    {
+                for_less( w, 0, oversample ) {
+                    if( boundary_flags[ind] == BOUNDARY_NOT_FOUND ) {
                         ++ind;
                         continue;
-                    }
-                    else if( boundary_flags[ind] == BOUNDARY_IS_OUTSIDE )
+                    } else if( boundary_flags[ind] == BOUNDARY_IS_OUTSIDE )
                         weight = image_weight_out;
                     else
                         weight = image_weight_in;
@@ -921,8 +899,7 @@ private  void   evaluate_boundary_search_fit_deriv(
                          RPoint_z( boundary_points[ind] );
 
                     dist_sq = dx * dx + dy * dy + dz * dz;
-                    if( dist_sq > max_dist_sq )
-                    {
+                    if( dist_sq > max_dist_sq ) {
                         dist = sqrt( dist_sq );
                         diff = dist - max_dist_threshold;
                         // Modified by June Sic Kim at 9/12/2002
@@ -1196,40 +1173,19 @@ private  Real   evaluate_gradient_fit(
     Real                 differential_offset,
     Real                 differential_ratio,
     int                  n_points,
-    int                  n_edges,
-    int                  n_polygons,
     Real                 parameters[],
-    Smallest_int         active_flags[] )
-{
-    int        p1, p1_index, n1_index, n2_index, neigh1, neigh2, w1, w2, n;
-    int        i, j, k, sizes[N_DIMENSIONS];
-    int        n_neighs, *neighs;
+    Smallest_int         active_flags[] ) {
+
+    int        p1, p1_index;
     Real       x, y, z, value, diff, fit1, fit2;
     Real       ln_start_weight;
-    Real       x1, y1, z1, x2, y2, z2, x3, y3, z3;
-    Real       xv1, yv1, zv1, xv2, yv2, zv2, xv3, yv3, zv3;
-    Real       dx12, dy12, dz12, dx13, dy13, dz13;
-    Real       alpha1, alpha2;
     Real       wtv00, wtv01, wtv02, wtv03;
     Real       wtv10, wtv11, wtv12, wtv13;
     Real       wtv20, wtv21, wtv22, wtv23;
-    Real       voxel[3], voxel_000[3], voxel_100[3], voxel_010[3];
-    Real       voxel_001[3];
-    Real       u, v, w, u1, v1, ww1;
-    Real       real_scale, real_translation;
-    unsigned char  *ptr;
-    BOOLEAN    inside;
-    int               n_weights, n_weights1, n_weights2;
-    weighting_struct  tt, *weights1, *weights2, *weights;
-    unsigned  char  ***voxel_ptr;
-    int             offset1, offset2, offset3, offset4;
-    int             offset5, offset6, offset7;
-    BOOLEAN    checking_differential, fast_interp;
+    Real       voxel[3], voxel_000[3], voxel_100[3], voxel_010[3], voxel_001[3];
 
     if( image_weight < 0.0 )
         return( 0.0 );
-
-    get_volume_sizes( volume, sizes );
 
     fit1 = 0.0;
     fit2 = 0.0;
@@ -1259,14 +1215,7 @@ private  Real   evaluate_gradient_fit(
 
     ln_start_weight = log( differential_ratio );
 
-    checking_differential = (min_diff < max_diff && max_diff_weight > 0.0);
-
-    real_translation = convert_voxel_to_value( volume, 0.0 );
-    real_scale = convert_voxel_to_value( volume, 1.0 ) - real_translation;
-    real_translation -= threshold;
-
-    for_less( p1, 0, n_points )
-    {
+    for_less( p1, 0, n_points ) {
         p1_index = IJ( p1, 0, 3 );
 
         x = parameters[p1_index+0];
@@ -1277,28 +1226,22 @@ private  Real   evaluate_gradient_fit(
         voxel[1] = wtv10 * x + wtv11 * y + wtv12 * z + wtv13;
         voxel[2] = wtv20 * x + wtv21 * y + wtv22 * z + wtv23;
 
-        if( continuity == 0 )
+        if( continuity == 0 ) {
             value = trilinear_interpolate( volume, lookup, voxel );
-        else
-        {
+        } else {
             (void) evaluate_volume( volume, voxel, NULL, continuity,
                                     FALSE, 0.0, &value, NULL, NULL );
         }
+
         //////////////////////////////////////////////////////////////////
         // modified by June S. Kim at 7/MAY/2004
-        diff = (value<threshold)?value - threshold:0;
-
-        fit1 += diff * diff * image_weight;
-        //if( !checking_differential || diff >= min_diff && diff <= max_diff )
-        //    continue;
-
-        //fit2 += differential_weights( diff, min_diff, max_diff,
-        //                              differential_offset,
-        //                              ln_start_weight );
-        ////////////////////////////////////////////////////////////////
+        if( value < threshold ) {
+          diff = value - threshold;
+          fit1 += diff * diff;
+        }
     }
 
-    return fit1+fit2;
+    return fit1*image_weight + fit2;
 }
 
 private  Real   evaluate_image_value_fit(
@@ -1314,8 +1257,6 @@ private  Real   evaluate_image_value_fit(
     Real                 differential_ratio,
     int                  oversample,
     int                  n_points,
-    int                  n_edges,
-    int                  n_polygons,
     int                  n_neighbours[],
     int                  *neighbours[],
     Real                 parameters[],
@@ -1385,8 +1326,7 @@ private  Real   evaluate_image_value_fit(
     real_scale = convert_voxel_to_value( volume, 1.0 ) - real_translation;
     real_translation -= threshold;
 
-    for_less( p1, 0, n_points )
-    {
+    for_less( p1, 0, n_points ) {
         p1_index = IJ( p1, 0, 3 );
 
         x = parameters[p1_index+0];
@@ -1640,36 +1580,27 @@ private  void   evaluate_gradient_fit_deriv(
     int                  continuity,
     Real                 image_weight,
     Real                 threshold,
-    Real                 min_diff,
-    Real                 max_diff,
-    Real                 max_diff_weight,
-    Real                 differential_offset,
     Real                 differential_ratio,
     int                  n_points,
-    int                  n_edges,
-    int                  n_polygons,
     Real                 parameters[],
     Real                 deriv[] )
 {
-    int     p1, p1_index, n1_index, n2_index, neigh1, neigh2, w1, w2, n;
+    int     p1, p1_index;
     Real    x, y, z, value, diff, dx, dy, dz;
-    Real    x1, y1, z1, x2, y2, z2, x3, y3, z3, derivative;
-    Real    weight1, weight2, weight3, alpha1, alpha2, f1, f2, f3;
-    Real    ln_start_weight, value_deriv[N_DIMENSIONS], *value_deriv_ptr[1];
+    Real    value_deriv[N_DIMENSIONS], *value_deriv_ptr[1];
     Real    wtv00, wtv01, wtv02, wtv03;
     Real    wtv10, wtv11, wtv12, wtv13;
     Real    wtv20, wtv21, wtv22, wtv23;
-    Real    voxel[3], voxel_000[3], voxel_100[3], voxel_010[3];
-    Real    voxel_001[3];
-    Real              trilin_sizes[N_DIMENSIONS];
-    int               n_weights, n_weights1, n_weights2, sizes[N_DIMENSIONS];
-    weighting_struct  tt, *t_ptr, *weights1, *weights2, *weights;
-    Real              dx12, dy12, dz12, dx13, dy13, dz13;
-    Real              xv1, yv1, zv1, xv2, yv2, zv2, xv3, yv3, zv3;
-    BOOLEAN           inside;
+    Real    voxel[3], voxel_000[3], voxel_100[3], voxel_010[3], voxel_001[3];
+    Real    trilin_sizes[N_DIMENSIONS];
+    int     sizes[N_DIMENSIONS];
+    Real    xv1, yv1, zv1, xv2, yv2, zv2, xv3, yv3, zv3;
+    BOOLEAN inside;
 
     if( image_weight < 0.0 )
         return;
+
+    Real    two_image_weight = image_weight + image_weight;
 
     get_volume_sizes( volume, sizes );
     trilin_sizes[0] = (Real) sizes[0] - 1.0;
@@ -1696,32 +1627,27 @@ private  void   evaluate_gradient_fit_deriv(
     wtv22 = voxel_001[2] - voxel_000[2];
     wtv23 = voxel_000[2];
 
-    ln_start_weight = log( differential_ratio );
-
     inside = TRUE;
-    for_less( p1, 0, n_points )
-    {
+    for_less( p1, 0, n_points ) {
         p1_index = IJ(p1,0,3);
-        x1 = parameters[p1_index+0];
-        y1 = parameters[p1_index+1];
-        z1 = parameters[p1_index+2];
+        x = parameters[p1_index+0];
+        y = parameters[p1_index+1];
+        z = parameters[p1_index+2];
 
-        xv1 = wtv00 * x1 + wtv01 * y1 + wtv02 * z1 + wtv03;
-        yv1 = wtv10 * x1 + wtv11 * y1 + wtv12 * z1 + wtv13;
-        zv1 = wtv20 * x1 + wtv21 * y1 + wtv22 * z1 + wtv23;
+        xv1 = wtv00 * x + wtv01 * y + wtv02 * z + wtv03;
+        yv1 = wtv10 * x + wtv11 * y + wtv12 * z + wtv13;
+        zv1 = wtv20 * x + wtv21 * y + wtv22 * z + wtv23;
 
         if( xv1 < 0.0 || xv1 >= (Real) sizes[0]-1.0 ||
             yv1 < 0.0 || yv1 >= (Real) sizes[1]-1.0 ||
-            zv1 < 0.0 || zv1 >= (Real) sizes[2]-1.0 )
-        {
+            zv1 < 0.0 || zv1 >= (Real) sizes[2]-1.0 ) {
             inside = FALSE;
 
             break;
         }
     }
 
-    for_less( p1, 0, n_points )
-    {
+    for_less( p1, 0, n_points ) {
         p1_index = IJ( p1, 0, 3 );
 
         x = parameters[p1_index+0];
@@ -1732,15 +1658,12 @@ private  void   evaluate_gradient_fit_deriv(
         voxel[1] = wtv10 * x + wtv11 * y + wtv12 * z + wtv13;
         voxel[2] = wtv20 * x + wtv21 * y + wtv22 * z + wtv23;
 
-        if( continuity == 0 )
-        {
+        if( continuity == 0 ) {
             value = trilinear_interpolate_with_deriv( volume, inside,
                                                       trilin_sizes,
                                                       lookup, voxel,
                                                       value_deriv );
-        }
-        else
-        {
+        } else {
             value_deriv_ptr[0] = value_deriv;
             (void) evaluate_volume( volume, voxel, NULL, continuity,
                                     FALSE, 0.0, &value, value_deriv_ptr, NULL );
@@ -1749,11 +1672,12 @@ private  void   evaluate_gradient_fit_deriv(
         convert_voxel_normal_vector_to_world( volume, value_deriv,
                                               &dx, &dy, &dz );
 
-        diff = (value<threshold)?value - threshold:0;
-
-        deriv[p1_index+0] += image_weight * 2.0 * dx * diff;
-        deriv[p1_index+1] += image_weight * 2.0 * dy * diff;
-        deriv[p1_index+2] += image_weight * 2.0 * dz * diff;
+        if( value < threshold ) {
+          diff = two_image_weight * ( value - threshold );
+          deriv[p1_index+0] += dx * diff;
+          deriv[p1_index+1] += dy * diff;
+          deriv[p1_index+2] += dz * diff;
+        }
     }
 }
 
@@ -1770,8 +1694,6 @@ private  void   evaluate_image_value_fit_deriv(
     Real                 differential_ratio,
     int                  oversample,
     int                  n_points,
-    int                  n_edges,
-    int                  n_polygons,
     int                  n_neighbours[],
     int                  *neighbours[],
     Real                 parameters[],
@@ -4792,88 +4714,108 @@ private  Real   evaluate_self_intersect_fit(
     BOOLEAN                       use_tri_tri_dist,
     BOOLEAN                       use_square_flag,
     Real                          dist_from_computed_self_intersect,
-    int                           n_neighbours[],
-    int                           *neighbours[],
-    int                           n_points,
+    int                           n_triangles,
+    int                           triangles[],
     Real                          parameters[],
     Smallest_int                  active_flags[],
-    Real                          *closest_dist )
-{
-    int     i, w, n_candidates;
+    Real                          *closest_dist ) {
+
+    int     i, k, w, n_candidates;
     Real    fit, *fits=0, dist, dist_sq, diff, *sq_min_distances=0;
     Real    max_distance_sq;
-    BOOLEAN sqrt_done;
 
-    *closest_dist = -1.0;
+    Real max_min_dist_sq = min_distances[0];
+    for( w = 1; w < n_weights; w++ ) {
+      if( min_distances[w] > max_min_dist_sq ) max_min_dist_sq = min_distances[w];
+    }
+    max_min_dist_sq *= max_min_dist_sq;
 
-    ALLOC( fits, n_weights );
-    ALLOC( sq_min_distances, n_weights );
-
-    max_distance_sq = 0.0;
-    for_less( w, 0, n_weights )
-    {
-        fits[w] = 0.0;
-        sq_min_distances[w] = min_distances[w] * min_distances[w];
-        max_distance_sq = MAX( max_distance_sq, sq_min_distances[w] );
+    Real * tri_distance;
+    ALLOC( tri_distance, n_triangles );
+    for( i = 0; i < n_triangles; i++ ) {
+      tri_distance[i] = max_min_dist_sq;
     }
 
     n_candidates = get_n_self_intersect_candidate( si_lookup );
 
-    for_less( i, 0, n_candidates )
-    {
-        if( !test_self_intersect_candidate( si_lookup, use_tri_tri_dist, i,
-                              dist_from_computed_self_intersect,
-                              max_distance_sq, n_points,
-                              parameters, active_flags,
-                              n_neighbours, neighbours, &dist_sq ) )
+    for_less( i, 0, n_candidates ) {
+
+      int poly1 = si_lookup->p1s[i];
+      int p0 = triangles[3*poly1];
+      int n01 = triangles[3*poly1+1];
+      int n02 = triangles[3*poly1+2];
+      int poly2 = si_lookup->p2s[i];
+      int p1 = triangles[3*poly2];
+      int n11 = triangles[3*poly2+1];
+      int n12 = triangles[3*poly2+2];
+
+      if( !test_self_intersect_candidate( p0, n01, n02, p1, n11, n12,
+                                          &si_lookup->cases[i],
+                                          si_lookup->min_line_dists[i],
+                                          dist_from_computed_self_intersect,
+                                          parameters,
+                                          active_flags, &dist_sq ) ) {
+        continue;
+      }
+
+      // Check for intersection. This should be a small tolerance to
+      // avoid rounding errors.
+
+      if( dist_sq == 0.0 ) {
+        fit = 1.0e+30;
+        break;
+      }
+      if( dist_sq < tri_distance[poly1] ) tri_distance[poly1] = dist_sq;
+      if( dist_sq < tri_distance[poly2] ) tri_distance[poly2] = dist_sq;
+    }
+
+    if( i == n_candidates ) {
+      ALLOC( fits, n_weights );
+      for_less( w, 0, n_weights ) {
+        fits[w] = 0.0;
+      }
+
+      *closest_dist = 1.0e+20;
+
+      for( i = 0; i < n_triangles; i++ ) {
+
+        if( tri_distance[i] >= max_min_dist_sq ) {
+          tri_distance[i] = 0.0;                     // do not account in fit evaluation
+          continue;
+        } else {
+          tri_distance[i] = sqrt( tri_distance[i] );
+          if( tri_distance[i] < *closest_dist ) *closest_dist = tri_distance[i];
+        }
+
+        for( w = 0; w < n_weights; w++ ) {
+          if( tri_distance[i] >= min_distances[w] ){
             continue;
+          }
 
-        if( *closest_dist < 0.0 || dist_sq < *closest_dist )
-            *closest_dist = dist_sq;
-
-        sqrt_done = FALSE;
-
-        for_less( w, 0, n_weights )
-        {
-	  if( dist_sq >= sq_min_distances[w] ){
-                continue;
-	  }
-
-            if( dist_sq == 0.0 )
-            {
-                fits[w] += 1.0e30;
-                break;
-            }
-
-            if( !sqrt_done )
-            {
-                sqrt_done = TRUE;
-                dist = sqrt( dist_sq );
-            }
-
-            diff = min_distances[w] - dist;
+          diff = min_distances[w] - tri_distance[i];
 
 #ifdef USE_CUBE
 #define USE_CUBE
-            fits[w] += diff * diff * diff / min_distances[w];
+          fits[w] += diff * diff * diff / min_distances[w];
 #else
-            if( use_square_flag )
-                fits[w] += diff * diff;
-            else
-                fits[w] += FABS( diff );
+          if( use_square_flag ) {
+            fits[w] += diff * diff;
+          } else {
+            fits[w] += FABS( diff );
+          }
 #endif
         }
+      }
+
+      fit = 0.0;
+      for_less( w, 0, n_weights ) {
+        fit += weights[w] * fits[w];
+      }
+
+      FREE( fits );
     }
 
-    fit = 0.0;
-    for_less( w, 0, n_weights )
-        fit += weights[w] * fits[w];
-
-    FREE( fits );
-    FREE( sq_min_distances );
-
-    if( *closest_dist > 0.0 )
-        *closest_dist = sqrt( *closest_dist );
+    FREE( tri_distance );
 
     return( fit );
 }
@@ -4885,59 +4827,73 @@ private  void   evaluate_self_intersect_fit_deriv(
     self_intersect_lookup_struct  *si_lookup,
     BOOLEAN            use_tri_tri_dist,
     BOOLEAN            use_square_flag,
-    int                n_neighbours[],
-    int                *neighbours[],
-    int                n_points,
+    int                triangles[],
     Real               parameters[],
-    Real               deriv[] )
-{
+    Real               deriv[] ) {
+
     int        i, w, n_candidates;
-    Real       dist_sq, *sq_min_distances, max_distance_sq;
+    Real       dist, dist_sq, *sq_min_distances, max_distance_sq;
     BOOLEAN    deriv_done;
-    self_intersect_deriv_struct  deriv_info;
+    Real       tri_tri_deriv[6][3];
 
     ALLOC( sq_min_distances, n_weights );
 
     max_distance_sq = 0.0;
-    for_less( w, 0, n_weights )
-    {
+    for_less( w, 0, n_weights ) {
         sq_min_distances[w] = min_distances[w] * min_distances[w];
         max_distance_sq = MAX( max_distance_sq, sq_min_distances[w] );
     }
 
     n_candidates = get_n_self_intersect_candidate( si_lookup );
 
-    for_less( i, 0, n_candidates )
-    {
-        if( !test_self_intersect_candidate( si_lookup, use_tri_tri_dist, i,
-                              -1.0, max_distance_sq, n_points,
-                              parameters, NULL, n_neighbours, neighbours,
-                              &dist_sq ) )
-            continue;
+    for_less( i, 0, n_candidates ) {
+
+        int poly1 = si_lookup->p1s[i];
+        int p0 = triangles[3*poly1];
+        int n01 = triangles[3*poly1+1];
+        int n02 = triangles[3*poly1+2];
+        int poly2 = si_lookup->p2s[i];
+        int p1 = triangles[3*poly2];
+        int n11 = triangles[3*poly2+1];
+        int n12 = triangles[3*poly2+2];
+
+        dist_sq = si_lookup->min_line_dists[i];
 
         deriv_done = FALSE;
+        Real factor = 0.0;
 
-        for_less( w, 0, n_weights )
-        {
+        for_less( w, 0, n_weights ) {
             if( dist_sq >= sq_min_distances[w] )
                 continue;
 
-            if( !deriv_done )
-            {
+            if( !deriv_done ) {
                 deriv_done = TRUE;
-                create_self_intersect_deriv_info( si_lookup, use_tri_tri_dist,
-                                                  i, dist_sq, n_points,
-                                                  parameters, n_neighbours,
-                                                  neighbours, &deriv_info );
+                dist = sqrt( dist_sq );
+                sq_triangle_triangle_dist_deriv( &parameters[3*p0],
+                                                 &parameters[3*n01],
+                                                 &parameters[3*n02],
+                                                 &parameters[3*p1],
+                                                 &parameters[3*n11],
+                                                 &parameters[3*n12],
+                                                 tri_tri_deriv[0],
+                                                 tri_tri_deriv[1],
+                                                 tri_tri_deriv[2],
+                                                 tri_tri_deriv[3],
+                                                 tri_tri_deriv[4],
+                                                 tri_tri_deriv[5],
+                                                 si_lookup->cases[i] );
             }
 
-            get_self_intersect_deriv( si_lookup, use_tri_tri_dist,
-                                      use_square_flag, i,
-                                      dist_sq, min_distances[w], weights[w],
-                                      n_points,
-                                      parameters, deriv, n_neighbours,
-                                      neighbours, &deriv_info );
+            factor += get_self_intersect_deriv_factor( 
+                                      use_square_flag, min_distances[w],
+                                      weights[w], dist );
         }
+
+        if( deriv_done ) {
+          get_self_intersect_deriv( p0, n01, n02, p1, n11, n12, factor,
+                                    deriv, tri_tri_deriv );
+        }
+
     }
 
     FREE( sq_min_distances );
@@ -4958,24 +4914,20 @@ private  Real   evaluate_surf_surf_fit(
     Real                          min_distances[],
     surf_surf_lookup_struct       *ss_lookup,
     Real                          dist_from_computed_self_intersect,
-    int                           n_neighbours1[],
-    int                           *neighbours1[],
-    int                           n_points1,
+    int                           triangle1[],
     Real                          parameters1[],
     Smallest_int                  active_flags1[],
-    int                           n_neighbours2[],
-    int                           *neighbours2[],
-    int                           n_points2,
+    int                           triangle2[],
     Real                          parameters2[],
     Smallest_int                  active_flags2[],
     Real                          *closest_dist )
 {
-    int     i, w, w1, n_candidates, which_case, best;
+    int     i, w, w1, n_candidates, best;
     int     p1, n1, p2, n2, n11, n12, n21, n22;
     Real    fit, dist, dist_sq, sq_min_dist;
     Real    max_distance_sq, closest;
     Real    *parameters_p1, *parameters_n11, *parameters_n12;
-    int     prev_p1s, p1s;
+    int     prev_p1s, p1s, p2s;
     piecewise_weight_struct  *sorted, tmp;
     Real    intersect_dist, tmp_dist;
     int     intersect_num = 0;
@@ -4983,25 +4935,21 @@ private  Real   evaluate_surf_surf_fit(
     closest = -1.0;
 
     max_distance_sq = 0.0;
-    for_less( w, 0, n_weights )
-    {
+    for_less( w, 0, n_weights ) {
         sq_min_dist = min_distances[w] * min_distances[w];
         max_distance_sq = MAX( max_distance_sq, sq_min_dist );
     }
 
     ALLOC( sorted, n_weights );
 
-    for_less( w, 0, n_weights )
-    {
+    for_less( w, 0, n_weights ) {
         sorted[w].min_distance = min_distances[w];
         sorted[w].weight = weights[w];
     }
 
-    for_less( w, 0, n_weights - 1 )
-    {
+    for_less( w, 0, n_weights - 1 ) {
         best = w;
-        for_less( w1, w+1, n_weights )
-        {
+        for_less( w1, w+1, n_weights ) {
             if( sorted[w1].min_distance < sorted[best].min_distance )
                 best = w1;
         }
@@ -5011,16 +4959,12 @@ private  Real   evaluate_surf_surf_fit(
         sorted[w] = tmp;
     }
 
-    for_down( w, n_weights-1, 0 )
-    {
-        if( w == n_weights-1 )
-        {
+    for_down( w, n_weights-1, 0 ) {
+        if( w == n_weights-1 ) {
             sorted[w].a = 0.0;
             sorted[w].b = 0.0;
             sorted[w].c = 0.0;
-        }
-        else
-        {
+        } else {
             sorted[w].a = sorted[w+1].a;
             sorted[w].b = sorted[w+1].b;
             sorted[w].c = sorted[w+1].c;
@@ -5037,49 +4981,43 @@ private  Real   evaluate_surf_surf_fit(
     prev_p1s = -1;
     fit = 0.0;
 
-    for_less( i, 0, n_candidates )
-    {
+    for_less( i, 0, n_candidates ) {
         if( dist_from_computed_self_intersect > 0.0 &&
             (Real) ss_lookup->min_line_dists[i] >
-            dist_from_computed_self_intersect )
-        {
+            dist_from_computed_self_intersect ) {
             continue;
         }
 
         p1s = ss_lookup->p1s[i];
 
-        if( p1s != prev_p1s )
-        {
+        if( p1s != prev_p1s ) {
             prev_p1s = p1s;
-            p1 = p1s % n_points1;
-            n1 = p1s / n_points1;
-            n11 = neighbours1[p1][n1];
-            n12 = neighbours1[p1][(n1+1)%n_neighbours1[p1]];
+            p1 = triangle1[3*p1s];
+            n11 = triangle1[3*p1s+1];
+            n12 = triangle1[3*p1s+2];
             parameters_p1 = &parameters1[p1*3];
             parameters_n11 = &parameters1[n11*3];
             parameters_n12 = &parameters1[n12*3];
         }
 
-        p2 = ss_lookup->p2s[i] % n_points2;
-        n2 = ss_lookup->p2s[i] / n_points2;
-
-        n21 = neighbours2[p2][n2];
-        n22 = neighbours2[p2][(n2+1)%n_neighbours2[p2]];
+        p2s = ss_lookup->p2s[i];
+        p2 = triangle2[3*p2s];
+        n21 = triangle2[3*p2s+1];
+        n22 = triangle2[3*p2s+2];
 
         if( active_flags1 != NULL &&
             !active_flags1[p1] && !active_flags1[n11] && !active_flags1[n12] &&
-            !active_flags2[p2] && !active_flags2[n21] && !active_flags2[n22] )
-        {
+            !active_flags2[p2] && !active_flags2[n21] && !active_flags2[n22] ) {
             continue;
         }
 
-        which_case = (int) ss_lookup->cases[i];
         dist_sq = sq_triangle_triangle_dist( parameters_p1,
                                              parameters_n11,
                                              parameters_n12,
                                              &parameters2[p2*3],
                                              &parameters2[n21*3],
-                                             &parameters2[n22*3], &which_case );
+                                             &parameters2[n22*3],
+                                             &ss_lookup->cases[i] );
 
         if( dist_sq > max_distance_sq )
             continue;
@@ -5087,18 +5025,14 @@ private  Real   evaluate_surf_surf_fit(
         if( closest < 0.0 || dist_sq < closest )
             closest = dist_sq;
 
-        if( dist_sq > 0.0 )
-        {
+        if( dist_sq > 0.0 ) {
             dist = sqrt( dist_sq );
             w = 0;
-            while( dist > sorted[w].min_distance && w < n_weights-1 )
-            {
+            while( dist > sorted[w].min_distance && w < n_weights-1 ) {
                 ++w;
             }
             fit += sorted[w].c + dist * (sorted[w].b + dist * sorted[w].a);
-        }
-        else
-        {
+        } else {
           //fit += 1e-4;//2e-3;
           intersect_dist = 0;
           tmp_dist = sq_triangle_point_dist(&parameters2[p2*3],
@@ -5137,70 +5071,92 @@ private  void   evaluate_surf_surf_fit_deriv(
     Real                     weights[],
     Real                     min_distances[],
     surf_surf_lookup_struct  *ss_lookup,
-    int                      n_neighbours1[],
-    int                      *neighbours1[],
     int                      n_points1,
+    int                      triangle1[],
     Real                     parameters1[],
     Real                     deriv1[],
-    int                      n_neighbours2[],
-    int                      *neighbours2[],
     int                      n_points2,
+    int                      triangle2[],
     Real                     parameters2[],
-    Real                     deriv2[] )
-{
+    Real                     deriv2[] ) {
+
     int                     i, w, n_candidates;
-    Real                    dist_sq, *sq_min_distances, max_distance_sq;
+    Real                    dist, dist_sq, *sq_min_distances, max_distance_sq;
     BOOLEAN                 deriv_done;
-    surf_surf_deriv_struct  deriv_info;
+    Real                    tri_tri_deriv[6][3];
 
     ALLOC( sq_min_distances, n_weights );
 
     max_distance_sq = 0.0;
-    for_less( w, 0, n_weights )
-    {
+    for_less( w, 0, n_weights ) {
         sq_min_distances[w] = min_distances[w] * min_distances[w];
         max_distance_sq = MAX( max_distance_sq, sq_min_distances[w] );
     }
 
     n_candidates = get_n_surf_surf_candidate( ss_lookup );
 
-    for_less( i, 0, n_candidates )
-    {
-        if( !test_surf_surf_candidate( ss_lookup, i,
-                              -1.0, max_distance_sq,
-                              n_points1,
-                              parameters1, NULL, n_neighbours1, neighbours1,
-                              n_points2,
-                              parameters2, NULL, n_neighbours2, neighbours2,
-                              &dist_sq ) )
-            continue;
+    for_less( i, 0, n_candidates ) {
+
+        int p1s = ss_lookup->p1s[i];
+        int p1 = triangle1[3*p1s];
+        int n11 = triangle1[3*p1s+1];
+        int n12 = triangle1[3*p1s+2];
+
+        int p2s = ss_lookup->p2s[i];
+        int p2 = triangle2[3*p2s];
+        int n21 = triangle2[3*p2s+1];
+        int n22 = triangle2[3*p2s+2];
+
+        dist_sq = sq_triangle_triangle_dist( &parameters1[p1*3],
+                                             &parameters1[n11*3],
+                                             &parameters1[n12*3],
+                                             &parameters2[p2*3],
+                                             &parameters2[n21*3],
+                                             &parameters2[n22*3],
+                                             &ss_lookup->cases[i] );
 
         deriv_done = FALSE;
+        Real factor = 0.0;
 
-        for_less( w, 0, n_weights )
-        {
+        for_less( w, 0, n_weights ) {
             if( dist_sq >= sq_min_distances[w] )
                 continue;
 
-            if( !deriv_done )
-            {
+            if( !deriv_done ) {
                 deriv_done = TRUE;
-                create_surf_surf_deriv_info( ss_lookup, i, dist_sq,
-                                             n_points1, parameters1,
-                                             n_neighbours1, neighbours1,
-                                             n_points2, parameters2,
-                                             n_neighbours2, neighbours2,
-                                             &deriv_info );
+
+                if( dist_sq > 0.0 ) {
+                  dist = sqrt( dist_sq );
+                } else {
+                  dist = 0.0;
+                }
+
+                dist = sqrt( dist_sq );
+                sq_triangle_triangle_dist_deriv( &parameters1[3*p1],
+                                                 &parameters1[3*n11],
+                                                 &parameters1[3*n12],
+                                                 &parameters2[3*p2],
+                                                 &parameters2[3*n21],
+                                                 &parameters2[3*n22],
+                                                 tri_tri_deriv[0],
+                                                 tri_tri_deriv[1],
+                                                 tri_tri_deriv[2],
+                                                 tri_tri_deriv[3],
+                                                 tri_tri_deriv[4],
+                                                 tri_tri_deriv[5],
+                                                 ss_lookup->cases[i] );
             }
 
-            get_surf_surf_deriv( ss_lookup, i, min_distances[w],
-                                 weights[w],
-                                 n_points1, deriv1,
-                                 n_neighbours1, neighbours1,
-                                 n_points2, deriv2,
-                                 n_neighbours2, neighbours2,
-                                 &deriv_info );
+            factor += get_surf_surf_deriv_factor( min_distances[w], weights[w],
+                                                  dist );
         }
+
+        if( deriv_done ) {
+          get_surf_surf_deriv( p1, n11, n12, p2, n21, n22, factor,
+                               deriv1, deriv2, tri_tri_deriv );
+        }
+
+
     }
     memset(deriv2, 0, sizeof(Real)*n_points2*3);
 
@@ -5292,12 +5248,10 @@ private  int   private_evaluate_fit(
 
     count = 0;
 
-    for_less( i, 0, deform->n_inter_surfaces )
-    {
+    for_less( i, 0, deform->n_inter_surfaces ) {
         inter = &deform->inter_surfaces[i];
 
-        if( which == -2 || which == count )
-        {
+        if( which == -2 || which == count ) {
             f = evaluate_inter_surface_fit(
                inter->weight,
                inter->max_weight1,
@@ -5319,10 +5273,8 @@ private  int   private_evaluate_fit(
         }
         ++count;
 
-        if( inter->oversample > 0 )
-        {
-            if( which == -2 || which == count )
-            {
+        if( inter->oversample > 0 ) {
+            if( which == -2 || which == count ) {
                 f = evaluate_oversampled_inter_surface_fit(
                    inter->weight,
                    inter->max_weight1,
@@ -5350,25 +5302,19 @@ private  int   private_evaluate_fit(
         }
     }
 
-    for_less( i, 0, deform->n_surf_surfs )
-    {
+    for_less( i, 0, deform->n_surf_surfs ) {
         surf = &deform->surf_surfs[i];
 
-        if( which == -2 || which == count )
-        {
+        if( which == -2 || which == count ) {
             f = evaluate_surf_surf_fit(
                 surf->n_weights, surf->weights, surf->min_distances,
                 &ss_lookup[i],
                 dist_from_computed_self_intersect,
-                deform->surfaces[surf->surface_index1].surface.n_neighbours,
-                deform->surfaces[surf->surface_index1].surface.neighbours,
-                deform->surfaces[surf->surface_index1].surface.n_points,
+                deform->surfaces[surf->surface_index1].surface.triangles,
                 &parameters[start_parameter[surf->surface_index1]],
                 (active_flags == NULL) ? NULL :
                       &active_flags[start_parameter[surf->surface_index1]/3],
-                deform->surfaces[surf->surface_index2].surface.n_neighbours,
-                deform->surfaces[surf->surface_index2].surface.neighbours,
-                deform->surfaces[surf->surface_index2].surface.n_points,
+                deform->surfaces[surf->surface_index2].surface.triangles,
                 &parameters[start_parameter[surf->surface_index2]],
                 (active_flags == NULL) ? NULL :
                       &active_flags[start_parameter[surf->surface_index2]/3],
@@ -5387,17 +5333,16 @@ private  int   private_evaluate_fit(
         ++count;
     }
 
-    for_less( surface, 0, deform->n_surfaces>0?1:0 )
-    {
+    for_less( surface, 0, deform->n_surfaces>0?1:0 ) {
+
         this_parms = &parameters[start_parameter[surface]];
         this_active = (active_flags == NULL) ? NULL :
                          &active_flags[start_parameter[surface]/N_DIMENSIONS];
 
-        for_less( i, 0, deform->surfaces[surface].n_self_intersects )
-        {
+        for_less( i, 0, deform->surfaces[surface].n_self_intersects ) {
             self = &deform->surfaces[surface].self_intersects[i];
-            if( which == -2 || which == count )
-            {
+            if( which == -2 || which == count ) {
+
                 f = evaluate_self_intersect_fit(
                     self->n_weights, self->weights,
                     self->min_distances,
@@ -5405,9 +5350,8 @@ private  int   private_evaluate_fit(
                     self->use_tri_tri_dist,
                     self->square_flag,
                     dist_from_computed_self_intersect,
-                    deform->surfaces[surface].surface.n_neighbours,
-                    deform->surfaces[surface].surface.neighbours,
-                    deform->surfaces[surface].surface.n_points,
+                    deform->surfaces[surface].surface.n_polygons,
+                    deform->surfaces[surface].surface.triangles,
                     this_parms, this_active, &closest );
 
                 if( closest >= 0.0 && (closest < eval->closest_self_intersect ||
@@ -5425,10 +5369,8 @@ private  int   private_evaluate_fit(
 
         //////////////////////////////////////////////////////////////////
         // prevent from intersecting with the WM surface
-        for_less( i, 0, deform->n_intersect_wm )
-        {
-          if( which == -2 || which == count )
-          {
+        for_less( i, 0, deform->n_intersect_wm ) {
+          if( which == -2 || which == count ) {
             f = evaluate_intersect_wm_fit( deform->intersect_wm->objects,
                            deform->intersect_wm->weight, this_parms,
                            deform->intersect_wm->intersected,
@@ -5442,11 +5384,9 @@ private  int   private_evaluate_fit(
 
         //////////////////////////////////////////////////////////////////
         // LAPLACIAN constraint
-        for_less( i, 0, deform->surfaces[surface].n_laplacian )
-        {
+        for_less( i, 0, deform->surfaces[surface].n_laplacian ) {
           //anchor = &deform->surfaces[surface].anchors[0];
-          if( which == -2 || which == count )
-          {
+          if( which == -2 || which == count ) {
             f = evaluate_laplacian_fit(
                            deform->surfaces[surface].laplacian->weight,
                            deform->surfaces[surface].laplacian->direction,
@@ -5512,12 +5452,10 @@ private  int   private_evaluate_fit(
             ++count;
         }
 
-        for_less( i, 0, deform->surfaces[surface].n_weight_points )
-        {
-            weight_point = &deform->surfaces[surface].weight_points[i];
+        for_less( i, 0, deform->surfaces[surface].n_weight_points ) {
 
-            if( which == -2 || which == count )
-            {
+            if( which == -2 || which == count ) {
+                weight_point = &deform->surfaces[surface].weight_points[i];
                 f = evaluate_weight_point_fit(
                        weight_point->weight, weight_point->max_dist_weight,
                        weight_point->n_weight_points,
@@ -5536,16 +5474,14 @@ private  int   private_evaluate_fit(
     }
 
     ind = 0;
-    for_less( surface, 0, deform->n_surfaces>0?1:0 )
-    {
+    for_less( surface, 0, deform->n_surfaces>0?1:0 ) {
         this_parms = &parameters[start_parameter[surface]];
         this_evaluate = (evaluate_flags == NULL) ? NULL :
                          &evaluate_flags[start_parameter[surface]/N_DIMENSIONS];
         this_active = (active_flags == NULL) ? NULL :
                          &active_flags[start_parameter[surface]/N_DIMENSIONS];
 
-        if( which == -2 || which == count )
-        {
+        if( which == -2 || which == count ) {
             f = boundary_coefs[0] + t_dist *
                       (boundary_coefs[1] + t_dist * boundary_coefs[2]);
             //////////////////////////////////////////////////////////
@@ -5560,23 +5496,11 @@ private  int   private_evaluate_fit(
 
         ++count;
 
-        for_less( i, 0, deform->surfaces[surface].n_bound )
-        {
+        for_less( i, 0, deform->surfaces[surface].n_bound ) {
             bound = &deform->surfaces[surface].bound[i];
-            //anchor = &deform->surfaces[surface].anchors[i];
 
-            if( bound->max_dist_weight > 0.0 )
-            {
-                if( which == -2 || which == count )
-                {
-        ///////////////////////////////////////////////////////////
-        /*fv = evaluate_volume_fit( VOLUME_WEIGHT, VOLUME_MAX_WEIGHT, bound->volume, 
-                             anchor->n_anchor_points, anchor->anchor_points,
-                             this_parms,
-                             0,
-                             deform->surfaces[surface].surface.n_points,
-                             deform->surfaces[surface].surface.n_points);*/
-        ///////////////////////////////////////////////////////////
+            if( bound->max_dist_weight > 0.0 ) {
+                if( which == -2 || which == count ) {
                     f = evaluate_boundary_search_fit( bound->image_weight_in,
                                           bound->image_weight_out,
                                           bound->max_inward,
@@ -5597,8 +5521,9 @@ private  int   private_evaluate_fit(
                        deform->surfaces[surface].volume->adaptive_boundary_ratio);
 
                     ind += deform->surfaces[surface].surface.n_points +
-                           bound->oversample *
-                           deform->surfaces[surface].surface.n_edges;
+                           bound->oversample * deform->surfaces[surface].surface.n_edges +
+                           ( bound->oversample * ( bound->oversample - 1 ) ) / 2 *
+                           deform->surfaces[surface].surface.n_polygons;
 
                     //eval->surf_surf_fit += fv;
                     eval->boundary_fit += f * 1;
@@ -5628,8 +5553,6 @@ private  int   private_evaluate_fit(
                                           gradient->differential_offset,
                                           gradient->differential_ratio,
                    deform->surfaces[surface].surface.n_points,
-                   deform->surfaces[surface].surface.n_edges,
-                   deform->surfaces[surface].surface.n_polygons,
                    this_parms, this_active);
 
                 eval->gradient_fit += f;
@@ -5641,12 +5564,10 @@ private  int   private_evaluate_fit(
             ++count;
         }
 
-        for_less( i, 0, deform->surfaces[surface].n_value )
-        {
-            value = &deform->surfaces[surface].value[i];
+        for_less( i, 0, deform->surfaces[surface].n_value ) {
 
-            if( which == -2 || which == count )
-            {
+            if( which == -2 || which == count ) {
+                value = &deform->surfaces[surface].value[i];
                 f = evaluate_image_value_fit( value->volume,
                                           value->voxel_lookup,
                                           value->continuity,
@@ -5659,8 +5580,6 @@ private  int   private_evaluate_fit(
                                           value->differential_ratio,
                                           value->oversample,
                    deform->surfaces[surface].surface.n_points,
-                   deform->surfaces[surface].surface.n_edges,
-                   deform->surfaces[surface].surface.n_polygons,
                    deform->surfaces[surface].surface.n_neighbours,
                    deform->surfaces[surface].surface.neighbours,
                    this_parms, this_active);
@@ -5674,12 +5593,10 @@ private  int   private_evaluate_fit(
             ++count;
         }
 
-        for_less( i, 0, deform->surfaces[surface].n_stretch )
-        {
-            stretch = &deform->surfaces[surface].stretch[i];
+        for_less( i, 0, deform->surfaces[surface].n_stretch ) {
 
-            if( which == -2 || which == count )
-            {
+            if( which == -2 || which == count ) {
+                stretch = &deform->surfaces[surface].stretch[i];
                 f = evaluate_stretch_fit( stretch->stretch_weight,
                                       stretch->max_stretch_weight,
                                       stretch->min_stretch,
@@ -5701,12 +5618,10 @@ private  int   private_evaluate_fit(
             ++count;
         }
 
-        for_less( i, 0, deform->surfaces[surface].n_curvature )
-        {
-            curvature = &deform->surfaces[surface].curvature[i];
+        for_less( i, 0, deform->surfaces[surface].n_curvature ) {
 
-            if( which == -2 || which == count )
-            {
+            if( which == -2 || which == count ) {
+                curvature = &deform->surfaces[surface].curvature[i];
                 f = evaluate_curvature_fit( curvature->curvature_weight,
                                         curvature->max_curvature_weight,
                                         curvature->min_curvature,
@@ -5727,12 +5642,10 @@ private  int   private_evaluate_fit(
             ++count;
         }
 
-        for_less( i, 0, deform->surfaces[surface].n_bend )
-        {
-            bend = &deform->surfaces[surface].bend[i];
+        for_less( i, 0, deform->surfaces[surface].n_bend ) {
 
-            if( which == -2 || which == count )
-            {
+            if( which == -2 || which == count ) {
+                bend = &deform->surfaces[surface].bend[i];
                 f = evaluate_bend_fit( bend->bend_weight,
                                        bend->max_bend_weight,
                                        bend->min_bend,
@@ -5756,46 +5669,6 @@ private  int   private_evaluate_fit(
     return( count );
 }
 
-typedef  struct
-{
-    Deform_struct                 *deform;
-    int                           *start_parameter;
-    Real                          *parameters;
-    Smallest_int                  *active_flags;
-    Smallest_int                  *evaluate_flags;
-    Real                          *boundary_coefs;
-    Real                          t_dist;
-    Smallest_int                  *boundary_flags;
-    Point                         *boundary_points;
-    Real                          max_value;
-    Real                          dist_from_computed_self_intersect;
-    self_intersect_lookup_struct  **si_lookup;
-    surf_surf_lookup_struct       *ss_lookup;
-    Real                          *fit;
-    fit_eval_struct               *eval;
-} evaluate_fit_data;
-private  void  multi_function(
-    int   index,
-    void  *data )
-{
-    evaluate_fit_data  *fit_data;
-
-    fit_data = (evaluate_fit_data *) data;
-
-    (void) private_evaluate_fit( index,
-                                 fit_data->deform, fit_data->start_parameter,
-                                 fit_data->parameters,
-                                 fit_data->active_flags,
-                                 fit_data->evaluate_flags,
-                                 fit_data->boundary_coefs, fit_data->t_dist,
-                                 fit_data->boundary_flags,
-                                 fit_data->boundary_points,
-                                 fit_data->max_value,
-                                 fit_data->dist_from_computed_self_intersect,
-                                 fit_data->si_lookup, fit_data->ss_lookup,
-                                 fit_data->fit, fit_data->eval );
-}
-
 public  Real   evaluate_fit(
     Deform_struct                 *deform,
     int                           start_parameter[],
@@ -5814,9 +5687,6 @@ public  Real   evaluate_fit(
 {
     Real                   fit;
     fit_eval_struct        eval;
-#ifdef OLD_MULTI
-    evaluate_fit_data      fit_data;
-#endif
 
     eval.boundary_fit = 0.0;
     eval.gradient_fit = 0.0;
@@ -5836,8 +5706,7 @@ public  Real   evaluate_fit(
 
     fit = 0.0;
 
-    (void) private_evaluate_fit( -1,
-                                 deform, start_parameter, parameters,
+    (void) private_evaluate_fit( -2, deform, start_parameter, parameters,
                                  active_flags, evaluate_flags,
                                  boundary_coefs, t_dist,
                                  boundary_flags, boundary_points,
@@ -5845,49 +5714,6 @@ public  Real   evaluate_fit(
                                  dist_from_computed_self_intersect,
                                  si_lookup, ss_lookup,
                                  &fit, &eval );
-
-#ifdef OLD_MULTI
-    n_processes = get_max_processes();
-
-    if( n_processes <= 1 )
-    {
-#endif
-        (void) private_evaluate_fit( -2,
-                                     deform, start_parameter, parameters,
-                                     active_flags, evaluate_flags,
-                                     boundary_coefs, t_dist,
-                                     boundary_flags, boundary_points,
-                                     max_value,
-                                     dist_from_computed_self_intersect,
-                                     si_lookup, ss_lookup,
-                                     &fit, &eval );
-#ifdef OLD_MULTI
-    }
-    else
-    {
-        fit_data.deform = deform;
-        fit_data.start_parameter = start_parameter;
-        fit_data.parameters = parameters;
-        fit_data.active_flags = active_flags;
-        fit_data.evaluate_flags = evaluate_flags;
-        fit_data.boundary_coefs = boundary_coefs;
-        fit_data.t_dist = t_dist;
-        fit_data.boundary_flags = boundary_flags;
-        fit_data.boundary_points = boundary_points;
-        fit_data.max_value = max_value;
-        fit_data.dist_from_computed_self_intersect =
-                  dist_from_computed_self_intersect;
-        fit_data.si_lookup = si_lookup;
-        fit_data.ss_lookup = ss_lookup;
-        fit_data.fit = &fit;
-        fit_data.eval = &eval;
-
-        for_less( comp, 0, n_components )
-        {
-            multi_function( comp, (void *) &fit_data );
-        }
-    }
-#endif
 
     if( fit_info != NULL )
         *fit_info = eval;
@@ -5979,6 +5805,7 @@ public  void   evaluate_fit_deriv(
     Real                   *this_parms, *this_deriv;
     Real                   *derivative;
     Real                   remove_ratio;
+    BOOLEAN                deriv_modified;
     fit_eval_struct        eval;
 
     eval.boundary_fit = 0.0;
@@ -5999,53 +5826,46 @@ public  void   evaluate_fit_deriv(
 
     ALLOC( derivative, n_parameters );
 
-    for_less( p, 0, n_parameters )
-        full_deriv[p] = 0.0;
+    deriv_modified = FALSE;
+    for_less( p, 0, n_parameters ) {
+      full_deriv[p] = 0.0;
+      derivative[p] = 0.0;
+    }
 
-    for_less( p, 0, n_parameters )
-        derivative[p] = 0.0;
-
-    for_less( surface, 0, deform->n_surfaces )
-    {
+    for_less( surface, 0, deform->n_surfaces ) {
         this_parms = &parameters[start_parameter[surface]];
         this_deriv = &derivative[start_parameter[surface]];
 
-        for_less( i, 0, deform->surfaces[surface].n_gradient )
-        {
+        for_less( i, 0, deform->surfaces[surface].n_gradient ) {
+            deriv_modified = TRUE;
             gradient = &deform->surfaces[surface].gradient[i];
 
             evaluate_gradient_fit_deriv( gradient->volume,
-                                            gradient->voxel_lookup,
-                                            gradient->continuity,
-                                            gradient->image_weight,
-                                            gradient->threshold,
-                                            gradient->min_diff,
-                                            gradient->max_diff,
-                                            gradient->max_diff_weight,
-                                            gradient->differential_offset,
-                                            gradient->differential_ratio,
+                                         gradient->voxel_lookup,
+                                         gradient->continuity,
+                                         gradient->image_weight,
+                                         gradient->threshold,
+                                         gradient->differential_ratio,
                    deform->surfaces[surface].surface.n_points,
-                   deform->surfaces[surface].surface.n_edges,
-                   deform->surfaces[surface].surface.n_polygons,
                    this_parms, this_deriv );
         }
     }
 
-    eval.gradient_fit = compute_deriv_mag( n_parameters, derivative );
-
-    for_less( p, 0, n_parameters )
-    {
+    if( deriv_modified ) {
+      deriv_modified = FALSE;
+      eval.gradient_fit = compute_deriv_mag( n_parameters, derivative );
+      for_less( p, 0, n_parameters ) {
         full_deriv[p] += derivative[p];
         derivative[p] = 0.0;
+      }
     }
 
-    for_less( surface, 0, deform->n_surfaces )
-    {
+    for_less( surface, 0, deform->n_surfaces ) {
         this_parms = &parameters[start_parameter[surface]];
         this_deriv = &derivative[start_parameter[surface]];
 
-        for_less( i, 0, deform->surfaces[surface].n_value )
-        {
+        for_less( i, 0, deform->surfaces[surface].n_value ) {
+            deriv_modified = TRUE;
             value = &deform->surfaces[surface].value[i];
 
             evaluate_image_value_fit_deriv( value->volume,
@@ -6060,29 +5880,30 @@ public  void   evaluate_fit_deriv(
                                             value->differential_ratio,
                                             value->oversample,
                    deform->surfaces[surface].surface.n_points,
-                   deform->surfaces[surface].surface.n_edges,
-                   deform->surfaces[surface].surface.n_polygons,
                    deform->surfaces[surface].surface.n_neighbours,
                    deform->surfaces[surface].surface.neighbours,
                    this_parms, this_deriv );
         }
     }
 
-    eval.value_fit = compute_deriv_mag( n_parameters, derivative );
+    if( deriv_modified ) {
+      deriv_modified = FALSE;
+      eval.value_fit = compute_deriv_mag( n_parameters, derivative );
 
-    for_less( p, 0, n_parameters )
-    {
+      for_less( p, 0, n_parameters ) {
         full_deriv[p] += derivative[p];
         derivative[p] = 0.0;
+      }
     }
 
-    for_less( surface, 0, deform->n_surfaces>0?1:0 )
-    {
+    // This is the stretch constraint for the mesh smoothness.
+
+    for_less( surface, 0, deform->n_surfaces>0?1:0 ) {
         this_parms = &parameters[start_parameter[surface]];
         this_deriv = &derivative[start_parameter[surface]];
 
-        for_less( i, 0, deform->surfaces[surface].n_stretch )
-        {
+        for_less( i, 0, deform->surfaces[surface].n_stretch ) {
+            deriv_modified = TRUE;
             stretch = &deform->surfaces[surface].stretch[i];
 
             evaluate_stretch_fit_deriv( stretch->stretch_weight,
@@ -6099,33 +5920,40 @@ public  void   evaluate_fit_deriv(
         }
     }
 
-    eval.stretch_fit = compute_deriv_mag( n_parameters, derivative );
+    if( deriv_modified ) {
+      deriv_modified = FALSE;
+      eval.stretch_fit = compute_deriv_mag( n_parameters, derivative );
 
-    for_less( p, 0, n_parameters )
-    {
+      for_less( p, 0, n_parameters ) {
         full_deriv[p] += derivative[p];
         derivative[p] = 0.0;
+      }
     }
-    if(BOUNDARY_DECREASE == 1){
-    if( linear != NULL )
-    {
+
+    // This evaluates the gradient due to boundary terms (for white matter).
+    // Because it uses ray tracing to find the nearest white voxel in the
+    // normal direction (which is slow), the terms of the fit constraint
+    // (a second order polynomial) are stored in linear, square, cross.
+
+    if( BOUNDARY_DECREASE == 1 ) {
+      if( linear != NULL ) {
+        deriv_modified = TRUE;
         evaluate_quadratic_deriv_real( n_parameters, parameters,
                                        linear, square, n_cross_terms,
                                        cross_parms, cross_terms, derivative );
+      }
     }
-    }
+
     ind = 0;
-    for_less( surface, 0, deform->n_surfaces>0?1:0 )
-    {
+    for_less( surface, 0, deform->n_surfaces>0?1:0 ) {
         this_parms = &parameters[start_parameter[surface]];
         this_deriv = &derivative[start_parameter[surface]];
 
-        for_less( i, 0, deform->surfaces[surface].n_bound )
-        {
+        for_less( i, 0, deform->surfaces[surface].n_bound ) {
             bound = &deform->surfaces[surface].bound[i];
 
-            if( bound->max_dist_weight > 0.0 )
-            {
+            if( bound->max_dist_weight > 0.0 ) {
+                deriv_modified = TRUE;
                 evaluate_boundary_search_fit_deriv(
                                               bound->image_weight_in,
                                               bound->image_weight_out,
@@ -6147,29 +5975,32 @@ public  void   evaluate_fit_deriv(
                        deform->surfaces[surface].volume->adaptive_boundary_ratio);
 
                 ind += deform->surfaces[surface].surface.n_points +
-                       bound->oversample *
-                       deform->surfaces[surface].surface.n_edges;
+                       bound->oversample * deform->surfaces[surface].surface.n_edges +
+                       ( bound->oversample * ( bound->oversample - 1 ) ) / 2 *
+                       deform->surfaces[surface].surface.n_polygons;
             }
         }
     }
-    eval.boundary_fit = compute_deriv_mag( n_parameters, derivative );
 
-    for_less( p, 0, n_parameters )
-    {
+    if( deriv_modified ) {
+      deriv_modified = FALSE;
+      eval.boundary_fit = compute_deriv_mag( n_parameters, derivative );
+
+      for_less( p, 0, n_parameters ) {
         full_deriv[p] += derivative[p];
         derivative[p] = 0.0;
+      }
     }
 
     //////////////////////////////////////////////////////////////////
     // Added by June
     // constraint for WM surface intersection
-    for_less( surface, 0, deform->n_surfaces>0?1:0 )
-    {
+    for_less( surface, 0, deform->n_surfaces>0?1:0 ) {
       this_parms = &parameters[start_parameter[surface]];
       this_deriv = &derivative[start_parameter[surface]];
 
-      for_less( i, 0, deform->n_intersect_wm )
-      {
+      for_less( i, 0, deform->n_intersect_wm ) {
+        deriv_modified = TRUE;
         evaluate_intersect_wm_fit_deriv(
                   deform->intersect_wm->objects,
                   deform->intersect_wm->weight,
@@ -6184,23 +6015,25 @@ public  void   evaluate_fit_deriv(
                   this_deriv );
       }
     }
-    eval.surf_surf_fit += compute_deriv_mag( n_parameters, derivative );
 
-    for_less( p, 0, n_parameters )
-    {
-      full_deriv[p] += derivative[p];
-      derivative[p] = 0.0;
+    if( deriv_modified ) {
+      deriv_modified = FALSE;
+      eval.surf_surf_fit += compute_deriv_mag( n_parameters, derivative );
+
+      for_less( p, 0, n_parameters ) {
+        full_deriv[p] += derivative[p];
+        derivative[p] = 0.0;
+      }
     }
 
     //////////////////////////////////////////////////////////////////
     // Added by JUNE
-    for_less( surface, 0, deform->n_surfaces>0?1:0 )
-    {
+    for_less( surface, 0, deform->n_surfaces>0?1:0 ) {
       this_parms = &parameters[start_parameter[surface]];
       this_deriv = &derivative[start_parameter[surface]];
 
-      for_less( i, 0, deform->surfaces[surface].n_laplacian )
-      {
+      for_less( i, 0, deform->surfaces[surface].n_laplacian ) {
+        deriv_modified = TRUE;
         evaluate_laplacian_fit_deriv(
                            deform->surfaces[surface].laplacian->weight,
                            deform->surfaces[surface].laplacian->direction,
@@ -6210,8 +6043,7 @@ public  void   evaluate_fit_deriv(
                            deform->surfaces[surface].laplacian->from_value,
                            deform->surfaces[surface].laplacian->to_value,
                            deform->surfaces[surface].laplacian->deriv_factor,
-                           this_parms,
-                           0,
+                           this_parms, 0,
                            deform->surfaces[surface].surface.n_points,
                            deform->surfaces[surface].surface.n_neighbours,
                            deform->surfaces[surface].surface.neighbours,
@@ -6219,29 +6051,30 @@ public  void   evaluate_fit_deriv(
                            this_deriv);
       }
     }
-    eval.laplacian_fit = compute_deriv_mag( n_parameters, derivative );
 
-    for_less( p, 0, n_parameters )
-    {
-      full_deriv[p] += derivative[p];
-      derivative[p] = 0.0;
+    if( deriv_modified ) {
+      deriv_modified = FALSE;
+      eval.laplacian_fit = compute_deriv_mag( n_parameters, derivative );
+
+      for_less( p, 0, n_parameters ) {
+        full_deriv[p] += derivative[p];
+        derivative[p] = 0.0;
+      }
     }
 
     //////////////////////////////////////////////////////////////////
     // Added by June
-    for_less( surface, 0, deform->n_surfaces>0?1:0 )
-    {
+    for_less( surface, 0, deform->n_surfaces>0?1:0 ) {
         this_parms = &parameters[start_parameter[surface]];
         this_deriv = &derivative[start_parameter[surface]];
 
-        for_less( i, 0, deform->surfaces[surface].n_volume )
-        {
+        for_less( i, 0, deform->surfaces[surface].n_volume ) {
+            deriv_modified = TRUE;
             bound = &deform->surfaces[surface].bound[i];
             anchor = &deform->surfaces[surface].anchors[i];
 
               // Added by June Sic Kim 9/12/2002
             evaluate_volume_fit_deriv(
-                        //VOLUME_WEIGHT, VOLUME_MAX_WEIGHT,
                           deform->surfaces[surface].volume->weight,
                           deform->surfaces[surface].volume->max_weight,
                           deform->surfaces[surface].volume->direction,
@@ -6257,23 +6090,25 @@ public  void   evaluate_fit_deriv(
                           this_deriv);
         }
     }
-    //eval.boundary_fit = compute_deriv_mag( n_parameters, derivative );
-    eval.volume_fit = compute_deriv_mag( n_parameters, derivative );
 
-    for_less( p, 0, n_parameters )
-    {
+    if( deriv_modified ) {
+      deriv_modified = FALSE;
+      eval.volume_fit = compute_deriv_mag( n_parameters, derivative );
+
+      for_less( p, 0, n_parameters ) {
         full_deriv[p] += derivative[p];
         derivative[p] = 0.0;
+      }
     }
+
     /////////////////////////////////////////////////////////////////////
 
-    for_less( surface, 0, deform->n_surfaces )
-    {
+    for_less( surface, 0, deform->n_surfaces ) {
         this_parms = &parameters[start_parameter[surface]];
         this_deriv = &derivative[start_parameter[surface]];
 
-        for_less( i, 0, deform->surfaces[surface].n_curvature )
-        {
+        for_less( i, 0, deform->surfaces[surface].n_curvature ) {
+            deriv_modified = TRUE;
             curvature = &deform->surfaces[surface].curvature[i];
 
             evaluate_curvature_fit_deriv( curvature->curvature_weight,
@@ -6289,21 +6124,22 @@ public  void   evaluate_fit_deriv(
         }
     }
 
-    eval.curvature_fit = compute_deriv_mag( n_parameters, derivative );
+    if( deriv_modified ) {
+      deriv_modified = FALSE;
+      eval.curvature_fit = compute_deriv_mag( n_parameters, derivative );
 
-    for_less( p, 0, n_parameters )
-    {
+      for_less( p, 0, n_parameters ) {
         full_deriv[p] += derivative[p];
         derivative[p] = 0.0;
+      }
     }
 
-    for_less( surface, 0, deform->n_surfaces )
-    {
+    for_less( surface, 0, deform->n_surfaces ) {
         this_parms = &parameters[start_parameter[surface]];
         this_deriv = &derivative[start_parameter[surface]];
 
-        for_less( i, 0, deform->surfaces[surface].n_bend )
-        {
+        for_less( i, 0, deform->surfaces[surface].n_bend ) {
+            deriv_modified = TRUE;
             bend = &deform->surfaces[surface].bend[i];
 
             evaluate_bend_fit_deriv( bend->bend_weight,
@@ -6318,16 +6154,18 @@ public  void   evaluate_fit_deriv(
         }
     }
 
-    eval.bend_fit = compute_deriv_mag( n_parameters, derivative );
+    if( deriv_modified ) {
+      deriv_modified = FALSE;
+      eval.bend_fit = compute_deriv_mag( n_parameters, derivative );
 
-    for_less( p, 0, n_parameters )
-    {
+      for_less( p, 0, n_parameters ) {
         full_deriv[p] += derivative[p];
         derivative[p] = 0.0;
+      }
     }
 
-    for_less( i, 0, deform->n_inter_surfaces )
-    {
+    for_less( i, 0, deform->n_inter_surfaces ) {
+        deriv_modified = TRUE;
         inter = &deform->inter_surfaces[i];
 
         evaluate_inter_surface_fit_deriv(
@@ -6343,8 +6181,7 @@ public  void   evaluate_fit_deriv(
                    &derivative[start_parameter[inter->surface_index1]],
                    &derivative[start_parameter[inter->surface_index2]] );
 
-        if( inter->oversample > 0 )
-        {
+        if( inter->oversample > 0 ) {
             evaluate_oversampled_inter_surface_fit_deriv(
                    inter->weight,
                    inter->max_weight1,
@@ -6362,21 +6199,23 @@ public  void   evaluate_fit_deriv(
         }
     }
 
-    eval.inter_surface_fit = compute_deriv_mag( n_parameters, derivative );
+    if( deriv_modified ) {
+      deriv_modified = FALSE;
+      eval.inter_surface_fit = compute_deriv_mag( n_parameters, derivative );
 
-    for_less( p, 0, n_parameters )
-    {
+      for_less( p, 0, n_parameters ) {
         full_deriv[p] += derivative[p];
         derivative[p] = 0.0;
+      }
     }
-    if(NO_ANCHOR != 1){
-    for_less( surface, 0, deform->n_surfaces )
-    {
+
+    if( NO_ANCHOR != 1 ) {
+      for_less( surface, 0, deform->n_surfaces ) {
         this_parms = &parameters[start_parameter[surface]];
         this_deriv = &derivative[start_parameter[surface]];
 
-        for_less( i, 0, deform->surfaces[surface].n_anchors )
-        {
+        for_less( i, 0, deform->surfaces[surface].n_anchors ) {
+            deriv_modified = TRUE;
             anchor = &deform->surfaces[surface].anchors[i];
 
             evaluate_anchor_fit_deriv(0,
@@ -6384,23 +6223,25 @@ public  void   evaluate_fit_deriv(
                        anchor->n_anchor_points, anchor->anchor_points,
                        this_parms, anchor->max_weight_value, this_deriv );
         }
+      }
+
+      eval.anchor_fit = compute_deriv_mag( n_parameters, derivative );
+
+      if( deriv_modified ) {
+        deriv_modified = FALSE;
+        for_less( p, 0, n_parameters ) {
+          full_deriv[p] += derivative[p];
+          derivative[p] = 0.0;
+        }
+      }
     }
 
-    eval.anchor_fit = compute_deriv_mag( n_parameters, derivative );
-    }
-    for_less( p, 0, n_parameters )
-    {
-        full_deriv[p] += derivative[p];
-        derivative[p] = 0.0;
-    }
-    
-    for_less( surface, 0, deform->n_surfaces )
-    {
+    for_less( surface, 0, deform->n_surfaces ) {
         this_parms = &parameters[start_parameter[surface]];
         this_deriv = &derivative[start_parameter[surface]];
 
-        for_less( i, 0, deform->surfaces[surface].n_weight_points )
-        {
+        for_less( i, 0, deform->surfaces[surface].n_weight_points ) {
+            deriv_modified = TRUE;
             weight_point = &deform->surfaces[surface].weight_points[i];
 
             evaluate_weight_point_fit_deriv(
@@ -6411,21 +6252,22 @@ public  void   evaluate_fit_deriv(
         }
     }
 
-    eval.weight_point_fit = compute_deriv_mag( n_parameters, derivative );
+    if( deriv_modified ) {
+      deriv_modified = FALSE;
+      eval.weight_point_fit = compute_deriv_mag( n_parameters, derivative );
 
-    for_less( p, 0, n_parameters )
-    {
+      for_less( p, 0, n_parameters ) {
         full_deriv[p] += derivative[p];
         derivative[p] = 0.0;
+      }
     }
 
-    for_less( surface, 0, deform->n_surfaces>0?1:0 )
-    {
+    for_less( surface, 0, deform->n_surfaces>0?1:0 ) {
         this_parms = &parameters[start_parameter[surface]];
         this_deriv = &derivative[start_parameter[surface]];
 
-        for_less( i, 0, deform->surfaces[surface].n_self_intersects )
-        {
+        for_less( i, 0, deform->surfaces[surface].n_self_intersects ) {
+            deriv_modified = TRUE;
             self = &deform->surfaces[surface].self_intersects[i];
 
             evaluate_self_intersect_fit_deriv(
@@ -6433,58 +6275,56 @@ public  void   evaluate_fit_deriv(
                        &si_lookup[surface][i],
                        self->use_tri_tri_dist,
                        self->square_flag,
-                       deform->surfaces[surface].surface.n_neighbours,
-                       deform->surfaces[surface].surface.neighbours,
-                       deform->surfaces[surface].surface.n_points,
+                       deform->surfaces[surface].surface.triangles,
                        this_parms, this_deriv );
         }
     }
 
-    eval.self_intersect_fit = compute_deriv_mag( n_parameters, derivative );
+    if( deriv_modified ) {
+      deriv_modified = FALSE;
+      eval.self_intersect_fit = compute_deriv_mag( n_parameters, derivative );
 
-    if( getenv( "PROJECT_DERIV" ) != NULL )
-    {
+      if( getenv( "PROJECT_DERIV" ) != NULL ) {
         if( sscanf( getenv( "PROJECT_DERIV" ), "%lf", &remove_ratio ) != 1 )
             remove_ratio = 1.0;
         remove_self_intersect_components( remove_ratio,
                                           n_parameters, full_deriv, derivative);
-    }
-    else
-    {
-        for_less( p, 0, n_parameters )
-        {
+      } else {
+        for_less( p, 0, n_parameters ) {
             full_deriv[p] += derivative[p];
         }
+      }
+
+      for_less( p, 0, n_parameters ) {
+        derivative[p] = 0.0;
+      }
     }
 
-    for_less( p, 0, n_parameters )
-        derivative[p] = 0.0;
-
-    for_less( i, 0, deform->n_surf_surfs )
-    {
+    for_less( i, 0, deform->n_surf_surfs ) {
+        deriv_modified = TRUE;
         surf = &deform->surf_surfs[i];
 
         evaluate_surf_surf_fit_deriv(
                    surf->n_weights, surf->weights, surf->min_distances,
                    &ss_lookup[i],
-                   deform->surfaces[surf->surface_index1].surface.n_neighbours,
-                   deform->surfaces[surf->surface_index1].surface.neighbours,
                    deform->surfaces[surf->surface_index1].surface.n_points,
+                   deform->surfaces[surf->surface_index1].surface.triangles,
                    &parameters[start_parameter[surf->surface_index1]],
                    &derivative[start_parameter[surf->surface_index1]],
-                   deform->surfaces[surf->surface_index2].surface.n_neighbours,
-                   deform->surfaces[surf->surface_index2].surface.neighbours,
                    deform->surfaces[surf->surface_index2].surface.n_points,
+                   deform->surfaces[surf->surface_index2].surface.triangles,
                    &parameters[start_parameter[surf->surface_index2]],
                    &derivative[start_parameter[surf->surface_index2]] );
     }
 
-    eval.surf_surf_fit += compute_deriv_mag( n_parameters, derivative );
+    if( deriv_modified ) {
+      deriv_modified = FALSE;
+      eval.surf_surf_fit += compute_deriv_mag( n_parameters, derivative );
 
-    for_less( p, 0, n_parameters )
-    {
+      for_less( p, 0, n_parameters ) {
         full_deriv[p] += derivative[p];
         derivative[p] = 0.0;
+      }
     }
 
     FREE( derivative );
@@ -6493,8 +6333,7 @@ public  void   evaluate_fit_deriv(
         *fit_info = eval;
 
 #ifdef DEBUG
-    if( getenv( "DERIV_STEP" ) != NULL )
-    {
+    if( getenv( "DERIV_STEP" ) != NULL ) {
         int               p;
         Real              deriv_step, fit, fit1, fit2, save_param, used_delta;
         Real              deriv1, deriv2, min_deriv, max_deriv, tolerance;
@@ -6736,7 +6575,7 @@ private  void  get_oversample_boundaries(
         for_inclusive( w2, 1, oversample - w1 + 1 )
         {
             if( w1 == 0 && w2 == oversample + 1 ||
-                w2 == oversample - w1 + 1 && p2 > p3 )
+                w2 == oversample - w1 + 1 && p2 < p3 )
             {
                 continue;
             }
@@ -6901,34 +6740,29 @@ private  void  find_image_boundaries(
 
     ALLOC( neigh_points, max_neighbours );
 
-    if( clip_to_surface )
-    {
+    if( clip_to_surface ) {
         clip_search = initialize_clip_search( n_nodes, n_neighbours, neighbours,
                                               parameters ); 
-    }
-    else
+    } else
         clip_search = NULL; 
 
     cons = 0.0;
 
-    for_less( node, 0, n_nodes )
-    {
+    for_less( node, 0, n_nodes ) {
         active = active_flags == NULL || active_flags[node];
 
-        for_less( n, 0, n_neighbours[node] )
-        {
+        for_less( n, 0, n_neighbours[node] ) {
             neigh = neighbours[node][n];
             fill_Point( neigh_points[n],
                         parameters[IJ(neigh,0,3)],
-                        parameters[IJ(neigh,1,3)],
+			parameters[IJ(neigh,1,3)],
                         parameters[IJ(neigh,2,3)] );
 
             if( !active && active_flags[neigh] )
                 active = TRUE;
         }
 
-        if( !active )
-            continue;
+        if( !active ) continue;
 
         find_polygon_normal( n_neighbours[node], neigh_points, &normal );
 
@@ -6940,29 +6774,20 @@ private  void  find_image_boundaries(
         outward_search = max_outward - distance_offset;
         inward_search = max_inward + distance_offset;
 
-        if( check_direction_flag )
-        {
+        if( check_direction_flag ) {
             evaluate_volume_in_world( volume,
                                       parameters[IJ(node,0,3)],
                                       parameters[IJ(node,1,3)],
                                       parameters[IJ(node,2,3)],
-                                  0, FALSE,
-                                  0.0, &value,
-                                  NULL, NULL, NULL,
-                                  NULL, NULL, NULL, NULL, NULL, NULL );
+                                      0, FALSE, 0.0, &value,
+                                      NULL, NULL, NULL,
+                                      NULL, NULL, NULL, NULL, NULL, NULL );
 
-            if( normal_direction == TOWARDS_LOWER &&
-                value < isovalue ||
-                normal_direction == TOWARDS_HIGHER &&
-                value > isovalue )
-            {
+            if( ( normal_direction == TOWARDS_LOWER && value < isovalue ) ||
+                ( normal_direction == TOWARDS_HIGHER && value > isovalue ) ) {
                 outward_search = 0.1;
-            }
-            else if( normal_direction == TOWARDS_HIGHER &&
-                     value < isovalue ||
-                     normal_direction == TOWARDS_LOWER &&
-                     value > isovalue )
-            {
+            } else if( ( normal_direction == TOWARDS_HIGHER && value < isovalue ) ||
+                       ( normal_direction == TOWARDS_LOWER && value > isovalue ) ) {
                 inward_search = 0.1;
             }
         }
@@ -6970,8 +6795,7 @@ private  void  find_image_boundaries(
         out_dist = outward_search;
         in_dist = inward_search;
 
-        if( clip_to_surface )
-        {
+        if( clip_to_surface ) {
             clip_search_line( clip_search, 1, &node, &origin, &normal,
                               out_dist, in_dist, &out_dist, &in_dist );
         }
@@ -6982,24 +6806,25 @@ private  void  find_image_boundaries(
                                             out_dist, in_dist, 0,
                                             isovalue, normal_direction, &dist );
 
-        if( found )
-        {
+        if( found ) {
             dist += distance_offset;
 
             GET_POINT_ON_RAY( bound, origin, normal, dist );
-            if( dist >= 0.0 )
-                image_weight = image_weight_out;
-            else
-                image_weight = image_weight_in;
 
-            if( boundary_points != NULL )
-            {
+            if( dist >= 0.0 ) {
+                image_weight = image_weight_out;
+            } else {
+                image_weight = image_weight_in;
+            }
+
+            if( boundary_points != NULL ) {
                 boundary_points[node] = bound;
 
-                if( dist >= 0.0 )
+                if( dist >= 0.0 ) {
                     boundary_flags[node] = BOUNDARY_IS_OUTSIDE;
-                else
+                } else {
                     boundary_flags[node] = BOUNDARY_IS_INSIDE;
+                }
             }
 
             p_index = IJ(node,0,3);
@@ -7007,20 +6832,37 @@ private  void  find_image_boundaries(
             by = RPoint_y(bound);
             bz = RPoint_z(bound);
 
-            if( normal_direction_only )
-            {
+            // The fit function, in its simplest form, is:
+            // dist( point, bound )^2 = (x-bx)^2 + (y-by)^2 + (z-bz)^2
+            //                        = bx^2 + by^2 + bz^2        (cons)
+            //                          -2*(x*bx + y*by + z*bz)   (linear)
+            //                          + x^2 + y^2 + z^2         (quadratic)
+            // The derivative can easily be evaluated from these factors.
+            // There can also be cross term in the normal direction and with
+            // oversampling (terms in x*y, x*z, y*z). The motivation for this
+            // expansion is that boundary terms can be evaluated only every
+            // few iterations, thus cheaper.
+
+            if( normal_direction_only ) {
+
+                // This is to go towards (bx,by,bz) always in the normal 
+                // direction as defined on the first iteration when the 
+                // boundary terms are evaluated (local direction unaffected
+                // by stretch nor self-intersection).
+                // The form of the fit function in the normal direction is:
+                //   d   = ((x-xb)*n)n
+                //   d^2 = ( (x-xb)*nx + (y-yb)*ny + (z-zb)*nz )^2
+                //   (nx,ny,nz) = (x0-xb,y0-yb,z0-zb)/len
+                // (It makes a bunch of messy cross terms).
                 nx = parameters[p_index+0] - bx;
                 ny = parameters[p_index+1] - by;
                 nz = parameters[p_index+2] - bz;
                 len = nx * nx + ny * ny + nz * nz;
-                if( len == 0.0 )
-                {
+                if( len == 0.0 ) {
                     nx = RPoint_x(normal);
                     ny = RPoint_y(normal);
                     nz = RPoint_z(normal);
-                }
-                else
-                {
+                } else {
                     len = sqrt( len );
                     nx /= len;
                     ny /= len;
@@ -7052,25 +6894,25 @@ private  void  find_image_boundaries(
                                   cross_parms, cross_terms,
                                   start_parameter + p_index + 1,
                                   start_parameter + p_index + 2, ly1z1, 5 );
-            }
-            else
-            {
-                cons += image_weight * (bx * bx + by * by + bz * bz);
+            } else {
+                // This is to point towards (bx,by,bz) from the current point.
+                // At the first iteration, this is the same as in the normal
+                // direction, but on subsequent iterations with the boundary
+                // terms fixed, the direction may not be exactly in the 
+                // normal direction (since other constraints such as stretch
+                // and self-intersection may slide the node sideways).
+		cons += image_weight * (bx * bx + by * by + bz * bz);
                 linear[start_parameter+p_index+0] += image_weight * -2.0 * bx;
                 linear[start_parameter+p_index+1] += image_weight * -2.0 * by;
                 linear[start_parameter+p_index+2] += image_weight * -2.0 * bz;
-                square[start_parameter+p_index+0] += image_weight * 1.0;
-                square[start_parameter+p_index+1] += image_weight * 1.0;
-                square[start_parameter+p_index+2] += image_weight * 1.0;
+                square[start_parameter+p_index+0] += image_weight;
+                square[start_parameter+p_index+1] += image_weight;
+                square[start_parameter+p_index+2] += image_weight;
             }
-        }
-        else
-        {
-            if( boundary_points != NULL )
-            {
+        } else {
+            if( boundary_points != NULL ) {
                 boundary_flags[node] = (Smallest_int) BOUNDARY_NOT_FOUND;
             }
-
             cons += max_diff;
         }
 
@@ -7081,20 +6923,17 @@ private  void  find_image_boundaries(
 
     ind = n_nodes;
 
-    if( oversample > 0 )
-    {
+    if( oversample > 0 ) {
         ALLOC( boundaries, (oversample+2) * (oversample+1) / 2 );
         ALLOC( found_flags, (oversample+2) * (oversample+1) / 2 );
 
         initialize_progress_report( &progress, FALSE, n_nodes,
                                     "Finding Oversample boundaries" );
 
-        for_less( node, 0, n_nodes )
-        {
+        for_less( node, 0, n_nodes ) {
             active = active_flags == NULL || active_flags[node];
 
-            for_less( n, 0, n_neighbours[node] )
-            {
+            for_less( n, 0, n_neighbours[node] ) {
                 neigh = neighbours[node][n];
                 fill_Point( neigh_points[n],
                             parameters[IJ(neigh,0,3)],
@@ -7104,23 +6943,18 @@ private  void  find_image_boundaries(
 
             find_polygon_normal( n_neighbours[node], neigh_points, &normal );
 
-            for_less( n, 0, n_neighbours[node] )
-            {
+            for_less( n, 0, n_neighbours[node] ) {
                 neigh1 = neighbours[node][n];
                 neigh2 = neighbours[node][(n+1)%n_neighbours[node]];
 
                 if( node > neigh1 || node > neigh2 )
                     continue;
 
-                if( !active && !active_flags[neigh1] && !active_flags[neigh2] )
-                {
-                    for_inclusive( w1, 0, oversample )
-                    {
-                        for_inclusive( w2, 1, oversample - w1 + 1 )
-                        {
-                            if( w1 == 0 && w2 == oversample + 1 ||
-                                w2 == oversample - w1 + 1 && neigh1 > neigh2 )
-                            {
+                if( !active && !active_flags[neigh1] && !active_flags[neigh2] ) {
+                    for_inclusive( w1, 0, oversample ) {
+                        for_inclusive( w2, 1, oversample - w1 + 1 ) {
+                            if( ( w1 == 0 && w2 == oversample + 1 ) ||
+                                ( w2 == oversample - w1 + 1 && neigh1 < neigh2 ) ) {
                                 continue;
                             }
                             ++ind;
@@ -7145,16 +6979,12 @@ private  void  find_image_boundaries(
                                      node, neigh1, neigh2, neigh_points,
                                      found_flags, boundaries );
 
-                if( boundary_points != NULL )
-                {
+                if( boundary_points != NULL ) {
                     pos = 0;
-                    for_inclusive( w1, 0, oversample )
-                    {
-                        for_inclusive( w2, 1, oversample - w1 + 1 )
-                        {
+                    for_inclusive( w1, 0, oversample ) {
+                        for_inclusive( w2, 1, oversample - w1 + 1 ) {
                             if( w1 == 0 && w2 == oversample + 1 ||
-                                w2 == oversample - w1 + 1 && neigh1 > neigh2 )
-                            {
+                                w2 == oversample - w1 + 1 && neigh1 < neigh2 ) {
                                 continue;
                             }
                             boundary_points[ind+pos] = boundaries[pos];
@@ -7227,21 +7057,17 @@ private  void  find_image_boundaries(
                 ly3z3 = 0.0;
 
                 pos = 0;
-                for_inclusive( w1, 0, oversample )
-                {
+                for_inclusive( w1, 0, oversample ) {
                     alpha1 = (Real) w1 / (Real) (oversample+1);
-                    for_inclusive( w2, 1, oversample - w1 + 1 )
-                    {
+                    for_inclusive( w2, 1, oversample - w1 + 1 ) {
                         if( w1 == 0 && w2 == oversample + 1 ||
-                            w2 == oversample - w1 + 1 && neigh1 > neigh2 )
-                        {
+                            w2 == oversample - w1 + 1 && neigh1 < neigh2 ) {
                             continue;
                         }
 
                         alpha2 = (Real) w2 / (Real) (oversample-w1+1);
 
-                        if( found_flags[pos] != BOUNDARY_NOT_FOUND )
-                        {
+                        if( found_flags[pos] != BOUNDARY_NOT_FOUND ) {
                             if( found_flags[pos] == BOUNDARY_IS_OUTSIDE )
                                 image_weight = image_weight_out;
                             else
@@ -7255,8 +7081,11 @@ private  void  find_image_boundaries(
                             weight2 = alpha1;
                             weight3 = (1.0 - alpha1) * alpha2;
 
-                            if( normal_direction_only )
-                            {
+                            Real image_w1_weight = image_weight * weight1;
+                            Real image_w2_weight = image_weight * weight2;
+                            Real image_w3_weight = image_weight * weight3;
+
+                            if( normal_direction_only ) {
                                 nx = weight1 * parameters[p_index+0] +
                                      weight2 * parameters[n1_index+0] +
                                      weight3 * parameters[n2_index+0] - bx;
@@ -7266,15 +7095,13 @@ private  void  find_image_boundaries(
                                 nz = weight1 * parameters[p_index+2] +
                                      weight2 * parameters[n1_index+2] +
                                      weight3 * parameters[n2_index+2] - bz;
+
                                 len = nx * nx + ny * ny + nz * nz;
-                                if( len == 0.0 )
-                                {
+                                if( len == 0.0 ) {
                                     nx = RPoint_x(normal);
                                     ny = RPoint_y(normal);
                                     nz = RPoint_z(normal);
-                                }
-                                else
-                                {
+                                } else {
                                     len = sqrt( len );
                                     nx /= len;
                                     ny /= len;
@@ -7283,97 +7110,109 @@ private  void  find_image_boundaries(
 
                                 pd = -(nx * bx + ny * by + nz * bz);
 
+                                Real nx_nx = nx * nx;
+                                Real nx_ny = nx * ny;
+                                Real nx_nz = nx * nz;
+                                Real ny_ny = ny * ny;
+                                Real ny_nz = ny * nz;
+                                Real nz_nz = nz * nz;
+
+                                Real image_w1_w1_weight = image_w1_weight * weight1;
+                                Real image_w1_w2_weight = image_w1_weight * weight2;
+                                Real image_w1_w3_weight = image_w1_weight * weight3;
+                                Real image_w2_w2_weight = image_w2_weight * weight2;
+                                Real image_w2_w3_weight = image_w2_weight * weight3;
+                                Real image_w3_w3_weight = image_w3_weight * weight3;
+
                                 cons += image_weight * pd * pd;
-                                lx1 += image_weight * weight1 * 2.0 * nx * pd;
-                                ly1 += image_weight * weight1 * 2.0 * ny * pd;
-                                lz1 += image_weight * weight1 * 2.0 * nz * pd;
-                                lx2 += image_weight * weight2 * 2.0 * nx * pd;
-                                ly2 += image_weight * weight2 * 2.0 * ny * pd;
-                                lz2 += image_weight * weight2 * 2.0 * nz * pd;
-                                lx3 += image_weight * weight3 * 2.0 * nx * pd;
-                                ly3 += image_weight * weight3 * 2.0 * ny * pd;
-                                lz3 += image_weight * weight3 * 2.0 * nz * pd;
-                                sx1 += image_weight * weight1 * weight1 * nx*nx;
-                                sy1 += image_weight * weight1 * weight1 * ny*ny;
-                                sz1 += image_weight * weight1 * weight1 * nz*nz;
-                                sx2 += image_weight * weight2 * weight2 * nx*nx;
-                                sy2 += image_weight * weight2 * weight2 * ny*ny;
-                                sz2 += image_weight * weight2 * weight2 * nz*nz;
-                                sx3 += image_weight * weight3 * weight3 * nx*nx;
-                                sy3 += image_weight * weight3 * weight3 * ny*ny;
-                                sz3 += image_weight * weight3 * weight3 * nz*nz;
-                                lx1y1 += image_weight*2.0*weight1*weight1*nx*ny;
-                                lx1z1 += image_weight*2.0*weight1*weight1*nx*nz;
-                                lx1x2 += image_weight*2.0*weight1*weight2*nx*nx;
-                                lx1y2 += image_weight*2.0*weight1*weight2*nx*ny;
-                                lx1z2 += image_weight*2.0*weight1*weight2*nx*nz;
-                                lx1x3 += image_weight*2.0*weight1*weight3*nx*nx;
-                                lx1y3 += image_weight*2.0*weight1*weight3*nx*ny;
-                                lx1z3 += image_weight*2.0*weight1*weight3*nx*nz;
+                                lx1 += image_w1_weight * nx * pd;
+                                ly1 += image_w1_weight * ny * pd;
+                                lz1 += image_w1_weight * nz * pd;
+                                lx2 += image_w2_weight * nx * pd;
+                                ly2 += image_w2_weight * ny * pd;
+                                lz2 += image_w2_weight * nz * pd;
+                                lx3 += image_w3_weight * nx * pd;
+                                ly3 += image_w3_weight * ny * pd;
+                                lz3 += image_w3_weight * nz * pd;
 
-                                ly1z1 += image_weight*2.0*weight1*weight1*ny*nz;
-                                ly1x2 += image_weight*2.0*weight1*weight2*ny*nx;
-                                ly1y2 += image_weight*2.0*weight1*weight2*ny*ny;
-                                ly1z2 += image_weight*2.0*weight1*weight2*ny*nz;
-                                ly1x3 += image_weight*2.0*weight1*weight3*ny*nx;
-                                ly1y3 += image_weight*2.0*weight1*weight3*ny*ny;
-                                ly1z3 += image_weight*2.0*weight1*weight3*ny*nz;
+                                sx1 += image_w1_w1_weight * nx_nx;
+                                sy1 += image_w1_w1_weight * ny_ny;
+                                sz1 += image_w1_w1_weight * nz_nz;
+                                sx2 += image_w2_w2_weight * nx_nx;
+                                sy2 += image_w2_w2_weight * ny_ny;
+                                sz2 += image_w2_w2_weight * nz_nz;
+                                sx3 += image_w3_w3_weight * nx_nx;
+                                sy3 += image_w3_w3_weight * ny_ny;
+                                sz3 += image_w3_w3_weight * nz_nz;
 
-                                lz1x2 += image_weight*2.0*weight1*weight2*nz*nx;
-                                lz1y2 += image_weight*2.0*weight1*weight2*nz*ny;
-                                lz1z2 += image_weight*2.0*weight1*weight2*nz*nz;
-                                lz1x3 += image_weight*2.0*weight1*weight3*nz*nx;
-                                lz1y3 += image_weight*2.0*weight1*weight3*nz*ny;
-                                lz1z3 += image_weight*2.0*weight1*weight3*nz*nz;
+                                lx1y1 += image_w1_w1_weight * nx_ny;
+                                lx1z1 += image_w1_w1_weight * nx_nz;
+                                lx1x2 += image_w1_w2_weight * nx_nx;
+                                lx1y2 += image_w1_w2_weight * nx_ny;
+                                lx1z2 += image_w1_w2_weight * nx_nz;
+                                lx1x3 += image_w1_w3_weight * nx_nx;
+                                lx1y3 += image_w1_w3_weight * nx_ny;
+                                lx1z3 += image_w1_w3_weight * nx_nz;
 
-                                lx2y2 += image_weight*2.0*weight2*weight2*nx*ny;
-                                lx2z2 += image_weight*2.0*weight2*weight2*nx*nz;
-                                lx2x3 += image_weight*2.0*weight2*weight3*nx*nx;
-                                lx2y3 += image_weight*2.0*weight2*weight3*nx*ny;
-                                lx2z3 += image_weight*2.0*weight2*weight3*nx*nz;
+                                ly1z1 += image_w1_w1_weight * ny_nz;
+                                ly1x2 += image_w1_w2_weight * nx_ny;
+                                ly1y2 += image_w1_w2_weight * ny_ny;
+                                ly1z2 += image_w1_w2_weight * ny_nz;
+                                ly1x3 += image_w1_w3_weight * nx_ny;
+                                ly1y3 += image_w1_w3_weight * ny_ny;
+                                ly1z3 += image_w1_w3_weight * ny_nz;
 
-                                ly2z2 += image_weight*2.0*weight2*weight2*ny*nz;
-                                ly2x3 += image_weight*2.0*weight2*weight3*ny*nx;
-                                ly2y3 += image_weight*2.0*weight2*weight3*ny*ny;
-                                ly2z3 += image_weight*2.0*weight2*weight3*ny*nz;
+                                lz1x2 += image_w1_w2_weight * nx_nz;
+                                lz1y2 += image_w1_w2_weight * ny_nz;
+                                lz1z2 += image_w1_w2_weight * nz_nz;
+                                lz1x3 += image_w1_w3_weight * nx_nz;
+                                lz1y3 += image_w1_w3_weight * ny_nz;
+                                lz1z3 += image_w1_w3_weight * nz_nz;
 
-                                lz2x3 += image_weight*2.0*weight2*weight3*nz*nx;
-                                lz2y3 += image_weight*2.0*weight2*weight3*nz*ny;
-                                lz2z3 += image_weight*2.0*weight2*weight3*nz*nz;
+                                lx2y2 += image_w2_w2_weight * nx_ny;
+                                lx2z2 += image_w2_w2_weight * nx_nz;
+                                lx2x3 += image_w2_w3_weight * nx_nx;
+                                lx2y3 += image_w2_w3_weight * nx_ny;
+                                lx2z3 += image_w2_w3_weight * nx_nz;
 
-                                lx3y3 += image_weight*2.0*weight3*weight3*nx*ny;
-                                lx3z3 += image_weight*2.0*weight3*weight3*nx*nz;
+                                ly2z2 += image_w2_w2_weight * ny_nz;
+                                ly2x3 += image_w2_w3_weight * nx_ny;
+                                ly2y3 += image_w2_w3_weight * ny_ny;
+                                ly2z3 += image_w2_w3_weight * ny_nz;
 
-                                ly3z3 += image_weight*2.0*weight3*weight3*ny*nz;
-                            }
-                            else
-                            {
+                                lz2x3 += image_w2_w3_weight * nx_nz;
+                                lz2y3 += image_w2_w3_weight * ny_nz;
+                                lz2z3 += image_w2_w3_weight * nz_nz;
+
+                                lx3y3 += image_w3_w3_weight * nx_ny;
+                                lx3z3 += image_w3_w3_weight * nx_nz;
+
+                                ly3z3 += image_w3_w3_weight * ny_nz;
+                            } else {
                                 cons += image_weight *
                                         (bx * bx + by * by + bz * bz);
 
-                                lx1 += -2.0 * bx * weight1 * image_weight;
-                                ly1 += -2.0 * by * weight1 * image_weight;
-                                lz1 += -2.0 * bz * weight1 * image_weight;
+                                lx1 += -bx * image_w1_weight;
+                                ly1 += -by * image_w1_weight;
+                                lz1 += -bz * image_w1_weight;
 
-                                lx2 += -2.0 * bx * weight2 * image_weight;
-                                ly2 += -2.0 * by * weight2 * image_weight;
-                                lz2 += -2.0 * bz * weight2 * image_weight;
+                                lx2 += -bx * image_w2_weight;
+                                ly2 += -by * image_w2_weight;
+                                lz2 += -bz * image_w2_weight;
 
-                                lx3 += -2.0 * bx * weight3 * image_weight;
-                                ly3 += -2.0 * by * weight3 * image_weight;
-                                lz3 += -2.0 * bz * weight3 * image_weight;
+                                lx3 += -bx * image_w3_weight;
+                                ly3 += -by * image_w3_weight;
+                                lz3 += -bz * image_w3_weight;
 
-                                sx1 += weight1 * weight1 * image_weight;
-                                sx2 += weight2 * weight2 * image_weight;
-                                sx3 += weight3 * weight3 * image_weight;
+                                sx1 += weight1 * image_w1_weight;
+                                sx2 += weight2 * image_w2_weight;
+                                sx3 += weight3 * image_w3_weight;
 
-                                lx1x2 += 2.0 * weight1 * weight2 * image_weight;
-                                lx1x3 += 2.0 * weight1 * weight3 * image_weight;
-                                lx2x3 += 2.0 * weight2 * weight3 * image_weight;
+                                lx1x2 += weight1 * image_w2_weight;
+                                lx1x3 += weight1 * image_w3_weight;
+                                lx2x3 += weight2 * image_w3_weight;
                             }
-                        }
-                        else
-                        {
+                        } else {
                             cons += max_diff;
                         }
 
@@ -7383,28 +7222,72 @@ private  void  find_image_boundaries(
 
                 ind += pos;
 
-                if( normal_direction_only )
-                {
-                    linear[start_parameter+p_index+0] += lx1;
-                    linear[start_parameter+p_index+1] += ly1;
-                    linear[start_parameter+p_index+2] += lz1;
+                if( normal_direction_only ) {
+                    linear[start_parameter+p_index+0] += lx1+lx1;
+                    linear[start_parameter+p_index+1] += ly1+ly1;
+                    linear[start_parameter+p_index+2] += lz1+lz1;
                     square[start_parameter+p_index+0] += sx1;
                     square[start_parameter+p_index+1] += sy1;
                     square[start_parameter+p_index+2] += sz1;
 
-                    linear[start_parameter+n1_index+0] += lx2;
-                    linear[start_parameter+n1_index+1] += ly2;
-                    linear[start_parameter+n1_index+2] += lz2;
+                    linear[start_parameter+n1_index+0] += lx2+lx2;
+                    linear[start_parameter+n1_index+1] += ly2+ly2;
+                    linear[start_parameter+n1_index+2] += lz2+lz2;
                     square[start_parameter+n1_index+0] += sx2;
                     square[start_parameter+n1_index+1] += sy2;
                     square[start_parameter+n1_index+2] += sz2;
 
-                    linear[start_parameter+n2_index+0] += lx3;
-                    linear[start_parameter+n2_index+1] += ly3;
-                    linear[start_parameter+n2_index+2] += lz3;
+                    linear[start_parameter+n2_index+0] += lx3+lx3;
+                    linear[start_parameter+n2_index+1] += ly3+ly3;
+                    linear[start_parameter+n2_index+2] += lz3+lz3;
                     square[start_parameter+n2_index+0] += sx3;
                     square[start_parameter+n2_index+1] += sy3;
                     square[start_parameter+n2_index+2] += sz3;
+
+                    // multiplication by 2.
+                    lx1y1 += lx1y1;
+                    lx1z1 += lx1z1;
+                    lx1x2 += lx1x2;
+                    lx1y2 += lx1y2;
+                    lx1z2 += lx1z2;
+                    lx1x3 += lx1x3;
+                    lx1y3 += lx1y3;
+                    lx1z3 += lx1z3;
+
+                    ly1z1 += ly1z1;
+                    ly1x2 += ly1x2;
+                    ly1y2 += ly1y2;
+                    ly1z2 += ly1z2;
+                    ly1x3 += ly1x3;
+                    ly1y3 += ly1y3;
+                    ly1z3 += ly1z3;
+
+                    lz1x2 += lz1x2;
+                    lz1y2 += lz1y2;
+                    lz1z2 += lz1z2;
+                    lz1x3 += lz1x3;
+                    lz1y3 += lz1y3;
+                    lz1z3 += lz1z3;
+
+                    lx2y2 += lx2y2;
+                    lx2z2 += lx2z2;
+                    lx2x3 += lx2x3;
+                    lx2y3 += lx2y3;
+                    lx2z3 += lx2z3;
+
+                    ly2z2 += ly2z2;
+                    ly2x3 += ly2x3;
+                    ly2y3 += ly2y3;
+                    ly2z3 += ly2z3;
+
+                    lz2x3 += lz2x3;
+                    lz2y3 += lz2y3;
+                    lz2z3 += lz2z3;
+
+                    lx3y3 += lx3y3;
+                    lx3z3 += lx3z3;
+
+                    ly3z3 += ly3z3;
 
                     add_to_quadratic_cross_term_real( n_cross_terms,
                                   cross_parms, cross_terms,
@@ -7557,29 +7440,31 @@ private  void  find_image_boundaries(
                                   cross_parms, cross_terms,
                                   start_parameter + n2_index + 1,
                                   start_parameter + n2_index + 2, ly3z3, 5 );
-                }
-                else
-                {
-                    linear[start_parameter+p_index+0] += lx1;
-                    linear[start_parameter+p_index+1] += ly1;
-                    linear[start_parameter+p_index+2] += lz1;
+                } else {
+                    linear[start_parameter+p_index+0] += lx1+lx1;
+                    linear[start_parameter+p_index+1] += ly1+ly1;
+                    linear[start_parameter+p_index+2] += lz1+lz1;
                     square[start_parameter+p_index+0] += sx1;
                     square[start_parameter+p_index+1] += sx1;
                     square[start_parameter+p_index+2] += sx1;
 
-                    linear[start_parameter+n1_index+0] += lx2;
-                    linear[start_parameter+n1_index+1] += ly2;
-                    linear[start_parameter+n1_index+2] += lz2;
+                    linear[start_parameter+n1_index+0] += lx2+lx2;
+                    linear[start_parameter+n1_index+1] += ly2+ly2;
+                    linear[start_parameter+n1_index+2] += lz2+lz2;
                     square[start_parameter+n1_index+0] += sx2;
                     square[start_parameter+n1_index+1] += sx2;
                     square[start_parameter+n1_index+2] += sx2;
 
-                    linear[start_parameter+n2_index+0] += lx3;
-                    linear[start_parameter+n2_index+1] += ly3;
-                    linear[start_parameter+n2_index+2] += lz3;
+                    linear[start_parameter+n2_index+0] += lx3+lx3;
+                    linear[start_parameter+n2_index+1] += ly3+ly3;
+                    linear[start_parameter+n2_index+2] += lz3+lz3;
                     square[start_parameter+n2_index+0] += sx3;
                     square[start_parameter+n2_index+1] += sx3;
                     square[start_parameter+n2_index+2] += sx3;
+
+                    lx1x2 += lx1x2;  // multiplication by 2.
+                    lx1x3 += lx1x3;
+                    lx2x3 += lx2x3;
 
                     add_to_quadratic_cross_term_real( n_cross_terms,
                                                   cross_parms, cross_terms,
@@ -7642,8 +7527,7 @@ private  void  find_image_boundaries(
 
     FREE( neigh_points );
 
-    if( clip_search != NULL )
-    {
+    if( clip_search != NULL ) {
         delete_clip_search( clip_search );
     }
 
@@ -7705,8 +7589,7 @@ public  void  find_boundary_points(
                    constant, linear, square, n_cross_terms, cross_parms,
                    cross_terms );
 
-            if( save_points )
-            {
+            if( save_points ) {
                 ind += surface->n_points +
                        bound->oversample * surface->n_edges +
                        bound->oversample * (bound->oversample-1) / 2 *

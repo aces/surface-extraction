@@ -2,7 +2,7 @@
 AC_PREREQ([2.57])
 
 # The arguments are package name, and package version.
-AC_INIT([surface-extraction],[2.2.1], [Andrew Janke <a.janke@gmail.com>])
+AC_INIT([surface-extraction],[2.3.0], [Andrew Janke <a.janke@gmail.com>])
 AC_CONFIG_SRCDIR([src/surface_fit.c])
 
 AM_INIT_AUTOMAKE

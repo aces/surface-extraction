@@ -19,8 +19,6 @@ noinst_HEADERS = conjugate.h\
 	deform_prototypes.h \
 	fit_3d.h \
 	fit_3d_prototypes.h \
-	fit.h \
-	fit_prototypes.h \
 	interval.h \
 	special_geometry.h \
 	sp_geom_prototypes.h \

@@ -16,6 +16,29 @@
             (GLUE(a,x) * GLUE(b,x) + GLUE(a,y) * GLUE(b,y) + \
              GLUE(a,z) * GLUE(b,z))
 
+#define MIN_AND_MAX3( min, max, t1, t2, t3 ) \
+    if( (t1) < (t2) ) {                                             \
+        if( (t3) > (t2) ) {                                         \
+            (min) = (t1);                                           \
+            (max) = (t3);                                           \
+        } else if( (t3) > (t1) ) {                                  \
+            (min) = (t1);                                           \
+            (max) = (t2);                                           \
+        } else {                                                    \
+            (min) = (t3);                                           \
+            (max) = (t2);                                           \
+        }                                                           \
+    } else if( (t3) > (t1) ) {                                      \
+        (min) = (t2);                                               \
+        (max) = (t3);                                               \
+    } else if( (t3) > (t2) ) {                                      \
+        (min) = (t2);                                               \
+        (max) = (t1);                                               \
+    } else {                                                        \
+        (min) = (t3);                                               \
+        (max) = (t1);                                               \
+    }
+
 #define  A0  (1 << 0)
 #define  A1  (1 << 1)
 #define  A2  (1 << 2)
@@ -78,8 +101,20 @@
         SUB( d, b0, a0 ); \
         d = DOT( d, delta ); \
         if( d >= 0.0 && DOT( delta, da2 ) <= 0.0 && DOT( delta, db2 ) >= 0.0 ||\
-            d  < 0.0 && DOT( delta, da2 ) >= 0.0 && DOT( delta, db2 ) <= 0.0 ) \
-        { \
+            d  < 0.0 && DOT( delta, da2 ) >= 0.0 && DOT( delta, db2 ) <= 0.0 ) { \
+            Real A_tt = DOT( da0, da0 ); \
+            Real A_st = DOT( da0, db0 ); \
+            Real A_ss = DOT( db0, db0 ); \
+            Real det = A_tt * A_ss - A_st * A_st; \
+            if( det != 0.0 ) { \
+                Real rhs_t = DOT( da0, d ); \
+                Real rhs_s = DOT( db0, d ); \
+                Real t = ( A_ss * rhs_t - A_st * rhs_s ) / det; \
+                Real s = ( -A_tt * rhs_s + A_st * rhs_t ) / det; \
+                if( t < 0.0 || t > 1.0 || s < 0.0 || s > 1.0 ) { \
+                  return( FALSE ); \
+                } \
+            } \
             *dist = d * d / len; \
             return( TRUE ); \
         }
@@ -146,8 +181,7 @@ private  BOOLEAN  test_distance_with_known_case(
     b1x = b1[X];     b1y = b1[Y];     b1z = b1[Z];
     b2x = b2[X];     b2y = b2[Y];     b2z = b2[Z];
 
-    switch( which_case )
-    {
+    switch( which_case ) {
     case A0 | B0:
         VERTEX_VERTEX( a0, a1, a2, b0, b1, b2 );
         break;
@@ -322,16 +356,15 @@ private  BOOLEAN  test_distance_with_known_case(
     return( FALSE );
 }
 
-private  Real  sq_triangle_triangle_dist_and_weights(
+private  Real  sq_triangle_triangle_dist_unknown_case(
     Real            a0[],
     Real            a1[],
     Real            a2[],
     Real            b0[],
     Real            b1[],
     Real            b2[],
-    Real            weights[],
-    int             *tri_case )
-{
+    unsigned char  *tri_case ) {
+
     Real      a0x, a0y, a0z, a1x, a1y, a1z, a2x, a2y, a2z;
     Real      b0x, b0y, b0z, b1x, b1y, b1z, b2x, b2y, b2z;
     Real      da0x, da0y, da0z, da1x, da1y, da1z, da2x, da2y, da2z;
@@ -368,13 +401,6 @@ private  Real  sq_triangle_triangle_dist_and_weights(
     Real      da0_dot_bn, da1_dot_bn, da2_dot_bn;
     Real      px, py, pz;
     Real      characteristic_length, tolerance;
-
-    weights[0] = 0.0;
-    weights[1] = 0.0;
-    weights[2] = 0.0;
-    weights[3] = 0.0;
-    weights[4] = 0.0;
-    weights[5] = 0.0;
 
     a0x = a0[X];     a0y = a0[Y];     a0z = a0[Z];
     a1x = a1[X];     a1y = a1[Y];     a1z = a1[Z];
@@ -484,28 +510,14 @@ private  Real  sq_triangle_triangle_dist_and_weights(
     if( !outside_ea0 && !outside_ea1 && !outside_ea2 )
     {
         d = DOT( b0, an ) - a0_dot_an;
-        if( d * db0_dot_an >= -tolerance && d * db2_dot_an <= tolerance )
-        {
+        if( d * db0_dot_an >= -tolerance && d * db2_dot_an <= tolerance ) {
             x_dot_y = DOT( a2, da0 ) - a0_dot_da0;
 
             bottom = len_da0 * len_da2 - x_dot_y * x_dot_y;
 
-            if( bottom != 0.0 )
-            {
-                x_dot_v = v_da0;
-                y_dot_v = -(DOT( b0, da2 ) - DOT( a0, da2 ));
-
-                x_pos = (x_dot_v * len_da2 - x_dot_y * y_dot_v) / bottom;
-                y_pos = (y_dot_v * len_da0 - x_dot_y * x_dot_v) / bottom;
-
-                weights[0] = 1.0 - x_pos - y_pos;
-                weights[1] = x_pos;
-                weights[2] = y_pos;
-                weights[3] = 1.0;
-
+            if( bottom != 0.0 ) {
                 dist = d * d / len_an;
                 *tri_case = A0 | A1 | A2 | B0;
-
                 return( dist );
             }
         }
@@ -519,11 +531,7 @@ private  Real  sq_triangle_triangle_dist_and_weights(
         pz = a0z + d * da0z;
         SUB( d, b0, p );
 
-        if( DOT( d, db0 ) >= -tolerance && DOT( d, db2 ) <= tolerance )
-        {
-            weights[0] = 1.0 - d;
-            weights[1] = d;
-            weights[3] = 1.0;
+        if( DOT( d, db0 ) >= -tolerance && DOT( d, db2 ) <= tolerance ) {
             dist = DOT( d, d );
             *tri_case = A0 | A1 | B0;
             return( dist );
@@ -539,9 +547,6 @@ private  Real  sq_triangle_triangle_dist_and_weights(
 
         if( DOT( d, db0 ) >= -tolerance && DOT( d, db2 ) <= tolerance )
         {
-            weights[1] = 1.0 - d;
-            weights[2] = d;
-            weights[3] = 1.0;
             dist = DOT( d, d );
             *tri_case = A1 | A2 | B0;
             return( dist );
@@ -555,11 +560,7 @@ private  Real  sq_triangle_triangle_dist_and_weights(
         pz = a2z + d * da2z;
         SUB( d, b0, p );
 
-        if( DOT( d, db0 ) >= -tolerance && DOT( d, db2 ) <= tolerance )
-        {
-            weights[2] = 1.0 - d;
-            weights[0] = d;
-            weights[3] = 1.0;
+        if( DOT( d, db0 ) >= -tolerance && DOT( d, db2 ) <= tolerance ) {
             dist = DOT( d, d );
             *tri_case = A0 | A2 | B0;
             return( dist );
@@ -568,10 +569,7 @@ private  Real  sq_triangle_triangle_dist_and_weights(
     else if( v_da0 <= 0.0 && v_da2 >= len_da2 )
     {
         if( b0_dot_db0 - a0_dot_db0 >= -tolerance &&
-            DOT( b0, db2 ) - a0_dot_db2 <= tolerance )
-        {
-            weights[0] = 1.0;
-            weights[3] = 1.0;
+            DOT( b0, db2 ) - a0_dot_db2 <= tolerance ) {
             SUB( d, b0, a0 );
             dist = DOT( d, d );
             *tri_case = A0 | B0;
@@ -581,10 +579,7 @@ private  Real  sq_triangle_triangle_dist_and_weights(
     else if( v_da1 <= 0.0 && v_da0 >= len_da0 )
     {
         if( b0_dot_db0 - a1_dot_db0 >= -tolerance &&
-            DOT( b0, db2 ) - a1_dot_db2 <= tolerance )
-        {
-            weights[1] = 1.0;
-            weights[3] = 1.0;
+            DOT( b0, db2 ) - a1_dot_db2 <= tolerance ) {
             SUB( d, b0, a1 );
             dist = DOT( d, d );
             *tri_case = A1 | B0;
@@ -596,8 +591,6 @@ private  Real  sq_triangle_triangle_dist_and_weights(
         if( b0_dot_db0 - a2_dot_db0 >= -tolerance &&
             DOT( b0, db2 ) - a2_dot_db2 <= tolerance )
         {
-            weights[2] = 1.0;
-            weights[3] = 1.0;
             SUB( d, b0, a2 );
             dist = DOT( d, d );
             *tri_case = A2 | B0;
@@ -628,21 +621,8 @@ private  Real  sq_triangle_triangle_dist_and_weights(
 
             bottom = len_da0 * len_da2 - x_dot_y * x_dot_y;
 
-            if( bottom != 0.0 )
-            {
-                x_dot_v = v_da0;
-                y_dot_v = -(DOT( b1, da2 ) - DOT( a0, da2 ));
-
-                x_pos = (x_dot_v * len_da2 - x_dot_y * y_dot_v) / bottom;
-                y_pos = (y_dot_v * len_da0 - x_dot_y * x_dot_v) / bottom;
-
-                weights[0] = 1.0 - x_pos - y_pos;
-                weights[1] = x_pos;
-                weights[2] = y_pos;
-                weights[4] = 1.0;
-
+            if( bottom != 0.0 ) {
                 dist = d * d / len_an;
-
                 *tri_case = A0 | A1 | A2 | B1;
                 return( dist );
             }
@@ -658,9 +638,6 @@ private  Real  sq_triangle_triangle_dist_and_weights(
 
         if( DOT( d, db1 ) >= -tolerance && DOT( d, db0 ) <= tolerance )
         {
-            weights[0] = 1.0 - d;
-            weights[1] = d;
-            weights[4] = 1.0;
             dist = DOT( d, d );
             *tri_case = A0 | A1 | B1;
             return( dist );
@@ -676,9 +653,6 @@ private  Real  sq_triangle_triangle_dist_and_weights(
 
         if( DOT( d, db1 ) >= -tolerance && DOT( d, db0 ) <= tolerance )
         {
-            weights[1] = 1.0 - d;
-            weights[2] = d;
-            weights[4] = 1.0;
             dist = DOT( d, d );
             *tri_case = A1 | A2 | B1;
             return( dist );
@@ -694,9 +668,6 @@ private  Real  sq_triangle_triangle_dist_and_weights(
 
         if( DOT( d, db1 ) >= -tolerance && DOT( d, db0 ) <= tolerance )
         {
-            weights[2] = 1.0 - d;
-            weights[0] = d;
-            weights[4] = 1.0;
             dist = DOT( d, d );
             *tri_case = A0 | A2 | B1;
             return( dist );
@@ -707,8 +678,6 @@ private  Real  sq_triangle_triangle_dist_and_weights(
         if( b1_dot_db1 - a0_dot_db1 >= -tolerance &&
             DOT( b1, db0 ) - a0_dot_db0 <= tolerance )
         {
-            weights[0] = 1.0;
-            weights[4] = 1.0;
             SUB( d, b1, a0 );
             dist = DOT( d, d );
             *tri_case = A0 | B1;
@@ -720,8 +689,6 @@ private  Real  sq_triangle_triangle_dist_and_weights(
         if( b1_dot_db1 - a1_dot_db1 >= -tolerance &&
             DOT( b1, db0 ) - a1_dot_db0 <= tolerance )
         {
-            weights[1] = 1.0;
-            weights[4] = 1.0;
             SUB( d, b1, a1 );
             dist = DOT( d, d );
             *tri_case = A1 | B1;
@@ -733,8 +700,6 @@ private  Real  sq_triangle_triangle_dist_and_weights(
         if( b1_dot_db1 - a2_dot_db1 >= -tolerance &&
             DOT( b1, db0 ) - a2_dot_db0 <= tolerance )
         {
-            weights[2] = 1.0;
-            weights[4] = 1.0;
             SUB( d, b1, a2 );
             dist = DOT( d, d );
             *tri_case = A2 | B1;
@@ -765,21 +730,8 @@ private  Real  sq_triangle_triangle_dist_and_weights(
 
             bottom = len_da0 * len_da2 - x_dot_y * x_dot_y;
 
-            if( bottom != 0.0 )
-            {
-                x_dot_v = v_da0;
-                y_dot_v = -(DOT( b2, da2 ) - DOT( a0, da2 ));
-
-                x_pos = (x_dot_v * len_da2 - x_dot_y * y_dot_v) / bottom;
-                y_pos = (y_dot_v * len_da0 - x_dot_y * x_dot_v) / bottom;
-
-                weights[0] = 1.0 - x_pos - y_pos;
-                weights[1] = x_pos;
-                weights[2] = y_pos;
-                weights[5] = 1.0;
-
+            if( bottom != 0.0 ) {
                 dist = d * d / len_an;
-
                 *tri_case = A0 | A1 | A2 | B2;
                 return( dist );
             }
@@ -793,11 +745,7 @@ private  Real  sq_triangle_triangle_dist_and_weights(
         pz = a0z + d * da0z;
         SUB( d, b2, p );
 
-        if( DOT( d, db2 ) >= -tolerance && DOT( d, db1 ) <= tolerance )
-        {
-            weights[0] = 1.0 - d;
-            weights[1] = d;
-            weights[5] = 1.0;
+        if( DOT( d, db2 ) >= -tolerance && DOT( d, db1 ) <= tolerance ) {
             dist = DOT( d, d );
             *tri_case = A0 | A1 | B2;
             return( dist );
@@ -813,9 +761,6 @@ private  Real  sq_triangle_triangle_dist_and_weights(
 
         if( DOT( d, db2 ) >= -tolerance && DOT( d, db1 ) <= tolerance )
         {
-            weights[1] = 1.0 - d;
-            weights[2] = d;
-            weights[5] = 1.0;
             dist = DOT( d, d );
             *tri_case = A1 | A2 | B2;
             return( dist );
@@ -831,9 +776,6 @@ private  Real  sq_triangle_triangle_dist_and_weights(
 
         if( DOT( d, db2 ) >= -tolerance && DOT( d, db1 ) <= tolerance )
         {
-            weights[2] = 1.0 - d;
-            weights[0] = d;
-            weights[5] = 1.0;
             dist = DOT( d, d );
             *tri_case = A0 | A2 | B2;
             return( dist );
@@ -844,8 +786,6 @@ private  Real  sq_triangle_triangle_dist_and_weights(
         if( b2_dot_db2 - a0_dot_db2 >= -tolerance &&
             DOT( b2, db1 ) - a0_dot_db1 <= tolerance )
         {
-            weights[0] = 1.0;
-            weights[5] = 1.0;
             SUB( d, b2, a0 );
             dist = DOT( d, d );
             *tri_case = A0 | B2;
@@ -857,8 +797,6 @@ private  Real  sq_triangle_triangle_dist_and_weights(
         if( b2_dot_db2 - a1_dot_db2 >= -tolerance &&
             DOT( b2, db1 ) - a1_dot_db1 <= tolerance )
         {
-            weights[1] = 1.0;
-            weights[5] = 1.0;
             SUB( d, b2, a1 );
             dist = DOT( d, d );
             *tri_case = A1 | B2;
@@ -870,8 +808,6 @@ private  Real  sq_triangle_triangle_dist_and_weights(
         if( b2_dot_db2 - a2_dot_db2 >= -tolerance &&
             DOT( b2, db1 ) - a2_dot_db1 <= tolerance )
         {
-            weights[2] = 1.0;
-            weights[5] = 1.0;
             SUB( d, b2, a2 );
             dist = DOT( d, d );
             *tri_case = A2 | B2;
@@ -902,23 +838,9 @@ private  Real  sq_triangle_triangle_dist_and_weights(
 
             bottom = len_db0 * len_db2 - x_dot_y * x_dot_y;
 
-            if( bottom != 0.0 )
-            {
-                x_dot_v = v_db0;
-                y_dot_v = -(a0_dot_db2 - DOT( b0, db2 ));
-
-                x_pos = (x_dot_v * len_db2 - x_dot_y * y_dot_v) / bottom;
-                y_pos = (y_dot_v * len_db0 - x_dot_y * x_dot_v) / bottom;
-
-                weights[0] = 1.0;
-                weights[3] = 1.0 - x_pos - y_pos;
-                weights[4] = x_pos;
-                weights[5] = y_pos;
-
+            if( bottom != 0.0 ) {
                 dist = d * d / len_bn;
-
                 *tri_case = A0 | B0 | B1 | B2;
-
                 return( dist );
             }
         }
@@ -933,9 +855,6 @@ private  Real  sq_triangle_triangle_dist_and_weights(
 
         if( DOT( d, da0 ) >= -tolerance && DOT( d, da2 ) <= tolerance )
         {
-            weights[0] = 1.0;
-            weights[3] = 1.0 - d;
-            weights[4] = d;
             dist = DOT( d, d );
             *tri_case = A0 | B0 | B1;
             return( dist );
@@ -951,9 +870,6 @@ private  Real  sq_triangle_triangle_dist_and_weights(
 
         if( DOT( d, da0 ) >= -tolerance && DOT( d, da2 ) <= tolerance )
         {
-            weights[0] = 1.0;
-            weights[4] = 1.0 - d;
-            weights[5] = d;
             dist = DOT( d, d );
             *tri_case = A0 | B1 | B2;
             return( dist );
@@ -969,9 +885,6 @@ private  Real  sq_triangle_triangle_dist_and_weights(
 
         if( DOT( d, da0 ) >= -tolerance && DOT( d, da2 ) <= tolerance )
         {
-            weights[0] = 1.0;
-            weights[5] = 1.0 - d;
-            weights[3] = d;
             dist = DOT( d, d );
             *tri_case = A0 | B0 | B2;
             return( dist );
@@ -1001,21 +914,8 @@ private  Real  sq_triangle_triangle_dist_and_weights(
 
             bottom = len_db0 * len_db2 - x_dot_y * x_dot_y;
 
-            if( bottom != 0.0 )
-            {
-                x_dot_v = v_db0;
-                y_dot_v = -(a1_dot_db2 - DOT(b0,db2));
-
-                x_pos = (x_dot_v * len_db2 - x_dot_y * y_dot_v) / bottom;
-                y_pos = (y_dot_v * len_db0 - x_dot_y * x_dot_v) / bottom;
-
-                weights[1] = 1.0;
-                weights[3] = 1.0 - x_pos - y_pos;
-                weights[4] = x_pos;
-                weights[5] = y_pos;
-
+            if( bottom != 0.0 ) {
                 dist = d * d / len_bn;
-
                 *tri_case = A1 | B0 | B1 | B2;
                 return( dist );
             }
@@ -1029,47 +929,31 @@ private  Real  sq_triangle_triangle_dist_and_weights(
         pz = b0z + d * db0z;
         SUB( d, a1, p );
 
-        if( DOT( d, da1 ) >= -tolerance && DOT( d, da0 ) <= tolerance )
-        {
-            weights[1] = 1.0;
-            weights[3] = 1.0 - d;
-            weights[4] = d;
+        if( DOT( d, da1 ) >= -tolerance && DOT( d, da0 ) <= tolerance ) {
             dist = DOT( d, d );
             *tri_case = A1 | B0 | B1;
             return( dist );
         }
-    }
-    else if( outside_eb1 && v_db1 > 0.0 && v_db1 < len_db1 )
-    {
+    } else if( outside_eb1 && v_db1 > 0.0 && v_db1 < len_db1 ) {
         d = v_db1 / len_db1;
         px = b1x + d * db1x;
         py = b1y + d * db1y;
         pz = b1z + d * db1z;
         SUB( d, a1, p );
 
-        if( DOT( d, da1 ) >= -tolerance && DOT( d, da0 ) <= tolerance )
-        {
-            weights[1] = 1.0;
-            weights[4] = 1.0 - d;
-            weights[5] = d;
+        if( DOT( d, da1 ) >= -tolerance && DOT( d, da0 ) <= tolerance ) {
             dist = DOT( d, d );
             *tri_case = A1 | B1 | B2;
             return( dist );
         }
-    }
-    else if( outside_eb2 && v_db2 > 0.0 && v_db2 < len_db2 )
-    {
+    } else if( outside_eb2 && v_db2 > 0.0 && v_db2 < len_db2 ) {
         d = v_db2 / len_db2;
         px = b2x + d * db2x;
         py = b2y + d * db2y;
         pz = b2z + d * db2z;
         SUB( d, a1, p );
 
-        if( DOT( d, da1 ) >= -tolerance && DOT( d, da0 ) <= tolerance )
-        {
-            weights[1] = 1.0;
-            weights[5] = 1.0 - d;
-            weights[3] = d;
+        if( DOT( d, da1 ) >= -tolerance && DOT( d, da0 ) <= tolerance ) {
             dist = DOT( d, d );
             *tri_case = A1 | B0 | B2;
             return( dist );
@@ -1099,21 +983,8 @@ private  Real  sq_triangle_triangle_dist_and_weights(
 
             bottom = len_db0 * len_db2 - x_dot_y * x_dot_y;
 
-            if( bottom != 0.0 )
-            {
-                x_dot_v = v_db0;
-                y_dot_v = -(a2_dot_db2 - DOT( b0, db2 ));
-
-                x_pos = (x_dot_v * len_db2 - x_dot_y * y_dot_v) / bottom;
-                y_pos = (y_dot_v * len_db0 - x_dot_y * x_dot_v) / bottom;
-
-                weights[2] = 1.0;
-                weights[3] = 1.0 - x_pos - y_pos;
-                weights[4] = x_pos;
-                weights[5] = y_pos;
-
+            if( bottom != 0.0 ) {
                 dist = d * d / len_bn;
-
                 *tri_case = A2 | B0 | B1 | B2;
                 return( dist );
             }
@@ -1129,9 +1000,6 @@ private  Real  sq_triangle_triangle_dist_and_weights(
 
         if( DOT( d, da2 ) >= -tolerance && DOT( d, da1 ) <= tolerance )
         {
-            weights[2] = 1.0;
-            weights[3] = 1.0 - d;
-            weights[4] = d;
             dist = DOT( d, d );
             *tri_case = A2 | B0 | B1;
             return( dist );
@@ -1147,9 +1015,6 @@ private  Real  sq_triangle_triangle_dist_and_weights(
 
         if( DOT( d, da2 ) >= -tolerance && DOT( d, da1 ) <= tolerance )
         {
-            weights[2] = 1.0;
-            weights[4] = 1.0 - d;
-            weights[5] = d;
             dist = DOT( d, d );
             *tri_case = A2 | B1 | B2;
             return( dist );
@@ -1165,9 +1030,6 @@ private  Real  sq_triangle_triangle_dist_and_weights(
 
         if( DOT( d, da2 ) >= -tolerance && DOT( d, da1 ) <= tolerance )
         {
-            weights[2] = 1.0;
-            weights[5] = 1.0 - d;
-            weights[3] = d;
             dist = DOT( d, d );
             *tri_case = A2 | B0 | B2;
             return( dist );
@@ -1194,12 +1056,7 @@ private  Real  sq_triangle_triangle_dist_and_weights(
         dy = b0y + t * db0y - (a0y + s * da0y);
         dz = b0z + t * db0z - (a0z + s * da0z);
 
-        if( DOT( d, ea0 ) <= tolerance && DOT( d, eb0 ) >= -tolerance )
-        {
-            weights[0] = 1.0 - s;
-            weights[1] = s;
-            weights[3] = 1.0 - t;
-            weights[4] = t;
+        if( DOT( d, ea0 ) <= tolerance && DOT( d, eb0 ) >= -tolerance ) {
             dist = dx * dx + dy * dy + dz * dz;
             *tri_case = A0 | A1 | B0 | B1;
             return( dist );
@@ -1228,10 +1085,6 @@ private  Real  sq_triangle_triangle_dist_and_weights(
 
         if( DOT( d, ea0 ) <= tolerance && DOT( d, eb1 ) >= -tolerance )
         {
-            weights[0] = 1.0 - s;
-            weights[1] = s;
-            weights[4] = 1.0 - t;
-            weights[5] = t;
             dist = dx * dx + dy * dy + dz * dz;
             *tri_case = A0 | A1 | B1 | B2;
             return( dist );
@@ -1260,10 +1113,6 @@ private  Real  sq_triangle_triangle_dist_and_weights(
 
         if( DOT( d, ea0 ) <= tolerance && DOT( d, eb2 ) >= -tolerance )
         {
-            weights[0] = 1.0 - s;
-            weights[1] = s;
-            weights[3] = t;
-            weights[5] = 1.0 - t;
             dist = dx * dx + dy * dy + dz * dz;
             *tri_case = A0 | A1 | B0 | B2;
             return( dist );
@@ -1292,10 +1141,6 @@ private  Real  sq_triangle_triangle_dist_and_weights(
 
         if( DOT( d, ea1 ) <= tolerance && DOT( d, eb0 ) >= -tolerance )
         {
-            weights[1] = 1.0 - s;
-            weights[2] = s;
-            weights[3] = 1.0 - t;
-            weights[4] = t;
             dist = dx * dx + dy * dy + dz * dz;
             *tri_case = A1 | A2 | B0 | B1;
             return( dist );
@@ -1324,10 +1169,6 @@ private  Real  sq_triangle_triangle_dist_and_weights(
 
         if( DOT( d, ea1 ) <= tolerance && DOT( d, eb1 ) >= -tolerance )
         {
-            weights[1] = 1.0 - s;
-            weights[2] = s;
-            weights[4] = 1.0 - t;
-            weights[5] = t;
             dist = dx * dx + dy * dy + dz * dz;
             *tri_case = A1 | A2 | B1 | B2;
             return( dist );
@@ -1354,12 +1195,7 @@ private  Real  sq_triangle_triangle_dist_and_weights(
         dy = b2y + t * db2y - (a1y + s * da1y);
         dz = b2z + t * db2z - (a1z + s * da1z);
 
-        if( DOT( d, ea1 ) <= tolerance && DOT( d, eb2 ) >= -tolerance )
-        {
-            weights[1] = 1.0 - s;
-            weights[2] = s;
-            weights[3] = t;
-            weights[5] = 1.0 - t;
+        if( DOT( d, ea1 ) <= tolerance && DOT( d, eb2 ) >= -tolerance ) {
             dist = dx * dx + dy * dy + dz * dz;
             *tri_case = A1 | A2 | B0 | B2;
             return( dist );
@@ -1388,10 +1224,6 @@ private  Real  sq_triangle_triangle_dist_and_weights(
 
         if( DOT( d, ea2 ) <= tolerance && DOT( d, eb0 ) >= -tolerance )
         {
-            weights[0] = s;
-            weights[2] = 1.0 - s;
-            weights[3] = 1.0 - t;
-            weights[4] = t;
             dist = dx * dx + dy * dy + dz * dz;
             *tri_case = A0 | A2 | B0 | B1;
             return( dist );
@@ -1420,10 +1252,6 @@ private  Real  sq_triangle_triangle_dist_and_weights(
 
         if( DOT( d, ea2 ) <= tolerance && DOT( d, eb1 ) >= -tolerance )
         {
-            weights[0] = s;
-            weights[2] = 1.0 - s;
-            weights[4] = 1.0 - t;
-            weights[5] = t;
             dist = dx * dx + dy * dy + dz * dz;
             *tri_case = A0 | A2 | B1 | B2;
             return( dist );
@@ -1452,10 +1280,6 @@ private  Real  sq_triangle_triangle_dist_and_weights(
 
         if( DOT( d, ea2 ) <= tolerance && DOT( d, eb2 ) >= -tolerance )
         {
-            weights[0] = s;
-            weights[2] = 1.0 - s;
-            weights[3] = t;
-            weights[5] = 1.0 - t;
             dist = dx * dx + dy * dy + dz * dz;
             *tri_case = A0 | A2 | B0 | B2;
             return( dist );
@@ -1464,18 +1288,10 @@ private  Real  sq_triangle_triangle_dist_and_weights(
 
     /*--- otherwise, they must intersect */
 
-    weights[0] = 0.0;
-    weights[1] = 0.0;
-    weights[2] = 0.0;
-    weights[3] = 0.0;
-    weights[4] = 0.0;
-    weights[5] = 0.0;
     *tri_case = 0;
 
     return( 0.0 );
 }
-
-Real   Weights[6];
 
 #ifdef STATS
 static  int  vv = 0;
@@ -1494,60 +1310,456 @@ public  Real  sq_triangle_triangle_dist(
     Real   b0[],
     Real   b1[],
     Real   b2[],
-    int    *which_case )
-{
-    int   i, tri_case;
+    unsigned char * which_case ) {
+
+    int   i;
+    unsigned char  tri_case;
     Real  dist;
-#ifdef STATS
-    int   n1, n2;
-#endif  /* STATS */
 
-    if( which_case != NULL && *which_case > 0 &&
-        test_distance_with_known_case( a0, a1, a2, b0, b1, b2, *which_case,
-                                       &dist ) )
-    {
-        return( dist );
+    if( which_case != NULL ) {
+      if( *which_case > 0 ) {
+        if( test_distance_with_known_case( a0, a1, a2, b0, b1, b2, *which_case,
+                                           &dist ) ) {
+          return( dist );
+        }
+      }
     }
 
-    dist = sq_triangle_triangle_dist_and_weights( a0, a1, a2, b0, b1, b2,
-                                                  Weights, &tri_case );
+    dist = sq_triangle_triangle_dist_unknown_case( a0, a1, a2, b0, b1, b2,
+                                                   &tri_case );
 
-    if( which_case != NULL )
-        *which_case = tri_case;
-
-#ifdef STATS
-    n1 = 0;
-    for_less( i, 0, 3 )
-        if( Weights[i] != 0.0 )  ++n1;
-
-    n2 = 0;
-    for_less( i, 3, 6 )
-        if( Weights[i] != 0.0 )  ++n2;
-
-    if( n1 == 1 && n2 == 1 )
-        ++vv;
-    else if( n1 == 1 && n2 == 2 || n1 == 2 && n2 == 1 )
-        ++ve;
-    else if( n1 == 2 && n2 == 2 )
-        ++ee;
-    else if( n1 == 1 && n2 == 3 || n1 == 3 && n2 == 1 )
-        ++vp;
-    else
-        ++other;
-
-    ++count;
-    if( count % 1000000 == 0 )
-    {
-        print( "vv %5.1f    ve %5.1f     ee %5.1f   vp %5.1f   other  %5.1f\n",
-                100.0 * (Real) vv / (Real) count,
-                100.0 * (Real) ve / (Real) count,
-                100.0 * (Real) ee / (Real) count,
-                100.0 * (Real) vp / (Real) count,
-                100.0 * (Real) other / (Real) count );
+    if( which_case != NULL ) {
+      *which_case = tri_case;
     }
-#endif  /* STATS */
 
     return( dist );
+}
+
+// Test if two triangles are close enough. We already know that
+// the bounding boxes for (a0,a1,a2) and (b0,b1,b2) intersect
+// within fl_search_distance.
+
+public  BOOLEAN sq_triangle_triangle_dist_estimate(
+    Real    a0[],
+    Real    a1[],
+    Real    a2[],
+    Real    b0[],
+    Real    b1[],
+    Real    b2[],
+    Real    search_distance_sq ) {
+
+    Real   a0x, a0y, a0z, a1x, a1y, a1z, a2x, a2y, a2z;
+    Real   b0x, b0y, b0z, b1x, b1y, b1z, b2x, b2y, b2z;
+    Real   a01x, a01y, a01z, a20x, a20y, a20z, a12x, a12y, a12z;
+    Real   b01x, b01y, b01z, b20x, b20y, b20z, b12x, b12y, b12z;
+    Real   nx, ny, nz, vx, vy, vz, dot0, dot1, dot2;
+    Real   min_dir2, max_dir2, min_dir3;
+    Real   dist, delta, mag_dir, min_b, max_b, min_a, max_a;
+    Real   dist0, dist1, dist2, dist3;
+
+    a0x = a0[0];
+    a0y = a0[1];
+    a0z = a0[2];
+    a1x = a1[0];
+    a1y = a1[1];
+    a1z = a1[2];
+    a2x = a2[0];
+    a2y = a2[1];
+    a2z = a2[2];
+
+    b0x = b0[0];
+    b0y = b0[1];
+    b0z = b0[2];
+    b1x = b1[0];
+    b1y = b1[1];
+    b1z = b1[2];
+    b2x = b2[0];
+    b2y = b2[1];
+    b2z = b2[2];
+
+    /*--- test a to b */
+
+    a01x = a1x - a0x;
+    a01y = a1y - a0y;
+    a01z = a1z - a0z;
+
+    a12x = a2x - a1x;
+    a12y = a2y - a1y;
+    a12z = a2z - a1z;
+
+    a20x = a0x - a2x;
+    a20y = a0y - a2y;
+    a20z = a0z - a2z;
+
+    // This is the equation of the plane for triangle (a0,a1,a2):
+    //            nx*x + ny*y + nz*z = min_dir3
+
+    nx = a01y * (-a20z) - a01z * (-a20y);
+    ny = a01z * (-a20x) - a01x * (-a20z);
+    nz = a01x * (-a20y) - a01y * (-a20x);
+    min_dir3 = a0x * nx + a0y * ny + a0z * nz;
+
+    /*--- do dir3 distance */
+    // dist3 is the distance between planes parallel to (a0,a1,a2)
+    // but passing through the points b0, b1, b2. This distance is
+    // meaningful only if the 3 points of b are on the same side
+    // (all above or all below) of triangle a.
+
+    dot0 = b0x * nx + b0y * ny + b0z * nz;
+    dot1 = b1x * nx + b1y * ny + b1z * nz;
+    dot2 = b2x * nx + b2y * ny + b2z * nz;
+
+    MIN_AND_MAX3( min_b, max_b, dot0, dot1, dot2 );
+
+    if( min_b > min_dir3 ) {
+        delta = min_b - min_dir3;
+        mag_dir = nx * nx + ny * ny + nz * nz;
+        dist3 = delta * delta / mag_dir;
+    } else if( max_b < min_dir3 ) {
+        delta = min_dir3 - max_b;
+        mag_dir = nx * nx + ny * ny + nz * nz;
+        dist3 = delta * delta / mag_dir;
+    } else {
+        dist3 = 0.0;
+    }
+
+    if( dist3 >= search_distance_sq ) return( TRUE );
+
+    /*--- get dist0 */
+    // We now look at the distance between the edge (a0,a1) and the
+    // 3 points of the triangle b. We look away from the edge (a0,a1),
+    // in a plane tangent to the normal of triangle (a0,a1,a2) and 
+    // the given edge, to see if the parallel planes going through 
+    // the points of b all lie on the same side. We also look at
+    // the plane away from node a2 too.
+
+    dist0 = dist3;
+
+    vx = ny * a01z - nz * a01y;
+    vy = nz * a01x - nx * a01z;
+    vz = nx * a01y - ny * a01x;
+
+    min_dir2 = a0x * vx + a0y * vy + a0z * vz;
+    max_dir2 = a2x * vx + a2y * vy + a2z * vz;
+
+    dot0 = b0x * vx + b0y * vy + b0z * vz;
+    dot1 = b1x * vx + b1y * vy + b1z * vz;
+    dot2 = b2x * vx + b2y * vy + b2z * vz;
+
+    MIN_AND_MAX3( min_b, max_b, dot0, dot1, dot2 );
+
+    if( min_b > max_dir2 ) {
+        delta = min_b - max_dir2;
+        mag_dir = vx * vx + vy * vy + vz * vz;
+        dist0 += delta * delta / mag_dir;
+        if( dist0 >= search_distance_sq ) return( TRUE );
+    } else if( max_b < min_dir2 ) {
+        delta = min_dir2 - max_b;
+        mag_dir = vx * vx + vy * vy + vz * vz;
+        dist0 += delta * delta / mag_dir;
+        if( dist0 >= search_distance_sq ) return( TRUE );
+    }
+
+    /*--- get dist1 */
+    // Same as above, but with edge (a1,a2).
+
+    dist1 = dist3;
+
+    vx = ny * a12z - nz * a12y;
+    vy = nz * a12x - nx * a12z;
+    vz = nx * a12y - ny * a12x;
+
+    min_dir2 = a1x * vx + a1y * vy + a1z * vz;
+    max_dir2 = a0x * vx + a0y * vy + a0z * vz;
+
+    dot0 = b0x * vx + b0y * vy + b0z * vz;
+    dot1 = b1x * vx + b1y * vy + b1z * vz;
+    dot2 = b2x * vx + b2y * vy + b2z * vz;
+
+    MIN_AND_MAX3( min_b, max_b, dot0, dot1, dot2 );
+
+    if( min_b > max_dir2 ) {
+        delta = min_b - max_dir2;
+        mag_dir = vx * vx + vy * vy + vz * vz;
+        dist1 += delta * delta / mag_dir;
+        if( dist1 >= search_distance_sq ) return( TRUE );
+    } else if( max_b < min_dir2 ) {
+        delta = min_dir2 - max_b;
+        mag_dir = vx * vx + vy * vy + vz * vz;
+        dist1 += delta * delta / mag_dir;
+        if( dist1 >= search_distance_sq ) return( TRUE );
+    }
+
+    /*--- get dist2 */
+    // Same as above, but with edge (a2,a0).
+
+    dist2 = dist3;
+
+    vx = ny * a20z - nz * a20y;
+    vy = nz * a20x - nx * a20z;
+    vz = nx * a20y - ny * a20x;
+
+    min_dir2 = a2x * vx + a2y * vy + a2z * vz;
+    max_dir2 = a1x * vx + a1y * vy + a1z * vz;
+
+    dot0 = b0x * vx + b0y * vy + b0z * vz;
+    dot1 = b1x * vx + b1y * vy + b1z * vz;
+    dot2 = b2x * vx + b2y * vy + b2z * vz;
+
+    MIN_AND_MAX3( min_b, max_b, dot0, dot1, dot2 );
+
+    if( min_b > max_dir2 ) {
+        delta = min_b - max_dir2;
+        mag_dir = vx * vx + vy * vy + vz * vz;
+        dist2 += delta * delta / mag_dir;
+        if( dist2 >= search_distance_sq ) return( TRUE );
+    } else if( max_b < min_dir2 ) {
+        delta = min_dir2 - max_b;
+        mag_dir = vx * vx + vy * vy + vz * vz;
+        dist2 += delta * delta / mag_dir;
+        if( dist2 >= search_distance_sq ) return( TRUE );
+    }
+
+    /*--- test b to a */
+    // This is the same dir3 test as the first test above, but
+    // with a and b inverted.
+
+    b01x = b1x - b0x;
+    b01y = b1y - b0y;
+    b01z = b1z - b0z;
+
+    b12x = b2x - b1x;
+    b12y = b2y - b1y;
+    b12z = b2z - b1z;
+
+    b20x = b0x - b2x;
+    b20y = b0y - b2y;
+    b20z = b0z - b2z;
+
+    nx = b01y * (-b20z) - b01z * (-b20y);
+    ny = b01z * (-b20x) - b01x * (-b20z);
+    nz = b01x * (-b20y) - b01y * (-b20x);
+    min_dir3 = b0x * nx + b0y * ny + b0z * nz;
+
+    /*--- do dir3 distance */
+
+    dot0 = a0x * nx + a0y * ny + a0z * nz;
+    dot1 = a1x * nx + a1y * ny + a1z * nz;
+    dot2 = a2x * nx + a2y * ny + a2z * nz;
+
+    MIN_AND_MAX3( min_a, max_a, dot0, dot1, dot2 );
+
+    if( min_a > min_dir3 ) {
+        delta = min_a - min_dir3;
+        mag_dir = nx * nx + ny * ny + nz * nz;
+        dist3 = delta * delta / mag_dir;
+        if( dist3 >= search_distance_sq ) return( TRUE );
+    } else if( max_a < min_dir3 ) {
+        delta = min_dir3 - max_a;
+        mag_dir = nx * nx + ny * ny + nz * nz;
+        dist3 = delta * delta / mag_dir;
+        if( dist3 >= search_distance_sq ) return( TRUE );
+    }
+
+    return( FALSE );
+
+
+/*---  profiling indicates that it is faster just to stop here, rather than
+       to repeat the first half of this function with the roles of a and b
+       inverted */
+#if 0
+    /*--- get dist0 */
+
+    dist0 = dist3;
+
+    vx = ny * b01z - nz * b01y;
+    vy = nz * b01x - nx * b01z;
+    vz = nx * b01y - ny * b01x;
+
+    dot0 = b0x * b01x + b0y * b01y + b0z * b01z;
+    dot1 = b1x * b01x + b1y * b01y + b1z * b01z;
+    dot2 = b2x * b01x + b2y * b01y + b2z * b01z;
+
+    min_dir1 = MIN( dot0, dot2 );
+    max_dir1 = MAX( dot1, dot2 );
+
+    min_dir2 = b0x * vx + b0y * vy + b0z * vz;
+    max_dir2 = b2x * vx + b2y * vy + b2z * vz;
+
+    /*--- do dir1 distance */
+
+    dot0 = a0x * b01x + a0y * b01y + a0z * b01z;
+    dot1 = a1x * b01x + a1y * b01y + a1z * b01z;
+    dot2 = a2x * b01x + a2y * b01y + a2z * b01z;
+
+    MIN_AND_MAX3( min_a, max_a, dot0, dot1, dot2 );
+
+    if( min_a > max_dir1 )
+    {
+        delta = min_a - max_dir1;
+        mag_dir = b01x * b01x + b01y * b01y + b01z * b01z;
+        dist0 += delta * delta / mag_dir;
+    }
+    else if( max_a < min_dir1 )
+    {
+        delta = min_dir1 - max_a;
+        mag_dir = b01x * b01x + b01y * b01y + b01z * b01z;
+        dist0 += delta * delta / mag_dir;
+    }
+
+    /*--- do dir2 distance */
+
+    dot0 = a0x * vx + a0y * vy + a0z * vz;
+    dot1 = a1x * vx + a1y * vy + a1z * vz;
+    dot2 = a2x * vx + a2y * vy + a2z * vz;
+
+    MIN_AND_MAX3( min_a, max_a, dot0, dot1, dot2 );
+
+    if( min_a > max_dir2 )
+    {
+        delta = min_a - max_dir2;
+        mag_dir = vx * vx + vy * vy + vz * vz;
+        dist0 += delta * delta / mag_dir;
+    }
+    else if( max_a < min_dir2 )
+    {
+        delta = min_dir2 - max_a;
+        mag_dir = vx * vx + vy * vy + vz * vz;
+        dist0 += delta * delta / mag_dir;
+    }
+
+    if( dist0 >= search_distance_sq )
+        return( dist0 );
+
+    /*--- get dist1 */
+
+    dist1 = dist3;
+
+    vx = ny * b12z - nz * b12y;
+    vy = nz * b12x - nx * b12z;
+    vz = nx * b12y - ny * b12x;
+
+    dot0 = b0x * b12x + b0y * b12y + b0z * b12z;
+    dot1 = b1x * b12x + b1y * b12y + b1z * b12z;
+    dot2 = b2x * b12x + b2y * b12y + b2z * b12z;
+
+    min_dir1 = MIN( dot1, dot0 );
+    max_dir1 = MAX( dot2, dot0 );
+
+    min_dir2 = b1x * vx + b1y * vy + b1z * vz;
+    max_dir2 = b0x * vx + b0y * vy + b0z * vz;
+
+    /*--- do dir1 distance */
+
+    dot0 = a0x * b12x + a0y * b12y + a0z * b12z;
+    dot1 = a1x * b12x + a1y * b12y + a1z * b12z;
+    dot2 = a2x * b12x + a2y * b12y + a2z * b12z;
+
+    MIN_AND_MAX3( min_a, max_a, dot0, dot1, dot2 );
+
+    if( min_a > max_dir1 )
+    {
+        delta = min_a - max_dir1;
+        mag_dir = b12x * b12x + b12y * b12y + b12z * b12z;
+        dist1 += delta * delta / mag_dir;
+    }
+    else if( max_a < min_dir1 )
+    {
+        delta = min_dir1 - max_a;
+        mag_dir = b12x * b12x + b12y * b12y + b12z * b12z;
+        dist1 += delta * delta / mag_dir;
+    }
+
+    /*--- do dir2 distance */
+
+    dot0 = a0x * vx + a0y * vy + a0z * vz;
+    dot1 = a1x * vx + a1y * vy + a1z * vz;
+    dot2 = a2x * vx + a2y * vy + a2z * vz;
+
+    MIN_AND_MAX3( min_a, max_a, dot0, dot1, dot2 );
+
+    if( min_a > max_dir2 )
+    {
+        delta = min_a - max_dir2;
+        mag_dir = vx * vx + vy * vy + vz * vz;
+        dist1 += delta * delta / mag_dir;
+    }
+    else if( max_a < min_dir2 )
+    {
+        delta = min_dir2 - max_a;
+        mag_dir = vx * vx + vy * vy + vz * vz;
+        dist1 += delta * delta / mag_dir;
+    }
+
+    if( dist1 >= search_distance_sq )
+        return( dist1 );
+
+    /*--- get dist2 */
+
+    dist2 = dist3;
+
+    vx = ny * b20z - nz * b20y;
+    vy = nz * b20x - nx * b20z;
+    vz = nx * b20y - ny * b20x;
+
+    dot0 = b0x * b20x + b0y * b20y + b0z * b20z;
+    dot1 = b1x * b20x + b1y * b20y + b1z * b20z;
+    dot2 = b2x * b20x + b2y * b20y + b2z * b20z;
+
+    min_dir1 = MIN( dot2, dot1 );
+    max_dir1 = MAX( dot0, dot1 );
+
+    min_dir2 = b2x * vx + b2y * vy + b2z * vz;
+    max_dir2 = b1x * vx + b1y * vy + b1z * vz;
+
+    /*--- do dir1 distance */
+
+    dot0 = a0x * b20x + a0y * b20y + a0z * b20z;
+    dot1 = a1x * b20x + a1y * b20y + a1z * b20z;
+    dot2 = a2x * b20x + a2y * b20y + a2z * b20z;
+
+    MIN_AND_MAX3( min_a, max_a, dot0, dot1, dot2 );
+
+    if( min_a > max_dir1 )
+    {
+        delta = min_a - max_dir1;
+        mag_dir = b20x * b20x + b20y * b20y + b20z * b20z;
+        dist2 += delta * delta / mag_dir;
+    }
+    else if( max_a < min_dir1 )
+    {
+        delta = min_dir1 - max_a;
+        mag_dir = b20x * b20x + b20y * b20y + b20z * b20z;
+        dist2 += delta * delta / mag_dir;
+    }
+
+    /*--- do dir2 distance */
+
+    dot0 = a0x * vx + a0y * vy + a0z * vz;
+    dot1 = a1x * vx + a1y * vy + a1z * vz;
+    dot2 = a2x * vx + a2y * vy + a2z * vz;
+
+    MIN_AND_MAX3( min_a, max_a, dot0, dot1, dot2 );
+
+    if( min_a > max_dir2 )
+    {
+        delta = min_a - max_dir2;
+        mag_dir = vx * vx + vy * vy + vz * vz;
+        dist2 += delta * delta / mag_dir;
+    }
+    else if( max_a < min_dir2 )
+    {
+        delta = min_dir2 - max_a;
+        mag_dir = vx * vx + vy * vy + vz * vz;
+        dist2 += delta * delta / mag_dir;
+    }
+
+    distb = MAX3( dist0, dist1, dist2 );
+
+    dist = MAX( dista, distb );
+
+    return( dist );
+#endif
 }
 
 private  void  compute_point_point_derivative(
@@ -1562,13 +1774,13 @@ private  void  compute_point_point_derivative(
     dy = p1[1] - p0[1];
     dz = p1[2] - p0[2];
 
-    deriv_0[0] = 2.0 * dx * -1.0;
-    deriv_0[1] = 2.0 * dy * -1.0;
-    deriv_0[2] = 2.0 * dz * -1.0;
+    deriv_0[0] = -2.0 * dx;
+    deriv_0[1] = -2.0 * dy;
+    deriv_0[2] = -2.0 * dz;
 
-    deriv_1[0] = 2.0 * dx * 1.0;
-    deriv_1[1] = 2.0 * dy * 1.0;
-    deriv_1[2] = 2.0 * dz * 1.0;
+    deriv_1[0] = 2.0 * dx;
+    deriv_1[1] = 2.0 * dy;
+    deriv_1[2] = 2.0 * dz;
 }
 
 private  void  compute_point_edge_derivative(
@@ -1582,7 +1794,7 @@ private  void  compute_point_edge_derivative(
     Real     x0, y0, z0, x1, y1, z1, px, py, pz;
     Real     v01x, v01y, v01z;
     Real     pv0x, pv0y, pv0z;
-    Real     rratio;
+    Real     rratio, rratio_sq;
     Real     rv_dot_e, re_dot_e;
 
     x0 = edge0[0];
@@ -1608,27 +1820,19 @@ private  void  compute_point_edge_derivative(
     re_dot_e = v01x * v01x + v01y * v01y + v01z * v01z;
 
     rratio = rv_dot_e / re_dot_e;
+    rratio_sq = rratio * rratio;
 
-    edge0_deriv[0] = 2.0 * pv0x * (-1.0) -
-                     2.0 * rv_dot_e / re_dot_e * (-pv0x - v01x) -
-                     rv_dot_e * rv_dot_e / re_dot_e / re_dot_e * 2.0 *v01x;
-    edge0_deriv[1] = 2.0 * pv0y * (-1.0) -
-                     2.0 * rv_dot_e / re_dot_e * (-pv0y - v01y) -
-                     rv_dot_e * rv_dot_e / re_dot_e / re_dot_e * 2.0 *v01y;
-    edge0_deriv[2] = 2.0 * pv0z * (-1.0) -
-                     2.0 * rv_dot_e / re_dot_e * (-pv0z - v01z) -
-                     rv_dot_e * rv_dot_e / re_dot_e / re_dot_e * 2.0 *v01z;
+    edge0_deriv[0] = 2.0 * ( -pv0x - rratio * (-pv0x - v01x) - rratio_sq * v01x );
+    edge0_deriv[1] = 2.0 * ( -pv0y - rratio * (-pv0y - v01y) - rratio_sq * v01y );
+    edge0_deriv[2] = 2.0 * ( -pv0z - rratio * (-pv0z - v01z) - rratio_sq * v01z );
 
-    edge1_deriv[0] = -2.0 * rratio * pv0x +
-                     rv_dot_e * rratio / re_dot_e * 2.0 * v01x;
-    edge1_deriv[1] = -2.0 * rratio * pv0y +
-                     rv_dot_e * rratio / re_dot_e * 2.0 * v01y;
-    edge1_deriv[2] = -2.0 * rratio * pv0z +
-                     rv_dot_e * rratio / re_dot_e * 2.0 * v01z;
+    edge1_deriv[0] = 2.0 * ( -rratio * pv0x + rratio_sq * v01x );
+    edge1_deriv[1] = 2.0 * ( -rratio * pv0y + rratio_sq * v01y );
+    edge1_deriv[2] = 2.0 * ( -rratio * pv0z + rratio_sq * v01z );
 
-    deriv_point[0] = 2.0*pv0x -2.0*rv_dot_e * v01x / re_dot_e;
-    deriv_point[1] = 2.0*pv0y -2.0*rv_dot_e * v01y / re_dot_e;
-    deriv_point[2] = 2.0*pv0z -2.0*rv_dot_e * v01z / re_dot_e;
+    deriv_point[0] = 2.0 * ( pv0x - rratio * v01x );
+    deriv_point[1] = 2.0 * ( pv0y - rratio * v01y );
+    deriv_point[2] = 2.0 * ( pv0z - rratio * v01z );
 }
 
 private  void  compute_point_plane_derivative(
@@ -1708,42 +1912,38 @@ private  void  compute_point_plane_derivative(
     vn_y = v20z * v01x - v20x * v01z;
     vn_z = v20x * v01y - v20y * v01x;
 
-    nn_x0 = 2.0 * ny * v12z - 2.0 * nz * v12y;
-    nn_y0 = 2.0 * nz * v12x - 2.0 * nx * v12z;
-    nn_z0 = 2.0 * nx * v12y - 2.0 * ny * v12x;
+    nn_x0 = ny * v12z - nz * v12y;
+    nn_y0 = nz * v12x - nx * v12z;
+    nn_z0 = nx * v12y - ny * v12x;
 
-    nn_x1 = 2.0 * ny * v20z - 2.0 * nz * v20y;
-    nn_y1 = 2.0 * nz * v20x - 2.0 * nx * v20z;
-    nn_z1 = 2.0 * nx * v20y - 2.0 * ny * v20x;
+    nn_x1 = ny * v20z - nz * v20y;
+    nn_y1 = nz * v20x - nx * v20z;
+    nn_z1 = nx * v20y - ny * v20x;
 
-    nn_x2 = 2.0 * ny * v01z - 2.0 * nz * v01y;
-    nn_y2 = 2.0 * nz * v01x - 2.0 * nx * v01z;
-    nn_z2 = 2.0 * nx * v01y - 2.0 * ny * v01x;
+    nn_x2 = ny * v01z - nz * v01y;
+    nn_y2 = nz * v01x - nx * v01z;
+    nn_z2 = nx * v01y - ny * v01x;
 
-    tri_derivs[0][0] = 2.0 * v_dot_n / n_dot_n * vn_x0 -
-                       v_dot_n * v_dot_n / n_dot_n / n_dot_n * nn_x0;
-    tri_derivs[0][1] = 2.0 * v_dot_n / n_dot_n * vn_y0 -
-                       v_dot_n * v_dot_n / n_dot_n / n_dot_n * nn_y0;
-    tri_derivs[0][2] = 2.0 * v_dot_n / n_dot_n * vn_z0 -
-                       v_dot_n * v_dot_n / n_dot_n / n_dot_n * nn_z0;
+    Real coeff1 = v_dot_n / n_dot_n;
+    Real coeff2 = coeff1 * coeff1;
+    coeff1 += coeff1;
+    coeff2 += coeff2;
 
-    tri_derivs[1][0] = 2.0 * v_dot_n / n_dot_n * vn_x1 -
-                       v_dot_n * v_dot_n / n_dot_n / n_dot_n * nn_x1;
-    tri_derivs[1][1] = 2.0 * v_dot_n / n_dot_n * vn_y1 -
-                       v_dot_n * v_dot_n / n_dot_n / n_dot_n * nn_y1;
-    tri_derivs[1][2] = 2.0 * v_dot_n / n_dot_n * vn_z1 -
-                       v_dot_n * v_dot_n / n_dot_n / n_dot_n * nn_z1;
+    tri_derivs[0][0] = coeff1 * vn_x0 - coeff2 * nn_x0;
+    tri_derivs[0][1] = coeff1 * vn_y0 - coeff2 * nn_y0;
+    tri_derivs[0][2] = coeff1 * vn_z0 - coeff2 * nn_z0;
 
-    tri_derivs[2][0] = 2.0 * v_dot_n / n_dot_n * vn_x2 -
-                       v_dot_n * v_dot_n / n_dot_n / n_dot_n * nn_x2;
-    tri_derivs[2][1] = 2.0 * v_dot_n / n_dot_n * vn_y2 -
-                       v_dot_n * v_dot_n / n_dot_n / n_dot_n * nn_y2;
-    tri_derivs[2][2] = 2.0 * v_dot_n / n_dot_n * vn_z2 -
-                       v_dot_n * v_dot_n / n_dot_n / n_dot_n * nn_z2;
+    tri_derivs[1][0] = coeff1 * vn_x1 - coeff2 * nn_x1;
+    tri_derivs[1][1] = coeff1 * vn_y1 - coeff2 * nn_y1;
+    tri_derivs[1][2] = coeff1 * vn_z1 - coeff2 * nn_z1;
 
-    deriv_point[0] = 2.0 * v_dot_n / n_dot_n * vn_x;
-    deriv_point[1] = 2.0 * v_dot_n / n_dot_n * vn_y;
-    deriv_point[2] = 2.0 * v_dot_n / n_dot_n * vn_z;
+    tri_derivs[2][0] = coeff1 * vn_x2 - coeff2 * nn_x2;
+    tri_derivs[2][1] = coeff1 * vn_y2 - coeff2 * nn_y2;
+    tri_derivs[2][2] = coeff1 * vn_z2 - coeff2 * nn_z2;
+
+    deriv_point[0] = coeff1 * vn_x;
+    deriv_point[1] = coeff1 * vn_y;
+    deriv_point[2] = coeff1 * vn_z;
 }
 
 private  void  compute_edge_edge_derivative(
@@ -1803,29 +2003,31 @@ private  void  compute_edge_edge_derivative(
     d_v_dot_d[3][1] = vz * v0x - vx * v0z;
     d_v_dot_d[3][2] = vx * v0y - vy * v0x;
 
-    d_d_dot_d[0][0] = 2.0 * ny * v1z - 2.0 * nz * v1y;
-    d_d_dot_d[0][1] = 2.0 * nz * v1x - 2.0 * nx * v1z;
-    d_d_dot_d[0][2] = 2.0 * nx * v1y - 2.0 * ny * v1x;
+    d_d_dot_d[0][0] = ny * v1z - nz * v1y;
+    d_d_dot_d[0][1] = nz * v1x - nx * v1z;
+    d_d_dot_d[0][2] = nx * v1y - ny * v1x;
 
-    d_d_dot_d[1][0] = - 2.0 * ny * v1z + 2.0 * nz * v1y;
-    d_d_dot_d[1][1] = - 2.0 * nz * v1x + 2.0 * nx * v1z;
-    d_d_dot_d[1][2] = - 2.0 * nx * v1y + 2.0 * ny * v1x;
+    d_d_dot_d[1][0] = -ny * v1z + nz * v1y;
+    d_d_dot_d[1][1] = -nz * v1x + nx * v1z;
+    d_d_dot_d[1][2] = -nx * v1y + ny * v1x;
 
-    d_d_dot_d[2][0] = - 2.0 * ny * v0z + 2.0 * nz * v0y;
-    d_d_dot_d[2][1] = - 2.0 * nz * v0x + 2.0 * nx * v0z;
-    d_d_dot_d[2][2] = - 2.0 * nx * v0y + 2.0 * ny * v0x;
+    d_d_dot_d[2][0] = -ny * v0z + nz * v0y;
+    d_d_dot_d[2][1] = -nz * v0x + nx * v0z;
+    d_d_dot_d[2][2] = -nx * v0y + ny * v0x;
 
-    d_d_dot_d[3][0] = 2.0 * ny * v0z - 2.0 * nz * v0y;
-    d_d_dot_d[3][1] = 2.0 * nz * v0x - 2.0 * nx * v0z;
-    d_d_dot_d[3][2] = 2.0 * nx * v0y - 2.0 * ny * v0x;
+    d_d_dot_d[3][0] = ny * v0z - nz * v0y;
+    d_d_dot_d[3][1] = nz * v0x - nx * v0z;
+    d_d_dot_d[3][2] = nx * v0y - ny * v0x;
 
-    for_less( dim, 0, N_DIMENSIONS )
-    {
-        for_less( d, 0, 4 )
-        {
-            deriv[d][dim] = 2.0 * v_dot_d / d_dot_d * d_v_dot_d[d][dim] -
-                            v_dot_d * v_dot_d / d_dot_d / d_dot_d *
-                            d_d_dot_d[d][dim];
+    Real coeff1 = v_dot_d / d_dot_d;
+    Real coeff2 = coeff1 * coeff1;
+    coeff1 += coeff1;
+    coeff2 += coeff2;
+
+    for_less( d, 0, 4 ) {
+        for_less( dim, 0, N_DIMENSIONS ) {
+            deriv[d][dim] = coeff1 * d_v_dot_d[d][dim] -
+                            coeff2 * d_d_dot_d[d][dim];
         }
     }
 
@@ -1865,106 +2067,6 @@ private  void  compute_edge_plane_derivative(
     }
 }
 
-private  void  compute_edge_derivative(
-    Real   weight0,
-    Real   edge0[],
-    Real   edge0_deriv[],
-    Real   weight1,
-    Real   edge1[],
-    Real   edge1_deriv[],
-    Real   weights[],
-    Real   *tri_points[],
-    Real   *tri_derivs[] )
-{
-    int    w, n_non_null_b, which_b[3];
-
-    if( !numerically_close( weight0 + weight1, 1.0, 1.0e-5 ) )
-        handle_internal_error( "compute_edge_derivative: weights:" );
-
-    n_non_null_b = 0;
-    for_less( w, 0, 3 )
-    {
-        if( weights[w] != 0.0 )
-        {
-            which_b[n_non_null_b] = w;
-            ++n_non_null_b;
-        }
-    }
-
-    if( n_non_null_b == 0 )
-        handle_internal_error( "compute_edge_derivative" );
-    else if( n_non_null_b == 1 )
-    {
-        if( weights[which_b[0]] != 1.0 )
-            handle_internal_error( "compute_edge_derivative" );
-
-        compute_point_edge_derivative( tri_points[which_b[0]],
-                                       tri_derivs[which_b[0]],
-                                       edge0, edge0_deriv,
-                                       edge1, edge1_deriv );
-    }
-    else if( n_non_null_b == 2 )
-    {
-        compute_edge_edge_derivative( edge0, edge0_deriv,
-                                      edge1, edge1_deriv,
-                                      tri_points[which_b[0]],
-                                      tri_derivs[which_b[0]],
-                                      tri_points[which_b[1]],
-                                      tri_derivs[which_b[1]] );
-    }
-    else
-    {
-        compute_edge_plane_derivative( edge0, edge0_deriv,
-                                       edge1, edge1_deriv,
-                                       tri_points, tri_derivs );
-    }
-}
-
-private  void  compute_point_derivative(
-    Real   point[],
-    Real   point_deriv[],
-    Real   weights[],
-    Real   *tri_points[],
-    Real   *tri_derivs[] )
-{
-    int    w, n_non_null_b, which_b[3];
-
-    n_non_null_b = 0;
-    for_less( w, 0, 3 )
-    {
-        if( weights[w] != 0.0 )
-        {
-            which_b[n_non_null_b] = w;
-            ++n_non_null_b;
-        }
-    }
-
-    if( n_non_null_b == 0 )
-        handle_internal_error( "compute_point_derivative" );
-    else if( n_non_null_b == 1 )
-    {
-        if( weights[which_b[0]] != 1.0 )
-            handle_internal_error( "compute_point_derivative" );
-
-        compute_point_point_derivative( point, point_deriv,
-                                        tri_points[which_b[0]],
-                                        tri_derivs[which_b[0]] );
-    }
-    else if( n_non_null_b == 2 )
-    {
-        compute_point_edge_derivative( point, point_deriv,
-                                       tri_points[which_b[0]],
-                                       tri_derivs[which_b[0]],
-                                       tri_points[which_b[1]],
-                                       tri_derivs[which_b[1]] );
-    }
-    else
-    {
-        compute_point_plane_derivative( point, point_deriv,
-                                        tri_points, tri_derivs );
-    }
-}
-
 public  void  sq_triangle_triangle_dist_deriv(
     Real   a0[],
     Real   a1[],
@@ -1977,15 +2079,11 @@ public  void  sq_triangle_triangle_dist_deriv(
     Real   deriv_a2[],
     Real   deriv_b0[],
     Real   deriv_b1[],
-    Real   deriv_b2[] )
-{
-    int    dim, w, n_non_null_a, n_non_null_b, which_a[3], which_b[3];
-    int    tri_case;
-    Real   weights[6];
-    Real   *points[6], *derivs[6];
+    Real   deriv_b2[],
+    unsigned char which_case ) {
 
-    (void) sq_triangle_triangle_dist_and_weights( a0, a1, a2, b0, b1, b2,
-                                                  weights, &tri_case );
+    int    dim, w, n_non_null_a, n_non_null_b, which_a[3], which_b[3];
+    Real   *points[6], *derivs[6];
 
     points[0] = a0;
     points[1] = a1;
@@ -2000,82 +2098,183 @@ public  void  sq_triangle_triangle_dist_deriv(
     derivs[4] = deriv_b1;
     derivs[5] = deriv_b2;
 
-    for_less( w, 0, 6 )
-    for_less( dim, 0, N_DIMENSIONS )
+    for_less( w, 0, 6 ) {
+      for_less( dim, 0, N_DIMENSIONS ) {
         derivs[w][dim] = 0.0;
+      }
+    }
 
     n_non_null_a = 0;
-    for_less( w, 0, 3 )
-    {
-        if( weights[w] != 0.0 )
-        {
-            which_a[n_non_null_a] = w;
-            ++n_non_null_a;
-        }
+    if( which_case & A0 ) {
+      which_a[n_non_null_a] = 0;
+      n_non_null_a++;
+    }
+    if( which_case & A1 ) {
+      which_a[n_non_null_a] = 1;
+      n_non_null_a++;
+    }
+    if( which_case & A2 ) {
+      which_a[n_non_null_a] = 2;
+      n_non_null_a++;
     }
 
-    if( n_non_null_a == 1 )
-    {
-        if( weights[which_a[0]] != 1.0 )
-            handle_internal_error( "compute_point_derivative: a" );
-        compute_point_derivative( points[which_a[0]], derivs[which_a[0]],
-                                  &weights[3], &points[3], &derivs[3] );
+    n_non_null_b = 0;
+    if( which_case & B0 ) {
+      which_b[n_non_null_b] = 3;
+      n_non_null_b++;
     }
-    else if( n_non_null_a == 2 )
-    {
-        compute_edge_derivative( weights[which_a[0]],
-                                 points[which_a[0]], derivs[which_a[0]],
-                                 weights[which_a[1]],
-                                 points[which_a[1]], derivs[which_a[1]],
-                                 &weights[3], &points[3], &derivs[3] );
+    if( which_case & B1 ) {
+      which_b[n_non_null_b] = 4;
+      n_non_null_b++;
     }
-    else if( n_non_null_a == 3 )
-    {
-        n_non_null_b = 0;
-        for_less( w, 3, 6 )
-        {
-            if( weights[w] != 0.0 )
-            {
-                which_b[n_non_null_b] = w;
-                ++n_non_null_b;
-            }
-        }
+    if( which_case & B2 ) {
+      which_b[n_non_null_b] = 5;
+      n_non_null_b++;
+    }
+    if( ( n_non_null_a == 0 ) || ( n_non_null_b == 0 ) ||
+        ( n_non_null_a == 3 && n_non_null_b == 3 ) ) {
+      printf( "Internal error in sq_triangle_triangle_dist_deriv:" );
+      printf( "  case = [%d,%d,%d:%d,%d,%d]\n",
+              (int)( which_case & A0 != 0 ), 
+              (int)( which_case & A1 != 0 ), 
+              (int)( which_case & A2 != 0 ), 
+              (int)( which_case & B0 != 0 ), 
+              (int)( which_case & B1 != 0 ), 
+              (int)( which_case & B2 != 0 ) );
+      handle_internal_error( "sq_triangle_triangle_dist_deriv" );
+      return;  // derivs will be zero. too bad.
+    }
 
-        if( n_non_null_b == 1 )
-        {
-            compute_point_plane_derivative(
-                                     points[which_b[0]], derivs[which_b[0]],
-                                     &points[0], &derivs[0] );
+    if( n_non_null_a == 1 ) {
+        if( n_non_null_b == 1 ) {
+          compute_point_point_derivative( points[which_a[0]],
+                                          derivs[which_a[0]],
+                                          points[which_b[0]],
+                                          derivs[which_b[0]] );
+        } else if( n_non_null_b == 2 ) {
+          compute_point_edge_derivative( points[which_a[0]],
+                                         derivs[which_a[0]],
+                                         points[which_b[0]],
+                                         derivs[which_b[0]],
+                                         points[which_b[1]],
+                                         derivs[which_b[1]] );
+        } else {
+          compute_point_plane_derivative( points[which_a[0]],
+                                          derivs[which_a[0]],
+                                          &points[3], &derivs[3] );
         }
-        else if( n_non_null_b == 2 )
-        {
+    } else if( n_non_null_a == 2 ) {
+        if( n_non_null_b == 1 ) {
+          compute_point_edge_derivative( points[which_b[0]],
+                                         derivs[which_b[0]],
+                                         points[which_a[0]],
+                                         derivs[which_a[0]],
+                                         points[which_a[1]],
+                                         derivs[which_a[1]] );
+        } else if( n_non_null_b == 2 ) {
+          compute_edge_edge_derivative( points[which_a[0]],
+                                        derivs[which_a[0]],
+                                        points[which_a[1]],
+                                        derivs[which_a[1]],
+                                        points[which_b[0]],
+                                        derivs[which_b[0]],
+                                        points[which_b[1]],
+                                        derivs[which_b[1]] );
+        } else {
+          compute_edge_plane_derivative( points[which_a[0]],
+                                         derivs[which_a[0]],
+                                         points[which_a[1]],
+                                         derivs[which_a[1]],
+                                         &points[3], &derivs[3] );
+        }
+    } else if( n_non_null_a == 3 ) {
+
+        if( n_non_null_b == 1 ) {
+            compute_point_plane_derivative( points[which_b[0]],
+				            derivs[which_b[0]],
+                                            &points[0], &derivs[0] );
+        } else if( n_non_null_b == 2 ) {
             compute_edge_plane_derivative( 
                                 points[which_b[0]], derivs[which_b[0]],
                                 points[which_b[1]], derivs[which_b[1]],
                                 &points[0], &derivs[0] );
         }
-        else
-            handle_internal_error( "sq_triangle_triangle_dist_deriv: b" );
-    }
-    else if( n_non_null_a == 0 )
-    {
-      // Added by June
-      compute_point_plane_derivative(points[0], derivs[0],
-                                     &points[3], &derivs[3] );
-      derivs[0][0] *= -1e0;
-      derivs[0][1] *= -1e0;
-      derivs[0][2] *= -1e0;
     }
 }
 
+// ---------------------------------------------------------------------
+// Compute the minimum distance of a point p to the triangle (a0,a1,a2).
+// Return the shape functions in weights (will be used to compute the
+// derivatives later).
+//
+public  Real  sq_triangle_point_dist( Real a0[],
+                                      Real a1[],
+                                      Real a2[],
+                                      Real p[] ) {
 
-private  Real  sq_triangle_point_dist_and_weights(
-    Real            a0[],
-    Real            a1[],
-    Real            a2[],
-    Real            p[],
-    Real            weights[] )
-{
+#if 1
+  // More efficient function with fewer operations.
+
+    Real A_tt = ( a1[0] - a0[0] ) * ( a1[0] - a0[0] ) +
+                ( a1[1] - a0[1] ) * ( a1[1] - a0[1] ) +
+                ( a1[2] - a0[2] ) * ( a1[2] - a0[2] );
+    Real A_st = ( a1[0] - a0[0] ) * ( a2[0] - a0[0] ) +
+                ( a1[1] - a0[1] ) * ( a2[1] - a0[1] ) +
+                ( a1[2] - a0[2] ) * ( a2[2] - a0[2] );
+    Real A_ss = ( a2[0] - a0[0] ) * ( a2[0] - a0[0] ) +
+                ( a2[1] - a0[1] ) * ( a2[1] - a0[1] ) +
+                ( a2[2] - a0[2] ) * ( a2[2] - a0[2] );
+    Real det = A_tt * A_ss - A_st * A_st;
+
+    if( det == 0.0 ) {
+      // ????? something is wrong???
+      printf( "fatal error in point to triangle projection\n" );
+      return( 0.0 );
+    } else {
+      Real rhs_t, rhs_s, xi, eta, dx, dy, dz, dist_sq;
+      // Point p0.
+      rhs_t = ( a1[0] - a0[0] ) * ( p[0] - a0[0] ) +
+              ( a1[1] - a0[1] ) * ( p[1] - a0[1] ) +
+              ( a1[2] - a0[2] ) * ( p[2] - a0[2] );
+      rhs_s = ( a2[0] - a0[0] ) * ( p[0] - a0[0] ) +
+              ( a2[1] - a0[1] ) * ( p[1] - a0[1] ) +
+              ( a2[2] - a0[2] ) * ( p[2] - a0[2] );
+      xi = ( A_ss * rhs_t - A_st * rhs_s ) / det;
+      eta = ( A_tt * rhs_s - A_st * rhs_t ) / det;
+      // clip to nearest side of triangle
+      if( xi + eta > 1.0 ) {    // clip on line xi+eta=1
+        xi = xi / ( xi + eta );
+        if( xi < 0.0 ) {
+          xi = 0.0;
+        } else if( xi > 1.0 ) {
+          xi = 1.0;
+        }
+        eta = 1.0 - xi;
+      } else if( xi < 0.0 ) {      // clip on line xi=0
+        eta = eta / ( 1.0 - xi );
+        xi = 0.0;
+        if( eta < 0.0 ) {
+          eta = 0.0;
+        } else if( eta > 1.0 ) {
+          eta = 1.0;
+        }
+      } else if( eta < 0.0 ) {      // clip on line eta=0
+        xi = xi / ( 1.0 - eta );
+        eta = 0.0;
+        if( xi < 0.0 ) {
+          xi = 0.0;
+        } else if( xi > 1.0 ) {
+          xi = 1.0;
+        }
+      }
+      dx = (1.0-xi-eta) * a0[0] + xi * a1[0] + eta * a2[0] - p[0];
+      dy = (1.0-xi-eta) * a0[1] + xi * a1[1] + eta * a2[1] - p[1];
+      dz = (1.0-xi-eta) * a0[2] + xi * a1[2] + eta * a2[2] - p[2];
+      dist_sq = dx * dx + dy * dy + dz * dz;
+ 
+      return( dist_sq );
+    }
+#else
     Real      a0x, a0y, a0z, a1x, a1y, a1z, a2x, a2y, a2z;
     Real      da0x, da0y, da0z, da1x, da1y, da1z, da2x, da2y, da2z;
     Real      anx, any, anz;
@@ -2220,49 +2419,6 @@ private  Real  sq_triangle_point_dist_and_weights(
     }
 
     return( 0.0 );
+#endif
 }
 
-Real   Weights[6];
-
-
-public  Real  sq_triangle_point_dist(
-    Real   a0[],
-    Real   a1[],
-    Real   a2[],
-    Real   point[] )
-{
-    return( sq_triangle_point_dist_and_weights( a0, a1, a2, point, Weights ) );
-}
-
-public  void  sq_triangle_point_dist_deriv(
-    Real   a0[],
-    Real   a1[],
-    Real   a2[],
-    Real   point[],
-    Real   deriv_a0[],
-    Real   deriv_a1[],
-    Real   deriv_a2[],
-    Real   deriv_point[] )
-{
-    int    dim, w;
-    Real   weights[3];
-    Real   *points[3], *derivs[4];
-
-    (void) sq_triangle_point_dist_and_weights( a0, a1, a2, point, weights );
-
-    points[0] = a0;
-    points[1] = a1;
-    points[2] = a2;
-
-    derivs[0] = deriv_a0;
-    derivs[1] = deriv_a1;
-    derivs[2] = deriv_a2;
-    derivs[3] = deriv_point;
-
-    for_less( w, 0, 4 )
-    for_less( dim, 0, N_DIMENSIONS )
-        derivs[w][dim] = 0.0;
-
-    compute_point_derivative( point, deriv_point,
-                              weights, points, derivs );
-}

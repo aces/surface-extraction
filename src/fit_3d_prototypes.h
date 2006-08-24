@@ -137,7 +137,7 @@ public  Real  sq_triangle_triangle_dist(
     Real   b0[],
     Real   b1[],
     Real   b2[],
-    int    *which_case );
+    unsigned char * which_case );
 
 public  void  sq_triangle_triangle_dist_deriv(
     Real   a0[],
@@ -151,7 +151,8 @@ public  void  sq_triangle_triangle_dist_deriv(
     Real   deriv_a2[],
     Real   deriv_b0[],
     Real   deriv_b1[],
-    Real   deriv_b2[] );
+    Real   deriv_b2[],
+    unsigned char tri_case );
 
 public  Real  sq_triangle_point_dist(
     Real   a0[],
@@ -159,26 +160,14 @@ public  Real  sq_triangle_point_dist(
     Real   a2[],
     Real   point[] );
 
-public  void  sq_triangle_point_dist_deriv(
-    Real   a0[],
-    Real   a1[],
-    Real   a2[],
-    Real   point[],
-    Real   deriv_a0[],
-    Real   deriv_a1[],
-    Real   deriv_a2[],
-    Real   deriv_point[] );
-
 public  Real  recompute_surf_surfs(
     Deform_struct                 *deform,
     int                           start_parameter[],
     Real                          parameters[],
     Real                          max_movement,
     Real                          line_dir[],
+    Real                          *max_step_size,
     surf_surf_lookup_struct       *ss_lookup );
-
-public  void  initialize_surf_surf_lookup(
-    surf_surf_lookup_struct  *ss_lookup );
 
 public  void  delete_surf_surf_lookup(
     surf_surf_lookup_struct  *ss_lookup );
@@ -186,53 +175,24 @@ public  void  delete_surf_surf_lookup(
 public  int  get_n_surf_surf_candidate(
     surf_surf_lookup_struct  *ss_lookup );
 
-public  BOOLEAN   test_surf_surf_candidate(
-    surf_surf_lookup_struct  *ss_lookup,
-    int                      which,
-    Real                     dist_from_computed_self_intersect,
-    Real                     max_distance_sq,
-    int                      n_points1,
-    Real                     parameters1[],
-    Smallest_int             active_flags1[],
-    int                      n_neighbours1[],
-    int                      *neighbours1[],
-    int                      n_points2,
-    Real                     parameters2[],
-    Smallest_int             active_flags2[],
-    int                      n_neighbours2[],
-    int                      *neighbours2[],
-    Real                     *dist_sq );
-
-public  void   create_surf_surf_deriv_info(
-    surf_surf_lookup_struct       *ss_lookup,
-    int                           which,
-    Real                          dist_sq,
-    int                           n_points1,
-    Real                          parameters1[],
-    int                           n_neighbours1[],
-    int                           *neighbours1[],
-    int                           n_points2,
-    Real                          parameters2[],
-    int                           n_neighbours2[],
-    int                           *neighbours2[],
-    surf_surf_deriv_struct        *deriv );
+public  Real   get_surf_surf_deriv_factor(
+    Real                     min_distance,
+    Real                     weight,
+    Real                     dist );
 
 public  void   get_surf_surf_deriv(
-    surf_surf_lookup_struct       *ss_lookup,
-    int                           which,
-    Real                          min_distance,
-    Real                          weight,
-    int                           n_points1,
-    Real                          deriv1[],
-    int                           n_neighbours1[],
-    int                           *neighbours1[],
-    int                           n_points2,
-    Real                          deriv2[],
-    int                           n_neighbours2[],
-    int                           *neighbours2[],
-    surf_surf_deriv_struct        *deriv_info );
+    int                      p1,
+    int                      n11,
+    int                      n12,
+    int                      p2,
+    int                      n21,
+    int                      n22,
+    Real                     factor,
+    Real                     deriv1[],
+    Real                     deriv2[],
+    Real                     tri_tri_deriv[6][3] );
 
-public  Real sq_triangle_triangle_dist_estimate(
+public  BOOLEAN sq_triangle_triangle_dist_estimate(
     Real    a0[],
     Real    a1[],
     Real    a2[],
@@ -243,15 +203,11 @@ public  Real sq_triangle_triangle_dist_estimate(
 
 public  Real  recompute_self_intersects(
     Deform_struct                 *deform,
-    int                           grid_size,
     int                           start_parameter[],
     Real                          parameters[],
     Real                          max_movement,
     Real                          line_dir[],
     self_intersect_lookup_struct  **si_lookup );
-
-public  void  initialize_self_intersect_lookup(
-    self_intersect_lookup_struct  *si_lookup );
 
 public  void  delete_self_intersect_lookup(
     self_intersect_lookup_struct  *si_lookup );
@@ -260,43 +216,35 @@ public  int  get_n_self_intersect_candidate(
     self_intersect_lookup_struct  *si_lookup );
 
 public  BOOLEAN   test_self_intersect_candidate(
-    self_intersect_lookup_struct  *si_lookup,
-    BOOLEAN                       use_tri_tri_dist,
-    int                           which,
+    int                           p1,
+    int                           n11,
+    int                           n12,
+    int                           p2,
+    int                           n21,
+    int                           n22,
+    unsigned char *               which_case,
+    Real                          min_line_dist,
     Real                          dist_from_computed_self_intersect,
-    Real                          max_distance_sq,
-    int                           n_points,
     Real                          parameters[],
     Smallest_int                  active_flags[],
-    int                           n_neighbours[],
-    int                           *neighbours[],
     Real                          *dist_sq );
 
-public  void   create_self_intersect_deriv_info(
-    self_intersect_lookup_struct  *si_lookup,
-    BOOLEAN                       use_tri_tri_dist,
-    int                           which,
-    Real                          dist_sq,
-    int                           n_points,
-    Real                          parameters[],
-    int                           n_neighbours[],
-    int                           *neighbours[],
-    self_intersect_deriv_struct   *deriv );
-
-public  void   get_self_intersect_deriv(
-    self_intersect_lookup_struct  *si_lookup,
-    BOOLEAN                       use_tri_tri_dist,
+public  Real   get_self_intersect_deriv_factor(
     BOOLEAN                       use_square_flag,
-    int                           which,
-    Real                          dist_sq,
     Real                          min_distance,
     Real                          weight,
-    int                           n_points,
-    Real                          parameters[],
+    Real                          dist );
+
+public  void   get_self_intersect_deriv(
+    int                           p1,
+    int                           n11,
+    int                           n12,
+    int                           p2,
+    int                           n21,
+    int                           n22,
+    Real                          factor,
     Real                          deriv[],
-    int                           n_neighbours[],
-    int                           *neighbours[],
-    self_intersect_deriv_struct   *deriv_info );
+    Real                          tri_tri_deriv[6][3] );
 
 public  clip_struct  *initialize_clip_search(
     int    n_nodes,

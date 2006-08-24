@@ -168,63 +168,48 @@ public  BOOLEAN  find_isosurface_boundary_in_direction(
     y1 = FLOOR( ry1 );
     z1 = FLOOR( rz1 );
 
-    if( dx == 0.0 )
-    {
+    if( dx == 0.0 ) {
         dx_voxel = 0;
         next_x0 = t_max0 + 1.0;
         next_x1 = t_max1 + 1.0;
-    }
-    else if( dx > 0.0 )
-    {
+    } else if( dx > 0.0 ) {
         dx_voxel = 1;
         next_x0 = current_distance0 + ((Real) x0 + 1.0 - rx0) / dx;
         next_x1 = current_distance1 -((Real) x1 - rx1) / dx;
         delta_dist_x = 1.0 / dx;
-    }
-    else
-    {
+    } else {
         dx_voxel = -1;
         next_x0 = current_distance0 + ((Real) x0 - rx0) / dx;
         next_x1 = current_distance1 -((Real) x1 + 1.0 - rx1) / dx;
         delta_dist_x = -1.0 / dx;
     }
 
-    if( dy == 0.0 )
-    {
+    if( dy == 0.0 ) {
         dy_voxel = 0;
         next_y0 = t_max0 + 1.0;
         next_y1 = t_max1 + 1.0;
-    }
-    else if( dy > 0.0 )
-    {
+    } else if( dy > 0.0 ) {
         dy_voxel = 1;
         next_y0 = current_distance0 + ((Real) y0 + 1.0 - ry0) / dy;
         next_y1 = current_distance1 -((Real) y1 - ry1) / dy;
         delta_dist_y = 1.0 / dy;
-    }
-    else
-    {
+    } else {
         dy_voxel = -1;
         next_y0 = current_distance0 + ((Real) y0 - ry0) / dy;
         next_y1 = current_distance1 -((Real) y1 + 1.0 - ry1) / dy;
         delta_dist_y = -1.0 / dy;
     }
 
-    if( dz == 0.0 )
-    {
+    if( dz == 0.0 ) {
         dz_voxel = 0;
         next_z0 = t_max0 + 1.0;
         next_z1 = t_max1 + 1.0;
-    }
-    else if( dz > 0.0 )
-    {
+    } else if( dz > 0.0 ) {
         dz_voxel = 1;
         next_z0 = current_distance0 + ((Real) z0 + 1.0 - rz0) / dz;
         next_z1 = current_distance1 -((Real) z1 - rz1) / dz;
         delta_dist_z = 1.0 / dz;
-    }
-    else
-    {
+    } else {
         dz_voxel = -1;
         next_z0 = current_distance0 + ((Real) z0 - rz0) / dz;
         next_z1 = current_distance1 -((Real) z1 + 1.0 - rz1) / dz;
@@ -243,8 +228,7 @@ public  BOOLEAN  find_isosurface_boundary_in_direction(
     if( current_distance1 >= t_max1 )
         current_distance1 = MAX( t_max0, t_max1 );
 
-    if( !done0 )
-    {
+    if( !done0 ) {
         bit_sub_index = z0 & BITS_PER_BITLIST_WORD_MINUS_1;
         bit0 = ((bitlist_type) 1 << (bitlist_type) bit_sub_index);
         word_index = z0 >> LOG_BITS_PER_BITLIST_WORD;
@@ -252,8 +236,7 @@ public  BOOLEAN  find_isosurface_boundary_in_direction(
         surface_flags0 = &surface_bits->bits[x0][y0][word_index];
     }
 
-    if( !done1 )
-    {
+    if( !done1 ) {
         bit_sub_index = z1 & BITS_PER_BITLIST_WORD_MINUS_1;
         bit1 = ((bitlist_type) 1 << (bitlist_type) bit_sub_index);
         word_index = z1 >> LOG_BITS_PER_BITLIST_WORD;
@@ -269,21 +252,17 @@ public  BOOLEAN  find_isosurface_boundary_in_direction(
     y_offset *= dy_voxel;
     x_offset *= dx_voxel;
 
-    while( TRUE )
-    {
-        if( current_distance0 <= current_distance1 )
-        {
+    while( TRUE ) {
+        if( current_distance0 <= current_distance1 ) {
             max_dist = next_closest0;
-            if( max_dist >= t_max0 )
-            {
+            if( max_dist >= t_max0 ) {
                 max_dist = t_max0;
                 done0 = TRUE;
             }
 
             word = *done_flags0;
 
-            if( (word & bit0) == 0 )
-            {
+            if( (word & bit0) == 0 ) {
                 contains = trilinear_voxel_contains_range( lookup, x0, y0, z0,
                                                            isovalue, coefs );
 
@@ -291,16 +270,13 @@ public  BOOLEAN  find_isosurface_boundary_in_direction(
                     *surface_flags0 |= bit0;
 
                 *done_flags0 = (word | bit0);
-            }
-            else
-            {
+            } else {
                 contains = (*surface_flags0 & bit0) != 0;
                 if( contains )
                     lookup_volume_coeficients( lookup, x0, y0, z0, coefs );
             }
 
-            if( contains )
-            {
+            if( contains ) {
                 find_voxel_line_polynomial( coefs, x0, y0, z0,
                                             ox, oy, oz, dx, dy, dz,
                                             line_coefs );
@@ -311,18 +287,15 @@ public  BOOLEAN  find_isosurface_boundary_in_direction(
                                             line_coefs[1], line_coefs[0],
                                             boundary_positions );
 
-                for_less( i, 0, n_boundaries )
-                {
+                for_less( i, 0, n_boundaries ) {
                     pos = boundary_positions[i];
                     if( pos >= current_distance0 && pos <= max_dist &&
-                        (!found || pos < FABS(*boundary_distance)) )
-                    {
+                        (!found || pos < FABS(*boundary_distance)) ) {
                         vx = ox + pos * dx;
                         vy = oy + pos * dy;
                         vz = oz + pos * dz;
                         deriv_dir_correct = TRUE;
-                        if( normal_direction != ANY_DIRECTION )
-                        {
+                        if( normal_direction != ANY_DIRECTION ) {
                             get_trilinear_gradient( coefs,
                                                     vx - (Real) x0,
                                                     vy - (Real) y0,
@@ -335,14 +308,12 @@ public  BOOLEAN  find_isosurface_boundary_in_direction(
                             if( normal_direction == TOWARDS_LOWER &&
                                 dot_prod > 0.0 ||
                                 normal_direction == TOWARDS_HIGHER &&
-                                dot_prod < 0.0 )
-                            {
+                                dot_prod < 0.0 ) {
                                 deriv_dir_correct = FALSE;
                             }
                         }
 
-                        if( deriv_dir_correct )
-                        {
+                        if( deriv_dir_correct ) {
                             *boundary_distance = pos;
                             found = TRUE;
                         }
@@ -350,49 +321,36 @@ public  BOOLEAN  find_isosurface_boundary_in_direction(
                 }
             }
 
-            if( done0 )
-            {
+            if( done0 ) {
                 current_distance0 = MAX( t_max0, t_max1 );
                 if( done1 )
                     break;
-            }
-            else
-            {
+            } else {
                 current_distance0 = next_closest0;
 
-                if( next_x0 <= current_distance0 )
-                {
+                if( next_x0 <= current_distance0 ) {
                     next_x0 += delta_dist_x;
                     x0 += dx_voxel;
                     done_flags0 += x_offset;
                     surface_flags0 += x_offset;
-                }
-                else if( next_y0 <= current_distance0 )
-                {
+                } else if( next_y0 <= current_distance0 ) {
                     next_y0 += delta_dist_y;
                     y0 += dy_voxel;
                     done_flags0 += y_offset;
                     surface_flags0 += y_offset;
-                }
-                else if( next_z0 <= current_distance0 )
-                {
+                } else if( next_z0 <= current_distance0 ) {
                     next_z0 += delta_dist_z;
                     z0 += dz_voxel;
-                    if( dz_voxel > 0 )
-                    {
+                    if( dz_voxel > 0 ) {
                         bit0 <<= 1;
-                        if( bit0 == 0 )
-                        {
+                        if( bit0 == 0 ) {
                             bit0 = 1;
                             ++done_flags0;
                             ++surface_flags0;
                         }
-                    }
-                    else if( dz_voxel < 0 )
-                    {
+                    } else if( dz_voxel < 0 ) {
                         bit0 >>= 1;
-                        if( bit0 == 0 )
-                        {
+                        if( bit0 == 0 ) {
                             bit0 = ((bitlist_type) 1 <<
                                  (bitlist_type) BITS_PER_BITLIST_WORD_MINUS_1);
                             --done_flags0;
@@ -403,20 +361,16 @@ public  BOOLEAN  find_isosurface_boundary_in_direction(
 
                 next_closest0 = MIN3( next_x0, next_y0, next_z0 );
             }
-        }
-        else
-        {
+        } else {
             max_dist = next_closest1;
-            if( max_dist >= t_max1 )
-            {
+            if( max_dist >= t_max1 ) {
                 max_dist = t_max1;
                 done1 = TRUE;
             }
 
             word = *done_flags1;
 
-            if( (word & bit1) == 0 )
-            {
+            if( (word & bit1) == 0 ) {
                 contains = trilinear_voxel_contains_range( lookup, x1, y1, z1,
                                                            isovalue, coefs );
 
@@ -424,16 +378,13 @@ public  BOOLEAN  find_isosurface_boundary_in_direction(
                     *surface_flags1 |= bit1;
 
                 *done_flags1 = (word | bit1);
-            }
-            else
-            {
+            } else {
                 contains = (*surface_flags1 & bit1) != 0;
                 if( contains )
                     lookup_volume_coeficients( lookup, x1, y1, z1, coefs );
             }
 
-            if( contains )
-            {
+            if( contains ) {
                 find_voxel_line_polynomial( coefs, x1, y1, z1,
                                             ox, oy, oz, ndx, ndy, ndz,
                                             line_coefs );
@@ -444,18 +395,15 @@ public  BOOLEAN  find_isosurface_boundary_in_direction(
                                             line_coefs[1], line_coefs[0],
                                             boundary_positions );
 
-                for_less( i, 0, n_boundaries )
-                {
+                for_less( i, 0, n_boundaries ) {
                     pos = boundary_positions[i];
                     if( pos >= current_distance1 && pos <= max_dist &&
-                        (!found || pos < FABS(*boundary_distance)) )
-                    {
+                        (!found || pos < FABS(*boundary_distance)) ) {
                         vx = ox + pos * ndx;
                         vy = oy + pos * ndy;
                         vz = oz + pos * ndz;
                         deriv_dir_correct = TRUE;
-                        if( normal_direction != ANY_DIRECTION )
-                        {
+                        if( normal_direction != ANY_DIRECTION ) {
                             get_trilinear_gradient( coefs,
                                                     vx - (Real) x1,
                                                     vy - (Real) y1,
@@ -468,14 +416,12 @@ public  BOOLEAN  find_isosurface_boundary_in_direction(
                             if( normal_direction == TOWARDS_LOWER &&
                                 dot_prod > 0.0 ||
                                 normal_direction == TOWARDS_HIGHER &&
-                                dot_prod < 0.0 )
-                            {
+                                dot_prod < 0.0 ) {
                                 deriv_dir_correct = FALSE;
                             }
                         }
 
-                        if( deriv_dir_correct )
-                        {
+                        if( deriv_dir_correct ) {
                             *boundary_distance = -pos;
                             found = TRUE;
                         }
@@ -483,50 +429,37 @@ public  BOOLEAN  find_isosurface_boundary_in_direction(
                 }
             }
 
-            if( done1 )
-            {
+            if( done1 ) {
                 current_distance1 = MAX( t_max0, t_max1 );
                 if( done0 )
                     break;
-            }
-            else
-            {
+            } else {
                 current_distance1 = next_closest1;
 
-                if( next_x1 <= current_distance1 )
-                {
+                if( next_x1 <= current_distance1 ) {
                     next_x1 += delta_dist_x;
                     x1 -= dx_voxel;
                     done_flags1 -= x_offset;
                     surface_flags1 -= x_offset;
-                }
-                else if( next_y1 <= current_distance1 )
-                {
+                } else if( next_y1 <= current_distance1 ) {
                     next_y1 += delta_dist_y;
                     y1 -= dy_voxel;
                     done_flags1 -= y_offset;
                     surface_flags1 -= y_offset;
-                }
-                else if( next_z1 <= current_distance1 )
-                {
+                } else if( next_z1 <= current_distance1 ) {
                     next_z1 += delta_dist_z;
                     z1 -= dz_voxel;
 
-                    if( dz_voxel < 0 )
-                    {
+                    if( dz_voxel < 0 ) {
                         bit1 <<= 1;
-                        if( bit1 == 0 )
-                        {
+                        if( bit1 == 0 ) {
                             bit1 = 1;
                             ++done_flags1;
                             ++surface_flags1;
                         }
-                    }
-                    else if( dz_voxel > 0 )
-                    {
+                    } else if( dz_voxel > 0 ) {
                         bit1 >>= 1;
-                        if( bit1 == 0 )
-                        {
+                        if( bit1 == 0 ) {
                             bit1 = ((bitlist_type) 1 <<
                                  (bitlist_type) BITS_PER_BITLIST_WORD_MINUS_1);
                             --done_flags1;
@@ -541,8 +474,7 @@ public  BOOLEAN  find_isosurface_boundary_in_direction(
 
         if( found &&
             (done0 || FABS(*boundary_distance) <= current_distance0) &&
-            (done1 || FABS(*boundary_distance) <= current_distance1) )
-        {
+            (done1 || FABS(*boundary_distance) <= current_distance1) ) {
             break;
         }
     }

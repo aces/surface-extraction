@@ -65,6 +65,7 @@ typedef  struct
     int                     n_polygons;
     int                     *n_neighbours;
     int                     **neighbours;
+    int                     *triangles;
     Point                   *points;
     int                     n_midpoints;
     int                     *midpoints;
@@ -110,7 +111,6 @@ typedef  struct
     Real                    max_diff;
     Real                    image_weight;
     Real                    max_diff_weight;
-
     Real                    differential_ratio;
     Real                    differential_offset;
 } gradient_struct;
@@ -126,7 +126,6 @@ typedef  struct
     Real                    image_weight;
     Real                    max_diff_weight;
     int                     oversample;
-
     Real                    differential_ratio;
     Real                    differential_offset;
 } surface_value_struct;
@@ -134,6 +133,7 @@ typedef  struct
 typedef   struct
 {
     int                n_points;
+    int                n_edges;
     int                *n_neighbours;
     int                **neighbours;
     float              *model_lengths;
@@ -141,7 +141,6 @@ typedef   struct
     Real               max_stretch_weight;
     Real               min_stretch;
     Real               max_stretch;
-
     Real               differential_ratio;
     Real               differential_offset;
 } stretch_struct;
@@ -180,8 +179,7 @@ typedef struct
     Real         min_distance2;
     Real         max_distance1;
     Real         max_distance2;
-}
-connection_struct;
+} connection_struct;
 
 typedef   struct
 {
@@ -229,8 +227,7 @@ typedef struct
     Real         min_distance;
     Real         desired_distance;
     Real         max_distance;
-}
-weight_struct;
+} weight_struct;
 
 typedef   struct
 {
@@ -351,12 +348,20 @@ typedef struct
     Real      weight_point_fit;
     Real      volume_fit;
     Real      laplacian_fit;
-}
-fit_eval_struct;
+} fit_eval_struct;
+
+typedef  struct {
+    float   low_limits[N_DIMENSIONS];
+    float   high_limits[N_DIMENSIONS];
+    int     p1;
+    int     n11;
+    int     n12;
+} poly_info_struct;
 
 typedef struct
 {
     int                    n_pairs;
+    int                    n_pairs_alloc;
     int                    *p1s;
     int                    *p2s;
     unsigned char          *cases;
@@ -365,25 +370,25 @@ typedef struct
 
 typedef struct
 {
-    Real   dist;
-    Real   tri_deriv[4][3];
-    Real   tri_tri_deriv[6][3];
-} self_intersect_deriv_struct;
-
-typedef struct
-{
     int                    n_pairs;
+    int                    n_pairs_alloc;
     int                    *p1s;
     int                    *p2s;
     unsigned char          *cases;
     float                  *min_line_dists;
 } surf_surf_lookup_struct;
 
-typedef struct
-{
-    Real   dist;
-    Real   tri_tri_deriv[6][N_DIMENSIONS];
-} surf_surf_deriv_struct;
+typedef struct {
+    Real                          closest_dist;
+    Real                          interval_size;
+    Real                          max_movement;
+    int                           point_grid_size;
+    int                           *start_parameter;
+    BOOLEAN                       self_intersect_present;
+    self_intersect_lookup_struct  **si_lookups;
+    BOOLEAN                       surf_surf_present;
+    surf_surf_lookup_struct       *ss_lookups;
+} line_lookup_struct;
 
 #include  <fit_3d_prototypes.h>
 

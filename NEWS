@@ -1,3 +1,7 @@
+New in Release 2.3.0
+--------------------
+	* major speed optimizations, clean-up, code documentation
+
 New in Release 2.2.1
 --------------------
         * clean-up perl scripts for MNI::DataDir
