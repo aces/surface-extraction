@@ -135,5 +135,11 @@ Spawn(["mincchamfer", "-max_dist", "11", $out_chamfer, "${TmpDir}/chamfer.mnc"])
 Spawn(["mincresample", "-clobber", "-like", $output, "${TmpDir}/chamfer.mnc", $out_chamfer]);
 
 # combine laplacian field with chamfer maps
-Spawn(["minccalc", "-clobber", "-expression", 'if(A[0]>=10){out=A[0]+A[1]-1;}else{out=A[0]-A[2];}', $output, $out_chamfer, $in_chamfer, "${TmpDir}/chamfer.mnc"]);
+my $step = `mincinfo -attvalue xspace:step $output`;
+chomp( $step );
+$step = 0.5 * $step;
+$expression = "if(A[0]>=10){out=A[0]+A[1]-$step;}else{out=A[0]-A[2];}";
+
+Spawn(["minccalc", "-clobber", "-expression", $expression,
+       $output, $out_chamfer, $in_chamfer, "${TmpDir}/chamfer.mnc"]);
 Spawn(["mv", "-f", "${TmpDir}/chamfer.mnc", $output]);

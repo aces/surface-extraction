@@ -1,3 +1,9 @@
+2006-11-29  Claude Lepage      <claude@bic.mni.mcgill.ca>
+        * extension of cortical_thickness script to compute 
+          thickness in native space
+        * account for voxel size in make_asp_grid
+        * some code minor cleanup to favour optimazations by
+          64-bit compiler  
 
 2006-08-24  Claude Lepage      <claude@bic.mni.mcgill.ca>
         * major speed optimizations, clean-up, code documentation

@@ -7,19 +7,10 @@ use strict;
 use warnings "all";
 
 use Getopt::Tabular;
-use MNI::Startup qw(cputimes);
-use MNI::PathUtilities qw(split_path);
-use MNI::FileUtilities qw(check_output_dirs check_output_path);
-use MNI::Spawn;
+use MNI::Startup;
+# use MNI::PathUtilities qw(split_path);
+use MNI::FileUtilities qw(check_output_dirs);
 
-MNI::Spawn::RegisterPrograms
-  ( [qw/  rm
-     average_surfaces
-     laplacian_initialisation
-     laplacian_thickness
-     vertex_stats
-     dump_rms/ ] )
-  or exit 1;
 
 # --- set the help & usage strings ---
 my $help = <<HELP;
@@ -34,32 +25,34 @@ USAGE
 
 Getopt::Tabular::SetHelp( $help, $usage );
 
-my( $white, $gray, $output, $tlink, $tnear, $tnormal, $tlaplace );
-my( $midSurface, $method );
-
-$tlink = 0;
-$tnear = 0;
-$tnormal = 0;
-$tlaplace = 0;
+my $fwhm = 0;
+my $tlink = 0;
+my $tnear = 0;
+my $tnormal = 0;
+my $tlaplace = 0;
+my $transform_xfm = undef;
 
 my @options =
   ( @DefaultArgs,     # from MNI::Startup
+    ['-fwhm', 'string', 1, \$fwhm, 'blurring kernel in mm'],
     ['-tlink', 'boolean', 0, \$tlink, 'use t-link method for thickness'],
     ['-tnear', 'boolean', 0, \$tnear, 'use t-near method for thickness'],
     ['-tnormal', 'boolean', 0, \$tnormal, 'use t-normal method for thickness'],
     ['-tlaplace', 'boolean', 0, \$tlaplace, 'use t-Laplace method for thickness'],
+    ['-transform', 'string', 1, \$transform_xfm, 
+     'transformation from native to stereotaxic (if surfaces in stx space)'],
   );
 
 GetOptions( \@options, \@ARGV )
   or exit 1;
 die "$usage\n" unless @ARGV == 3;
 
-$white = shift;
-$gray = shift;
-$output = shift;
+my $white = shift;
+my $gray = shift;
+my $output = shift;
 
 # These are temporary files.
-MNI::FileUtilities::check_output_path("${TmpDir}")
+MNI::FileUtilities::check_output_dirs("${TmpDir}")
   or exit 1;
 
 # Make sure there is only one way to compute the thickness.
@@ -74,30 +67,57 @@ if( $found != 1 ) {
   die "$usage\nMust specify exactly one method to compute thickness.\n\n";
 }
 
-$midSurface = "${TmpDir}/midSurface.obj";
-Spawn( [ "average_surfaces", $midSurface, "none", "none", 1, $white, $gray ] );
+if( defined $transform_xfm ) {
+  my $white_trans = "${TmpDir}/white_trans.obj";
+  my $gray_trans = "${TmpDir}/gray_trans.obj";
+  my $inv_trans = "${TmpDir}/inv_trans.xfm";
+  &run( "xfminvert", $transform_xfm, $inv_trans );
+  &run( "transform_objects", $white, $inv_trans, $white_trans );
+  &run( "transform_objects", $gray, $inv_trans, $gray_trans );
+  $white = $white_trans;
+  $gray = $gray_trans;
+}
+
+my $midSurface = "${TmpDir}/midSurface.obj";
+&run( "average_surfaces", $midSurface, "none", "none", 1, $white, $gray );
 
 if( $tlink ) {
-  # also: Spawn( [ "diff_surfaces", $white, $gray, "link", $output ] );
-  Spawn( [ "dump_rms", $white, $gray, $output ] );
+  # also: &run( "diff_surfaces", $white, $gray, "link", $output );
+  &run( "dump_rms", $white, $gray, $output );
 }
 
 if( $tnear ) {
-  Spawn( [ "diff_surfaces", $white, $gray, "near", $output ] );
+  &run( "diff_surfaces", $white, $gray, "near", $output );
 }
 
 if( $tnormal ) {
-  Spawn( [ "diff_surfaces", $white, $gray, "normal", $output ] );
+  &run( "diff_surfaces", $white, $gray, "normal", $output );
 }
 
 if( $tlaplace ) {
-  Spawn( [ "laplacian_initialisation", "-icbm_model", "0.50", $gray, $white,
-           "${TmpDir}/laplace_initial.mnc" ] );
-  Spawn( [ "laplacian_thickness", "-h", "0.1", "-convergence", "0.00001", "-2nd_rk",
-           "-max_iterations", "300", "-object_eval", $midSurface, "-from_grid", 
-           "${TmpDir}/laplace_initial.mnc", "${TmpDir}/thickness_uncleaned.txt" ] );
-  Spawn( [ "vertex_stats", "-replace_nans", "${TmpDir}/thickness_uncleaned.txt",
-           $output ] );
+  &run( "laplacian_initialisation", "-icbm_model", "0.50", $gray, $white,
+        "${TmpDir}/laplace_initial.mnc" );
+  &run( "laplacian_thickness", "-h", "0.1", "-convergence", "0.00001", "-2nd_rk",
+        "-max_iterations", "300", "-object_eval", $midSurface, "-from_grid", 
+        "${TmpDir}/laplace_initial.mnc", "${TmpDir}/thickness_uncleaned.txt" );
+  &run( "vertex_stats", "-replace_nans", "${TmpDir}/thickness_uncleaned.txt",
+        $output );
 }
 
+# Blur the cortical thickness on the mid-surface in new space.
+
+if( $fwhm gt 0 ) {
+  my $output_blurred = "${TmpDir}/thickness_blurred.mnc";
+  &run( "diffuse", "-kernel", $fwhm, "-iterations", 1000, "-parametric", 1,
+        $midSurface, $output, $output_blurred );
+  &run( "mv", "-f", $output_blurred, $output );
+}
+
+
+#Execute a system call.
+
+sub run {
+  print "@_\n";
+  system(@_)==0 or die "Command @_ failed with status: $?";
+}
 

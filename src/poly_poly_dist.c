@@ -47,49 +47,89 @@
 #define  B2  (1 << 5)
 
 #define  VERTEX_VERTEX( a0, a1, a2, b0, b1, b2 ) \
+      { Real      a0x, a0y, a0z, a1x, a1y, a1z, a2x, a2y, a2z; \
+        Real      b0x, b0y, b0z, b1x, b1y, b1z, b2x, b2y, b2z; \
+        Real      da0x, da0y, da0z, da1x, da1y, da1z; \
+        Real      db0x, db0y, db0z, db1x, db1y, db1z; \
+        Real      deltax, deltay, deltaz; \
+        \
+        a0x = a0[X];     a0y = a0[Y];     a0z = a0[Z]; \
+        a1x = a1[X];     a1y = a1[Y];     a1z = a1[Z]; \
+        a2x = a2[X];     a2y = a2[Y];     a2z = a2[Z]; \
+        \
+        b0x = b0[X];     b0y = b0[Y];     b0z = b0[Z]; \
+        b1x = b1[X];     b1y = b1[Y];     b1z = b1[Z]; \
+        b2x = b2[X];     b2y = b2[Y];     b2z = b2[Z]; \
+        \
         SUB( delta, b0, a0 ); \
         SUB( da0, a1, a0 ); \
         SUB( da1, a2, a0 ); \
         SUB( db0, b1, b0 ); \
         SUB( db1, b2, b0 ); \
- \
-        if( DOT( delta, da0 ) <= 0.0 && \
-            DOT( delta, da1 ) <= 0.0 && \
-            DOT( delta, db0 ) >= 0.0 && \
-            DOT( delta, db1 ) >= 0.0 ) \
-        { \
-            *dist = DOT( delta, delta ); \
-            return( TRUE ); \
-        }
+        \
+        if( DOT( delta, da0 ) <= 0.0 && DOT( delta, da1 ) <= 0.0 && \
+            DOT( delta, db0 ) >= 0.0 && DOT( delta, db1 ) >= 0.0 ) { \
+          *dist = DOT( delta, delta ); \
+          return( TRUE ); \
+        } \
+      }
 
 #define  VERTEX_EDGE( a0, a1, a2, b0, b1, b2 ) \
+      { Real      a0x, a0y, a0z, a1x, a1y, a1z, a2x, a2y, a2z; \
+        Real      b0x, b0y, b0z, b1x, b1y, b1z, b2x, b2y, b2z; \
+        Real      da0x, da0y, da0z; \
+        Real      db0x, db0y, db0z, db1x, db1y, db1z; \
+        Real      deltax, deltay, deltaz, len, t; \
+        \
+        a0x = a0[X];     a0y = a0[Y];     a0z = a0[Z]; \
+        a1x = a1[X];     a1y = a1[Y];     a1z = a1[Z]; \
+        a2x = a2[X];     a2y = a2[Y];     a2z = a2[Z]; \
+        \
+        b0x = b0[X];     b0y = b0[Y];     b0z = b0[Z]; \
+        b1x = b1[X];     b1y = b1[Y];     b1z = b1[Z]; \
+        b2x = b2[X];     b2y = b2[Y];     b2z = b2[Z]; \
+        \
         SUB( da0, a1, a0 ); \
         len = DOT( da0, da0 ); \
- \
+        \
         if( len == 0.0 ) \
             return( FALSE ); \
- \
+        \
         SUB( delta, b0, a0 ); \
         t = DOT( delta, da0 ) / len; \
         if( t < 0.0 || t > 1.0 ) \
             return( FALSE ); \
- \
+        \
         deltax -= t * da0x; \
         deltay -= t * da0y; \
         deltaz -= t * da0z; \
- \
+        \
         SUB( da0, a2, a0 ); \
         SUB( db0, b1, b0 ); \
         SUB( db1, b2, b0 ); \
- \
+        \
         if( DOT( delta, da0 ) <= 0.0 && \
-            DOT( delta, db0 ) >= 0.0 && DOT( delta, db1 ) >= 0.0 ) \
-        { \
-            *dist = DOT( delta, delta ); \
-            return( TRUE ); \
-        }
+            DOT( delta, db0 ) >= 0.0 && DOT( delta, db1 ) >= 0.0 ) { \
+          *dist = DOT( delta, delta ); \
+          return( TRUE ); \
+        } \
+      }
 
 #define  EDGE_EDGE( a0, a1, a2, b0, b1, b2 ) \
+      { Real      a0x, a0y, a0z, a1x, a1y, a1z, a2x, a2y, a2z; \
+        Real      b0x, b0y, b0z, b1x, b1y, b1z, b2x, b2y, b2z; \
+        Real      da0x, da0y, da0z, da2x, da2y, da2z; \
+        Real      db0x, db0y, db0z, db2x, db2y, db2z;  \
+        Real      deltax, deltay, deltaz, dx, dy, dz, len, d, s, t; \
+        \
+        a0x = a0[X];     a0y = a0[Y];     a0z = a0[Z]; \
+        a1x = a1[X];     a1y = a1[Y];     a1z = a1[Z]; \
+        a2x = a2[X];     a2y = a2[Y];     a2z = a2[Z]; \
+        \
+        b0x = b0[X];     b0y = b0[Y];     b0z = b0[Z]; \
+        b1x = b1[X];     b1y = b1[Y];     b1z = b1[Z]; \
+        b2x = b2[X];     b2y = b2[Y];     b2z = b2[Z]; \
+        \
         SUB( da0, a1, a0 ); \
         SUB( db0, b1, b0 ); \
         SUB( da2, a2, a0 ); \
@@ -117,40 +157,52 @@
             } \
             *dist = d * d / len; \
             return( TRUE ); \
-        }
+        } \
+      }
 
 #define  POINT_TRIANGLE( a0, a1, a2, b0, b1, b2 ) \
+      { Real      a0x, a0y, a0z, a1x, a1y, a1z, a2x, a2y, a2z; \
+        Real      b0x, b0y, b0z, b1x, b1y, b1z, b2x, b2y, b2z; \
+        Real      da0x, da0y, da0z, da2x, da2y, da2z; \
+        Real      db0x, db0y, db0z, db2x, db2y, db2z; \
+        Real      anx, any, anz, d, len_an; \
+        \
+        a0x = a0[X];     a0y = a0[Y];     a0z = a0[Z]; \
+        a1x = a1[X];     a1y = a1[Y];     a1z = a1[Z]; \
+        a2x = a2[X];     a2y = a2[Y];     a2z = a2[Z]; \
+        \
+        b0x = b0[X];     b0y = b0[Y];     b0z = b0[Z]; \
+        b1x = b1[X];     b1y = b1[Y];     b1z = b1[Z]; \
+        b2x = b2[X];     b2y = b2[Y];     b2z = b2[Z]; \
+        \
         SUB( da0, a1, a0 ); \
         SUB( da2, a0, a2 ); \
         SUB( db0, b1, b0 ); \
         SUB( db2, b0, b2 ); \
         CROSS( an, da2, da0 ); \
         d = DOT( b0, an ) - DOT( a0, an ); \
-        if( d * DOT( db0, an ) >= 0.0 && d * DOT( db2, an ) <= 0.0 ) \
-        { \
-            a0_dot_da0 = DOT( a0, da0 ); \
-            x_dot_y = DOT( a2, da0 ) - a0_dot_da0; \
-            len_da0 = DOT( da0, da0 ); \
-            len_da2 = DOT( da2, da2 ); \
- \
-            bottom = len_da0 * len_da2 - x_dot_y * x_dot_y; \
- \
+        if( d * DOT( db0, an ) >= 0.0 && d * DOT( db2, an ) <= 0.0 ) { \
+            Real a0_dot_da0 = DOT( a0, da0 ); \
+            Real x_dot_y = DOT( a2, da0 ) - a0_dot_da0; \
+            Real len_da0 = DOT( da0, da0 ); \
+            Real len_da2 = DOT( da2, da2 ); \
+            Real bottom = len_da0 * len_da2 - x_dot_y * x_dot_y; \
             if( bottom == 0.0 ) \
                 return( FALSE ); \
- \
-            x_dot_v = DOT( b0, da0 ) - a0_dot_da0; \
-            y_dot_v = -(DOT( b0, da2 ) - DOT( a0, da2 )); \
- \
-            x_pos = (x_dot_v * len_da2 - x_dot_y * y_dot_v) / bottom; \
-            y_pos = (y_dot_v * len_da0 - x_dot_y * x_dot_v) / bottom; \
- \
-            if( x_pos >= 0.0 && y_pos >= 0.0 && x_pos + y_pos <= 1.0 ) \
-            { \
+            \
+            Real x_dot_v = DOT( b0, da0 ) - a0_dot_da0; \
+            Real y_dot_v = -(DOT( b0, da2 ) - DOT( a0, da2 )); \
+            \
+            Real x_pos = (x_dot_v * len_da2 - x_dot_y * y_dot_v) / bottom; \
+            Real y_pos = (y_dot_v * len_da0 - x_dot_y * x_dot_v) / bottom; \
+            \
+            if( x_pos >= 0.0 && y_pos >= 0.0 && x_pos + y_pos <= 1.0 ) { \
                 len_an = DOT( an, an ); \
                 *dist = d * d / len_an; \
                 return( TRUE ); \
             } \
-        }
+        } \
+      }
 
 private  BOOLEAN  test_distance_with_known_case(
     Real            a0[],
@@ -162,195 +214,112 @@ private  BOOLEAN  test_distance_with_known_case(
     int             which_case,
     Real            *dist )
 {
-    Real      a0x, a0y, a0z, a1x, a1y, a1z, a2x, a2y, a2z;
-    Real      b0x, b0y, b0z, b1x, b1y, b1z, b2x, b2y, b2z;
-    Real      da0x, da0y, da0z, da1x, da1y, da1z, da2x, da2y, da2z;
-    Real      db2x, db2y, db2z, bnx, bny, bnz, eb0x, eb0y, eb0z;
-    Real      anx, any, anz, ea0x, ea0y, ea0z, dot;
-    Real      db0x, db0y, db0z, db1x, db1y, db1z;
-    Real      deltax, deltay, deltaz, len, t;
-    Real      c, d, f, s, denom, len_da0, len_db0, dx, dy, dz;
-    Real      a0_dot_da0, x_dot_y, len_da2, bottom, x_dot_v;
-    Real      y_dot_v, x_pos, y_pos, len_an;
+//  Real      a0x, a0y, a0z, a1x, a1y, a1z, a2x, a2y, a2z;
+//  Real      b0x, b0y, b0z, b1x, b1y, b1z, b2x, b2y, b2z;
+//  Real      da0x, da0y, da0z, da1x, da1y, da1z, da2x, da2y, da2z;
+//  Real      db2x, db2y, db2z, bnx, bny, bnz, eb0x, eb0y, eb0z;
+//  Real      anx, any, anz, ea0x, ea0y, ea0z, dot;
+//  Real      db0x, db0y, db0z, db1x, db1y, db1z;
+//  Real      deltax, deltay, deltaz, len, t;
+//  Real      c, d, f, s, denom, len_da0, len_db0, dx, dy, dz;
+//  Real      a0_dot_da0, x_dot_y, len_da2, bottom, x_dot_v;
+//  Real      y_dot_v, x_pos, y_pos, len_an;
 
-    a0x = a0[X];     a0y = a0[Y];     a0z = a0[Z];
-    a1x = a1[X];     a1y = a1[Y];     a1z = a1[Z];
-    a2x = a2[X];     a2y = a2[Y];     a2z = a2[Z];
+//  a0x = a0[X];     a0y = a0[Y];     a0z = a0[Z];
+//  a1x = a1[X];     a1y = a1[Y];     a1z = a1[Z];
+//  a2x = a2[X];     a2y = a2[Y];     a2z = a2[Z];
 
-    b0x = b0[X];     b0y = b0[Y];     b0z = b0[Z];
-    b1x = b1[X];     b1y = b1[Y];     b1z = b1[Z];
-    b2x = b2[X];     b2y = b2[Y];     b2z = b2[Z];
+//  b0x = b0[X];     b0y = b0[Y];     b0z = b0[Z];
+//  b1x = b1[X];     b1y = b1[Y];     b1z = b1[Z];
+//  b2x = b2[X];     b2y = b2[Y];     b2z = b2[Z];
 
-    switch( which_case ) {
-    case A0 | B0:
+    if( which_case == ( A0 | B0 ) ) {
         VERTEX_VERTEX( a0, a1, a2, b0, b1, b2 );
-        break;
-
-    case A0 | B1:
+    } else if( which_case == ( A0 | B1 ) ) {
         VERTEX_VERTEX( a0, a1, a2, b1, b2, b0 );
-        break;
-
-    case A0 | B2:
+    } else if( which_case == ( A0 | B2 ) ) {
         VERTEX_VERTEX( a0, a1, a2, b2, b0, b1 );
-        break;
-
-    case A1 | B0:
+    } else if( which_case == ( A1 | B0 ) ) {
         VERTEX_VERTEX( a1, a2, a0, b0, b1, b2 );
-        break;
-
-    case A1 | B1:
+    } else if( which_case == ( A1 | B1 ) ) {
         VERTEX_VERTEX( a1, a2, a0, b1, b2, b0 );
-        break;
-
-    case A1 | B2:
+    } else if( which_case == ( A1 | B2 ) ) {
         VERTEX_VERTEX( a1, a2, a0, b2, b0, b1 );
-        break;
-
-    case A2 | B0:
+    } else if( which_case == ( A2 | B0 ) ) {
         VERTEX_VERTEX( a2, a0, a1, b0, b1, b2 );
-        break;
-
-    case A2 | B1:
+    } else if( which_case == ( A2 | B1 ) ) {
         VERTEX_VERTEX( a2, a0, a1, b1, b2, b0 );
-        break;
-
-    case A2 | B2:
+    } else if( which_case == ( A2 | B2 ) ) {
         VERTEX_VERTEX( a2, a0, a1, b2, b0, b1 );
-        break;
-
-    case A0 | A1 | B0:
+    } else if( which_case == ( A0 | A1 | B0 ) ) {
         VERTEX_EDGE( a0, a1, a2, b0, b1, b2 );
-        break;
-
-    case A0 | A1 | B1:
+    } else if( which_case == ( A0 | A1 | B1 ) ) {
         VERTEX_EDGE( a0, a1, a2, b1, b2, b0);
-        break;
-
-    case A0 | A1 | B2:
+    } else if( which_case == ( A0 | A1 | B2 ) ) {
         VERTEX_EDGE( a0, a1, a2, b2, b0, b1 );
-        break;
-
-    case A1 | A2 | B0:
+    } else if( which_case == ( A1 | A2 | B0 ) ) {
         VERTEX_EDGE( a1, a2, a0, b0, b1, b2 );
-        break;
-
-    case A1 | A2 | B1:
+    } else if( which_case == ( A1 | A2 | B1 ) ) {
         VERTEX_EDGE( a1, a2, a0, b1, b2, b0);
-        break;
-
-    case A1 | A2 | B2:
+    } else if( which_case == ( A1 | A2 | B2 ) ) {
         VERTEX_EDGE( a1, a2, a0, b2, b0, b1 );
-        break;
-
-    case A2 | A0 | B0:
+    } else if( which_case == ( A2 | A0 | B0 ) ) {
         VERTEX_EDGE( a2, a0, a1, b0, b1, b2 );
-        break;
-
-    case A2 | A0 | B1:
+    } else if( which_case == ( A2 | A0 | B1 ) ) {
         VERTEX_EDGE( a2, a0, a1, b1, b2, b0);
-        break;
-
-    case A2 | A0 | B2:
+    } else if( which_case == ( A2 | A0 | B2 ) ) {
         VERTEX_EDGE( a2, a0, a1, b2, b0, b1 );
-        break;
-
-    case B0 | B1 | A0:
+    } else if( which_case == ( B0 | B1 | A0 ) ) {
         VERTEX_EDGE( b0, b1, b2, a0, a1, a2 );
-        break;
-
-    case B0 | B1 | A1:
+    } else if( which_case == ( B0 | B1 | A1 ) ) {
         VERTEX_EDGE( b0, b1, b2, a1, a2, a0);
-        break;
-
-    case B0 | B1 | A2:
+    } else if( which_case == ( B0 | B1 | A2 ) ) {
         VERTEX_EDGE( b0, b1, b2, a2, a0, a1 );
-        break;
-
-    case B1 | B2 | A0:
+    } else if( which_case == ( B1 | B2 | A0 ) ) {
         VERTEX_EDGE( b1, b2, b0, a0, a1, a2 );
-        break;
-
-    case B1 | B2 | A1:
+    } else if( which_case == ( B1 | B2 | A1 ) ) {
         VERTEX_EDGE( b1, b2, b0, a1, a2, a0);
-        break;
-
-    case B1 | B2 | A2:
+    } else if( which_case == ( B1 | B2 | A2 ) ) {
         VERTEX_EDGE( b1, b2, b0, a2, a0, a1 );
-        break;
-
-    case B2 | B0 | A0:
+    } else if( which_case == ( B2 | B0 | A0 ) ) {
         VERTEX_EDGE( b2, b0, b1, a0, a1, a2 );
-        break;
-
-    case B2 | B0 | A1:
+    } else if( which_case == ( B2 | B0 | A1 ) ) {
         VERTEX_EDGE( b2, b0, b1, a1, a2, a0);
-        break;
-
-    case B2 | B0 | A2:
+    } else if( which_case == ( B2 | B0 | A2 ) ) {
         VERTEX_EDGE( b2, b0, b1, a2, a0, a1 );
-        break;
-
-    case A0 | A1 | B0 | B1:
+    } else if( which_case == ( A0 | A1 | B0 | B1 ) ) {
         EDGE_EDGE( a0, a1, a2, b0, b1, b2 );
-        break;
-
-    case A0 | A1 | B1 | B2:
+    } else if( which_case == ( A0 | A1 | B1 | B2 ) ) {
         EDGE_EDGE( a0, a1, a2, b1, b2, b0 );
-        break;
-
-    case A0 | A1 | B2 | B0:
+    } else if( which_case == ( A0 | A1 | B2 | B0 ) ) {
         EDGE_EDGE( a0, a1, a2, b2, b0, b1 );
-        break;
-
-    case A1 | A2 | B0 | B1:
+    } else if( which_case == ( A1 | A2 | B0 | B1 ) ) {
         EDGE_EDGE( a1, a2, a0, b0, b1, b2 );
-        break;
-
-    case A1 | A2 | B1 | B2:
+    } else if( which_case == ( A1 | A2 | B1 | B2 ) ) {
         EDGE_EDGE( a1, a2, a0, b1, b2, b0 );
-        break;
-
-    case A1 | A2 | B2 | B0:
+    } else if( which_case == ( A1 | A2 | B2 | B0 ) ) {
         EDGE_EDGE( a1, a2, a0, b2, b0, b1 );
-        break;
-
-    case A2 | A0 | B0 | B1:
+    } else if( which_case == ( A2 | A0 | B0 | B1 ) ) {
         EDGE_EDGE( a2, a0, a1, b0, b1, b2 );
-        break;
-
-    case A2 | A0 | B1 | B2:
+    } else if( which_case == ( A2 | A0 | B1 | B2 ) ) {
         EDGE_EDGE( a2, a0, a1, b1, b2, b0 );
-        break;
-
-    case A2 | A0 | B2 | B0:
+    } else if( which_case == ( A2 | A0 | B2 | B0 ) ) {
         EDGE_EDGE( a2, a0, a1, b2, b0, b1 );
-        break;
+    } else if( which_case == ( A0 | A1 | A2 | B0 ) ) {
 
     /*------- vertex - triangle */
 
-    case A0 | A1 | A2 | B0:
         POINT_TRIANGLE( a0, a1, a2, b0, b1, b2 );
-        break;
-
-    case A0 | A1 | A2 | B1:
+    } else if( which_case == ( A0 | A1 | A2 | B1 ) ) {
         POINT_TRIANGLE( a0, a1, a2, b1, b2, b0 );
-        break;
-
-    case A0 | A1 | A2 | B2:
+    } else if( which_case == ( A0 | A1 | A2 | B2 ) ) {
         POINT_TRIANGLE( a0, a1, a2, b2, b0, b1 );
-        break;
-
-    case B0 | B1 | B2 | A0:
+    } else if( which_case == ( B0 | B1 | B2 | A0 ) ) {
         POINT_TRIANGLE( b0, b1, b2, a0, a1, a2 );
-        break;
-
-    case B0 | B1 | B2 | A1:
+    } else if( which_case == ( B0 | B1 | B2 | A1 ) ) {
         POINT_TRIANGLE( b0, b1, b2, a1, a2, a0 );
-        break;
-
-    case B0 | B1 | B2 | A2:
+    } else if( which_case == ( B0 | B1 | B2 | A2 ) ) {
         POINT_TRIANGLE( b0, b1, b2, a2, a0, a1 );
-        break;
     }
 
     return( FALSE );
@@ -1851,7 +1820,7 @@ private  void  compute_point_plane_derivative(
     Real     nx, ny, nz;
     Real     v_dot_n, n_dot_n;
     Real     vn_x0, vn_y0, vn_z0, vn_x1, vn_y1, vn_z1;
-    Real     vn_x2, vn_y2, vn_z2, vn_x, vn_y, vn_z;
+    Real     vn_x2, vn_y2, vn_z2;
     Real     nn_x0, nn_y0, nn_z0, nn_x1, nn_y1, nn_z1;
     Real     nn_x2, nn_y2, nn_z2;
 
@@ -1896,54 +1865,51 @@ private  void  compute_point_plane_derivative(
     v_dot_n = pv0x * nx + pv0y * ny + pv0z * nz;
     n_dot_n = nx * nx + ny * ny + nz * nz;
 
-    vn_x0 = -nx + pv0y * v12z + pv0z * -v12y;
-    vn_y0 = -ny + pv0z * v12x + pv0x * -v12z;
-    vn_z0 = -nz + pv0x * v12y + pv0y * -v12x;
-
-    vn_x1 = -nx + pv1y * v20z + pv1z * -v20y;
-    vn_y1 = -ny + pv1z * v20x + pv1x * -v20z;
-    vn_z1 = -nz + pv1x * v20y + pv1y * -v20x;
-
-    vn_x2 = -nx + pv2y * v01z + pv2z * -v01y;
-    vn_y2 = -ny + pv2z * v01x + pv2x * -v01z;
-    vn_z2 = -nz + pv2x * v01y + pv2y * -v01x;
-
-    vn_x = v20y * v01z - v20z * v01y;
-    vn_y = v20z * v01x - v20x * v01z;
-    vn_z = v20x * v01y - v20y * v01x;
-
-    nn_x0 = ny * v12z - nz * v12y;
-    nn_y0 = nz * v12x - nx * v12z;
-    nn_z0 = nx * v12y - ny * v12x;
-
-    nn_x1 = ny * v20z - nz * v20y;
-    nn_y1 = nz * v20x - nx * v20z;
-    nn_z1 = nx * v20y - ny * v20x;
-
-    nn_x2 = ny * v01z - nz * v01y;
-    nn_y2 = nz * v01x - nx * v01z;
-    nn_z2 = nx * v01y - ny * v01x;
-
     Real coeff1 = v_dot_n / n_dot_n;
     Real coeff2 = coeff1 * coeff1;
     coeff1 += coeff1;
     coeff2 += coeff2;
 
-    tri_derivs[0][0] = coeff1 * vn_x0 - coeff2 * nn_x0;
-    tri_derivs[0][1] = coeff1 * vn_y0 - coeff2 * nn_y0;
-    tri_derivs[0][2] = coeff1 * vn_z0 - coeff2 * nn_z0;
+    deriv_point[0] = coeff1 * nx;
+    deriv_point[1] = coeff1 * ny;
+    deriv_point[2] = coeff1 * nz;
 
-    tri_derivs[1][0] = coeff1 * vn_x1 - coeff2 * nn_x1;
-    tri_derivs[1][1] = coeff1 * vn_y1 - coeff2 * nn_y1;
-    tri_derivs[1][2] = coeff1 * vn_z1 - coeff2 * nn_z1;
+    vn_x0 = coeff1 * ( -nx + pv0y * v12z + pv0z * -v12y );
+    vn_y0 = coeff1 * ( -ny + pv0z * v12x + pv0x * -v12z );
+    vn_z0 = coeff1 * ( -nz + pv0x * v12y + pv0y * -v12x );
 
-    tri_derivs[2][0] = coeff1 * vn_x2 - coeff2 * nn_x2;
-    tri_derivs[2][1] = coeff1 * vn_y2 - coeff2 * nn_y2;
-    tri_derivs[2][2] = coeff1 * vn_z2 - coeff2 * nn_z2;
+    vn_x1 = coeff1 * ( -nx + pv1y * v20z + pv1z * -v20y );
+    vn_y1 = coeff1 * ( -ny + pv1z * v20x + pv1x * -v20z );
+    vn_z1 = coeff1 * ( -nz + pv1x * v20y + pv1y * -v20x );
 
-    deriv_point[0] = coeff1 * vn_x;
-    deriv_point[1] = coeff1 * vn_y;
-    deriv_point[2] = coeff1 * vn_z;
+    vn_x2 = coeff1 * ( -nx + pv2y * v01z + pv2z * -v01y );
+    vn_y2 = coeff1 * ( -ny + pv2z * v01x + pv2x * -v01z );
+    vn_z2 = coeff1 * ( -nz + pv2x * v01y + pv2y * -v01x );
+
+    nn_x0 = coeff2 * ( ny * v12z - nz * v12y );
+    nn_y0 = coeff2 * ( nz * v12x - nx * v12z );
+    nn_z0 = coeff2 * ( nx * v12y - ny * v12x );
+
+    nn_x1 = coeff2 * ( ny * v20z - nz * v20y );
+    nn_y1 = coeff2 * ( nz * v20x - nx * v20z );
+    nn_z1 = coeff2 * ( nx * v20y - ny * v20x );
+
+    nn_x2 = coeff2 * ( ny * v01z - nz * v01y );
+    nn_y2 = coeff2 * ( nz * v01x - nx * v01z );
+    nn_z2 = coeff2 * ( nx * v01y - ny * v01x );
+
+    tri_derivs[0][0] = vn_x0 - nn_x0;
+    tri_derivs[0][1] = vn_y0 - nn_y0;
+    tri_derivs[0][2] = vn_z0 - nn_z0;
+
+    tri_derivs[1][0] = vn_x1 - nn_x1;
+    tri_derivs[1][1] = vn_y1 - nn_y1;
+    tri_derivs[1][2] = vn_z1 - nn_z1;
+
+    tri_derivs[2][0] = vn_x2 - nn_x2;
+    tri_derivs[2][1] = vn_y2 - nn_y2;
+    tri_derivs[2][2] = vn_z2 - nn_z2;
+
 }
 
 private  void  compute_edge_edge_derivative(

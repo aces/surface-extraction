@@ -1,3 +1,11 @@
+New in Release 2.3.1
+--------------------
+        * extension of cortical_thickness script to compute
+          thickness in native space
+        * account for voxel size in make_asp_grid
+        * some code minor cleanup to favour optimazations by
+          64-bit compiler
+
 New in Release 2.3.0
 --------------------
 	* major speed optimizations, clean-up, code documentation
