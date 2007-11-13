@@ -5,12 +5,13 @@
 
 use strict;
 use warnings "all";
+use FindBin;
 
 use Getopt::Tabular;
 use MNI::Startup;
 # use MNI::PathUtilities qw(split_path);
 use MNI::FileUtilities qw(check_output_dirs);
-
+use MNI::DataDir;
 
 # --- set the help & usage strings ---
 my $help = <<HELP;
@@ -95,8 +96,24 @@ if( $tnormal ) {
 }
 
 if( $tlaplace ) {
-  &run( "laplacian_initialisation", "-icbm_model", "0.50", $gray, $white,
-        "${TmpDir}/laplace_initial.mnc" );
+  if( defined $transform_xfm ) {
+    # when transformation is given, transform both surfaces (done above) and
+    # icbm model to native space (ugly!)
+    my $icbmModel = "0.50";
+    my $ModelDir = "$FindBin::Bin/../share/ICBM/";
+    my @files = ("icbm_template_${icbmModel}mm.mnc");
+    MNI::DataDir::check_data($ModelDir, \@files);
+    &run( "mincresample", "$ModelDir/icbm_template_${icbmModel}mm.mnc", 
+          "-transform", $transform_xfm, "-invert", "-tfm_input_sampling",
+          "-step", "0.5", "0.5", "0.5", "-clobber", "${TmpDir}/laplace_like_file.mnc" );
+    &run( "laplacian_initialisation", "-like", "${TmpDir}/laplace_like_file.mnc",
+          $gray, $white, "${TmpDir}/laplace_initial.mnc" );
+    unlink( "${TmpDir}/laplace_like_file.mnc" );
+  } else {
+    # assume transformation is identity, so surfaces are already in icbm space
+    &run( "laplacian_initialisation", "-icbm_model", "0.50", $gray, $white,
+          "${TmpDir}/laplace_initial.mnc" );
+  }
   &run( "laplacian_thickness", "-h", "0.1", "-convergence", "0.00001", "-2nd_rk",
         "-max_iterations", "300", "-object_eval", $midSurface, "-from_grid", 
         "${TmpDir}/laplace_initial.mnc", "${TmpDir}/thickness_uncleaned.txt" );
