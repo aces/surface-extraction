@@ -342,7 +342,7 @@ die "$usage\n" unless @ARGV >= 3;
             if( $ni > $iter_inc )  { $ni = $iter_inc; }
 
             my $surf2_info = " -surface ${white_surface} ${white_surface} " .
-                             " -stretch $sw ${white_prefix}_m_$size -.9 0 0 0".
+                             " -stretch $sw ${white_prefix}_m_${size}.obj -.9 0 0 0".
                              " $b2 ".
                              " $self2 ";
 
