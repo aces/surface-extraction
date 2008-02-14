@@ -1,3 +1,9 @@
+New in Release 2.3.2
+--------------------
+	* allow a filename with a dot (".") in it (extract_white_surface.in)
+	* fixed a bug in cortical_thickness for tlaplace 
+          (correct transformation of volume to native space)
+
 New in Release 2.3.1
 --------------------
         * extension of cortical_thickness script to compute
