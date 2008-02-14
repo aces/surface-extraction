@@ -103,7 +103,7 @@ if( $tlaplace ) {
     my $ModelDir = "$FindBin::Bin/../share/ICBM/";
     my @files = ("icbm_template_${icbmModel}mm.mnc");
     MNI::DataDir::check_data($ModelDir, \@files);
-    &run( "mincresample", "$ModelDir/icbm_template_${icbmModel}mm.mnc", 
+    &run( "mincresample", "-quiet", "$ModelDir/icbm_template_${icbmModel}mm.mnc", 
           "-transform", $transform_xfm, "-invert", "-tfm_input_sampling",
           "-step", "0.5", "0.5", "0.5", "-clobber", "${TmpDir}/laplace_like_file.mnc" );
     &run( "laplacian_initialisation", "-like", "${TmpDir}/laplace_like_file.mnc",
