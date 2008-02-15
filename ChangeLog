@@ -1,3 +1,6 @@
+2008-01-28  Claude Lepage      <claude@bic.mni.mcgill.ca>
+	* create check_self_intersect to verify if a surface self-intersects
+
 2007-12-10  Claude Lepage      <claude@bic.mni.mcgill.ca>
 	* allow a filename with a dot (".") in it (extract_white_surface.in)
 

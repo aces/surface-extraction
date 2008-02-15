@@ -3,6 +3,7 @@ New in Release 2.3.2
 	* allow a filename with a dot (".") in it (extract_white_surface.in)
 	* fixed a bug in cortical_thickness for tlaplace 
           (correct transformation of volume to native space)
+	* create check_self_intersect to verify if a surface self-intersects
 
 New in Release 2.3.1
 --------------------
