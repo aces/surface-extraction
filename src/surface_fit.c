@@ -218,6 +218,11 @@ int  main(
     deriv_smoothing = 0.0;
     n_deriv_smoothing_steps = 0;
 
+    if( argc == 1 ) {
+      usage( argv[0] );
+      return( 1 );
+    }
+
     initialize_argument_processing( argc, argv );
 
     while( get_string_argument( NULL, &arg ) )

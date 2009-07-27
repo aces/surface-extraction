@@ -29,7 +29,7 @@ use MNI::FileUtilities qw(check_output_dirs);
 
 
 # ===== Global Variables =====
-my ($usage, $help);
+my ($usage, $help, $license);
 my ($mri, $cls, $white, $gradient, $gradient_masked);
 my ($white_fix, $gradient_parm, $cls_tmp, $cls_gradient);
 my ($cls_gradient_tmp, $cls_gm_gradient, $cls_wm_gradient);
@@ -41,7 +41,7 @@ my ($std, $gradient_weight, $gradient_threshold);
 
 # ===== Argument Processing =====
 
-my $license = << LICENSE;
+$license = <<LICENSE;
 Copyright Alan C. Evans
 Professor of Neurology
 McGill University

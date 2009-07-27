@@ -23,7 +23,7 @@ my $help = <<HELP;
 Compute the cortical thickness from the white and gray surfaces.
 HELP
 
-my $license = << LICENSE;
+my $license = <<LICENSE;
 Copyright Alan C. Evans
 Professor of Neurology
 McGill University

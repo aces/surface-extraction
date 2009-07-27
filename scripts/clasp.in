@@ -44,7 +44,7 @@ The help string goes here.
 
 HELP
 
-my $license = << LICENSE;
+my $license = <<LICENSE;
 Copyright Alan C. Evans
 Professor of Neurology
 McGill University

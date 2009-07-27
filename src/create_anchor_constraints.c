@@ -27,7 +27,7 @@ int  main(
         !get_real_argument( 0.0, &desired_distance ) )
     {
         print_error( "Usage: %s input.obj output.constraint desired_dist\n", argv[0] );
-        print_error( "Copyright Alan C. Evans\nProfessor of Neurology\nMcGill University\n" );
+        print_error( "\nCopyright Alan C. Evans\nProfessor of Neurology\nMcGill University\n" );
         return( 1 );
     }
 

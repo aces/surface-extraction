@@ -33,7 +33,7 @@ MNI::Spawn::RegisterPrograms
       mv/ ] )
   or exit 1;
 
-my $license = << LICENSE;
+my $license = <<LICENSE;
 Copyright Alan C. Evans
 Professor of Neurology
 McGill University

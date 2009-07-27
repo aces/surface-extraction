@@ -43,7 +43,7 @@ Optional parameters:
   [-schedule]: print the schedule to see the steps
 HELP
 
-my $license = << LICENSE;
+my $license = <<LICENSE;
 Copyright Alan C. Evans
 Professor of Neurology
 McGill University

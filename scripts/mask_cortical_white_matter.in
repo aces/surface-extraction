@@ -28,7 +28,7 @@ require "$FindBin::Bin/../lib/@PACKAGE@/utils.pl";
 use MNI::Startup;
 use MNI::FileUtilities qw(check_output_dirs);
 
-my $license = << LICENSE;
+my $license = <<LICENSE;
 Copyright Alan C. Evans
 Professor of Neurology
 McGill University
