@@ -1,4 +1,9 @@
 #! @PERL@
+#
+# Copyright Alan C. Evans
+# Professor of Neurology
+# McGill University
+#
 
 sub  get_self_intersect( $$$$ )
 {

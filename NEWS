@@ -1,3 +1,8 @@
+New in Release 2.4.0
+--------------------
+        * new license Copyright Alan C. Evans
+        * high-resolution surface extraction and expansion by hemisphere
+
 New in Release 2.3.2
 --------------------
 	* allow a filename with a dot (".") in it (extract_white_surface.in)

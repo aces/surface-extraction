@@ -1,6 +1,11 @@
 #! @PERL@
 #
 # Based on ~david/Surface_deformation/How_to_extract_cortical_surfaces.txt
+#
+# Copyright Alan C. Evans
+# Professor of Neurology
+# McGill University
+# 
 
 use warnings "all";
 
@@ -26,9 +31,18 @@ The help string goes here.
 
 HELP
 
+my $license = << LICENSE;
+Copyright Alan C. Evans
+Professor of Neurology
+McGill University
+
+LICENSE
+
 my $usage = <<USAGE;
 usage: $ProgramName [options] classified.mnc
        $ProgramName -help to list options
+
+$license
 USAGE
 
 Getopt::Tabular::SetHelp( $help, $usage );

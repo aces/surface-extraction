@@ -1,3 +1,9 @@
+/*
+   Copyright Alan C. Evans
+   Professor of Neurology
+   McGill University
+*/
+
 
 /* Check if a surface self-intersects. Report the minimal distance
    of self-intersection and, if desired, a texture file showing the
@@ -20,7 +26,10 @@ private  void  delete_surface_neighbours( void );
 
 private  void  usage( char   executable_name[] ) {
     STRING  usage_format = "\
-Usage: %s surface.obj [distance.txt]\n\n\n";
+Usage: %s surface.obj [distance.txt]\n\n\
+Copyright Alan C. Evans\n\
+Professor of Neurology\n\
+McGill University\n\n";
 
     print_error( usage_format, executable_name );
 }

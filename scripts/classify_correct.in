@@ -6,6 +6,11 @@
 # Authors: June-sic Kim <luck3d@bic.mni.mcgill.ca>
 #
 # May 2004
+#
+# Copyright Alan C. Evans
+# Professor of Neurology
+# McGill University
+#
 
 use strict;
 use warnings "all";
@@ -26,7 +31,15 @@ $unmasked = 0;
 
 # ===== Argument Processing =====
 
-$usage = "$ProgramName [options] classified.mnc final.mnc classified_correct.mnc skeletonized_csf.mnc\n";
+my $license = << LICENSE;
+Copyright Alan C. Evans
+Professor of Neurology
+McGill University
+
+LICENSE
+
+$usage = "$ProgramName [options] classified.mnc final.mnc classified_correct.mnc skeletonized_csf.mnc\n" .
+         "\n$license\n";
 $help = "Help still to be written";
 
 my @leftOverArgs;

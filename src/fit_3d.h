@@ -1,3 +1,8 @@
+/*
+   Copyright Alan C. Evans
+   Professor of Neurology
+   McGill University
+*/
 #ifndef  _DEF_FIT_3D_H
 #define  _DEF_FIT_3D_H
 

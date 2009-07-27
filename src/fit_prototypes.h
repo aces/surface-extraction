@@ -1,3 +1,8 @@
+/*
+   Copyright Alan C. Evans
+   Professor of Neurology
+   McGill University
+*/
 #ifndef  DEF_FIT_PROTOTYPES
 #define  DEF_FIT_PROTOTYPES
 

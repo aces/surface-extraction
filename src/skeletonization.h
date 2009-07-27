@@ -1,3 +1,8 @@
+/*
+   Copyright Alan C. Evans
+   Professor of Neurology
+   McGill University
+*/
 
 
 //maximum number of subiterations to do for each iteration of algorithm

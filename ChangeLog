@@ -1,3 +1,7 @@
+2009-07-27  Claude Lepage      <claude@bic.mni.mcgill.ca>
+	* new license Copyright Alan C. Evans
+	* high-resolution surface extraction and expansion by hemisphere
+
 2008-01-28  Claude Lepage      <claude@bic.mni.mcgill.ca>
 	* create check_self_intersect to verify if a surface self-intersects
 

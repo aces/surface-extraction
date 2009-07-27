@@ -1,3 +1,9 @@
+/*
+   Copyright Alan C. Evans
+   Professor of Neurology
+   McGill University
+*/
+
 #include <time.h>
 #include <fit_3d.h>
 

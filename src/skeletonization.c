@@ -1,3 +1,9 @@
+/*
+   Copyright Alan C. Evans
+   Professor of Neurology
+   McGill University
+*/
+
 /*-------------------------------------------------------------------------- 
 
 File: skeletonization.c
@@ -43,6 +49,7 @@ int main(int argc, char* argv[]) {
       printf("Skeletonizes a binary thresholded minc volume\n");
 
     printf("usage: %s <input.mnc> <output.mnc>\n\n",argv[0]); 
+    printf("Copyright Alan C. Evans\nProfessor of Neurology\nMcGill University\n");
     return ( 1 );
   }
   

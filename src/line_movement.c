@@ -1,3 +1,9 @@
+/*
+   Copyright Alan C. Evans
+   Professor of Neurology
+   McGill University
+*/
+
 #include  <fit_3d.h>
 
 private  Real  get_max_movement_per_unit_line_method_bb(

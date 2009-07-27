@@ -1,3 +1,9 @@
+/*
+   Copyright Alan C. Evans
+   Professor of Neurology
+   McGill University
+*/
+
 #ifndef  DEF_sp_geom_prototypes
 #define  DEF_sp_geom_prototypes
 

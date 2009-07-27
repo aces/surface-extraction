@@ -2,6 +2,11 @@
 #
 
 # January, 2006: Initial implementation. - Claude Lepage
+#
+# Copyright Alan C. Evans
+# Professor of Neurology
+# McGill University
+#
 
 use strict;
 use warnings "all";
@@ -18,10 +23,18 @@ my $help = <<HELP;
 Compute the cortical thickness from the white and gray surfaces.
 HELP
 
+my $license = << LICENSE;
+Copyright Alan C. Evans
+Professor of Neurology
+McGill University
+
+LICENSE
+
 my $usage = <<USAGE;
 Usage: $ProgramName [options] white.obj gray.obj output.txt
        $ProgramName -help to list options
 
+$license
 USAGE
 
 Getopt::Tabular::SetHelp( $help, $usage );

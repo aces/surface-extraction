@@ -1,4 +1,9 @@
 #! @PERL@
+#
+# Copyright Alan C. Evans
+# Professor of Neurology
+# McGill University
+#
 
 use strict;
 use warnings "all";
@@ -38,10 +43,19 @@ Optional parameters:
   [-schedule]: print the schedule to see the steps
 HELP
 
+my $license = << LICENSE;
+Copyright Alan C. Evans
+Professor of Neurology
+McGill University
+
+LICENSE
+
 my $usage = <<USAGE;
 Usage: $ProgramName cls.mnc white.obj gray.obj field.mnc
        [-refine] [-log log_file] [-start s] [-end e] [-schedule]
        $ProgramName -help to list options
+
+$license
 USAGE
 
 Getopt::Tabular::SetHelp( $help, $usage );
@@ -98,7 +112,7 @@ die "$usage\n" unless @ARGV >= 4;
        81920, 1e1,   0,  500,  50,  .5,  1,  1e1,  .25,  0.0, 1.0, 1e-3,
        81920, 1e1,   0,  400,  50,  .5,  1,  1e1,  .25,  0.0, 1.0, 1e-2,
        81920, 2e1,   0,  300,  50,  .5,  1,  1e1,  .25,  1.0, 1.0, 1e-2,
-      327680, 2e1,   0,  500,  50,  .5,  1,  1e1,  .25,  1.0, 1.0, 2e-3,
+      327680, 2e1,   0,  500,  50,  .5,  1,  1e1, .125,  1.0, 1.0, 2e-3,
     );
 
     my $sched_size =  12;

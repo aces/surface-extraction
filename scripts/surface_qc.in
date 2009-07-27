@@ -4,6 +4,10 @@
 #   - Count how many classified white voxels outside white surface
 #   - Count how many classified gray voxels outside gray surface
 #
+# Copyright Alan C. Evans
+# Professor of Neurology
+# McGill University
+#
 
 use strict;
 use warnings "all";
@@ -28,8 +32,17 @@ Simple Quality checks on the white and gray surfaces.
 
 HELP
 
+my $license = << LICENSE;
+Copyright Alan C. Evans
+Professor of Neurology
+McGill University
+
+LICENSE
+
 my $usage = <<USAGE;
 usage: $ProgramName cls_correct.mnc white_mask.mnc white.obj gray.obj
+
+$license
 USAGE
 
 Getopt::Tabular::SetHelp( $help, $usage );

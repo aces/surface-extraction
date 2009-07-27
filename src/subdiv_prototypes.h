@@ -1,3 +1,9 @@
+/*
+   Copyright Alan C. Evans
+   Professor of Neurology
+   McGill University
+*/
+
 #ifndef  DEF_SUBDIV_PROTOTYPES
 #define  DEF_SUBDIV_PROTOTYPES
 

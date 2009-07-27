@@ -1,3 +1,9 @@
+/*
+   Copyright Alan C. Evans
+   Professor of Neurology
+   McGill University
+*/
+
 #include  <volume_io/internal_volume_io.h>
 #include  <bicpl.h>
 
@@ -20,8 +26,8 @@ int  main(
         !get_string_argument( NULL, &output_filename ) ||
         !get_real_argument( 0.0, &desired_distance ) )
     {
-        print_error(
-             "Usage: %s input.obj output.constraint desired_dist\n", argv[0] );
+        print_error( "Usage: %s input.obj output.constraint desired_dist\n", argv[0] );
+        print_error( "Copyright Alan C. Evans\nProfessor of Neurology\nMcGill University\n" );
         return( 1 );
     }
 

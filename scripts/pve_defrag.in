@@ -11,6 +11,11 @@
 
 # Author: Claude Lepage
 # Last Modified: 
+#
+# Copyright Alan C. Evans
+# Professor of Neurology
+# McGill University
+#
 
 use warnings "all";
 
@@ -28,6 +33,13 @@ MNI::Spawn::RegisterPrograms
       mv/ ] )
   or exit 1;
 
+my $license = << LICENSE;
+Copyright Alan C. Evans
+Professor of Neurology
+McGill University
+
+LICENSE
+
     my $cls_correct = shift;
     my $mask = shift;
     my $maskD = shift;
@@ -36,7 +48,8 @@ MNI::Spawn::RegisterPrograms
     my $pve_csf = shift;
 
     if( ! defined($pve_csf) ) {
-      die "Usage: $0  cls_correct mask maskD pve_wm pve_gm pve_csf\n";
+      die "Usage: $0  cls_correct mask maskD pve_wm pve_gm pve_csf\n" .
+          "\n$license\n";
     }
 
     # create necessary tmp directory

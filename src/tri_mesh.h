@@ -1,3 +1,9 @@
+/*
+   Copyright Alan C. Evans
+   Professor of Neurology
+   McGill University
+*/
+
 #ifndef  DEF_TRIMESH_H
 #define  DEF_TRIMESH_H
 

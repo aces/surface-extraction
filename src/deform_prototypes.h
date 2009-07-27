@@ -1,3 +1,8 @@
+/*
+   Copyright Alan C. Evans
+   Professor of Neurology
+   McGill University
+*/
 #ifndef  DEF_deform_prototypes
 #define  DEF_deform_prototypes
 

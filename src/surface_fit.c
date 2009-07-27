@@ -1,4 +1,9 @@
-// #include  <sys/time.h>
+/*
+   Copyright Alan C. Evans
+   Professor of Neurology
+   McGill University
+*/
+
 #include  <fit_3d.h>
 #include  <conjugate.h>
 
@@ -90,8 +95,10 @@ private  void  usage(
     char   executable_name[] )
 {
     STRING  usage_format = "\
-Usage:     %s  help not implemented yet \n\
-                  \n\n";
+Usage:     %s  help not implemented yet \n\n\
+Copyright Alan C. Evans\n\
+Professor of Neurology\n\
+McGill University\n\n";
 
     print_error( usage_format, executable_name );
 }

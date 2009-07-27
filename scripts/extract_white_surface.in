@@ -1,4 +1,9 @@
 #! @PERL@
+#
+# Copyright Alan C. Evans
+# Professor of Neurology
+# McGill University
+#
 
 use strict;
 use warnings "all";
@@ -57,10 +62,19 @@ Optional parameters:
   [-schedule]  : print the schedule to see the steps
 HELP
 
+my $license = << LICENSE;
+Copyright Alan C. Evans
+Professor of Neurology
+McGill University
+
+LICENSE
+
 my $usage = <<USAGE;
 Usage: $ProgramName cls_mask.mnc white.obj isovalue [model.obj]
        [-refine] [-log log_file] [-start s] [-end e] [-schedule]
        $ProgramName -help to list options
+
+$license
 USAGE
 
 Getopt::Tabular::SetHelp( $help, $usage );
@@ -129,7 +143,7 @@ die "$usage\n" unless @ARGV >= 3;
    5120, 1e1,   0,   2000,  50,   $wo,    1, 1.5,  50,  3,   10,  1e0,  3,
   20480, 1e1,   0,   5000,  50,   $wo,    1,   1,  40,  3,    5,  1e0,  1.5,
   81920, 2,     0,   1000,  50, 0.5*$wo,  1,   1,  30,  3,    2,  1e0,  .75,
- 327680, 2,     0,   1000,  50, 0.5*$wo,  1,   1,  20,  3,    1,  1e0,  .75,
+ 327680, 2,     0,   1000,  50, 0.5*$wo,  1,   1,  20,  3,    1,  1e0,  .25,
   );
 
     my $sched_size =  13;

@@ -1,4 +1,9 @@
 #! @PERL@
+#
+# Copyright Alan C. Evans
+# Professor of Neurology
+# McGill University
+#
 
 # Part of the ASP cortex extraction suite. For a description of the
 # algorithms used here see MacDonald et. al. "Automated 3-D Extraction
@@ -23,16 +28,25 @@ require "$FindBin::Bin/../lib/@PACKAGE@/utils.pl";
 use MNI::Startup;
 use MNI::FileUtilities qw(check_output_dirs);
 
+my $license = << LICENSE;
+Copyright Alan C. Evans
+Professor of Neurology
+McGill University
+
+LICENSE
+
     $pve_prefix = shift;
     $output = shift;
     $whitevalue = shift;
 
     if( ! defined($pve_prefix) ) {
-      die "Usage: $0  pve_prefix $output.mnc [whitevalue]\n";
+      die "Usage: $0  pve_prefix $output.mnc [whitevalue]\n" .
+          "\n$license\n";
     }
 
     if( ! defined($output) ) {
-      die "Usage: $0  pve_prefix $output.mnc [whitevalue]\n";
+      die "Usage: $0  pve_prefix $output.mnc [whitevalue]\n" .
+          "\n$license\n";
     }
 
     if( !defined( $whitevalue ) ) {

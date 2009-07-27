@@ -1,3 +1,9 @@
+/*
+   Copyright Alan C. Evans
+   Professor of Neurology
+   McGill University
+*/
+
 #include  <volume_io/internal_volume_io.h>
 #include  <fit_3d.h>
 

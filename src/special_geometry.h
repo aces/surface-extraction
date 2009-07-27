@@ -1,3 +1,9 @@
+/*
+   Copyright Alan C. Evans
+   Professor of Neurology
+   McGill University
+*/
+
 #ifndef  DEF_SPECIAL_GEOMETRY
 #define  DEF_SPECIAL_GEOMETRY
 

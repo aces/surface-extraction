@@ -1,4 +1,9 @@
 #! @PERL@
+#
+# Copyright Alan C. Evans
+# Professor of Neurology
+# McGill University
+#
 
 # Calibrate the white surface with a gradient field.
 #
@@ -36,7 +41,15 @@ my ($std, $gradient_weight, $gradient_threshold);
 
 # ===== Argument Processing =====
 
-$usage = "$ProgramName mri.mnc cls.mnc csf_skel.mnc white.obj output.obj\n";
+my $license = << LICENSE;
+Copyright Alan C. Evans
+Professor of Neurology
+McGill University
+
+LICENSE
+
+$usage = "$ProgramName mri.mnc cls.mnc csf_skel.mnc white.obj output.obj\n" .
+         "\n$license\n";
 $help = "Help still to be written";
 
 my @leftOverArgs;

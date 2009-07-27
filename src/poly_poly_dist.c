@@ -1,3 +1,9 @@
+/*
+   Copyright Alan C. Evans
+   Professor of Neurology
+   McGill University
+*/
+
 #include  <fit_3d.h>
 
 #define  TOLERANCE_FACTOR   1.0e-10
