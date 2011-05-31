@@ -10,6 +10,7 @@ pkglib_SCRIPTS = \
 bin_SCRIPTS = \
    scripts/asp \
    scripts/calibrate_white \
+   scripts/check_surf_surf_intersect \
    scripts/clasp \
    scripts/classify_correct \
    scripts/cortical_thickness \
@@ -55,6 +56,7 @@ EXTRA_DIST = \
    epm-header.in \
    scripts/asp.in \
    scripts/calibrate_white.in \
+   scripts/check_surf_surf_intersect.in \
    scripts/clasp.in \
    scripts/classify_correct.in \
    scripts/cortical_thickness.in \

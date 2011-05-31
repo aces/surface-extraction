@@ -1,0 +1,297 @@
+#! @PERL@
+#
+# Author: Claude Lepage <claude@bic.mni.mcgill.ca>
+#
+# May 2011
+#
+# Copyright Alan C. Evans
+# Professor of Neurology
+# McGill University
+#
+
+# Extract a white matter surface using a marching-cubes
+# algorithm, in a first step, then run ASP to complete
+# the convergence.
+
+use strict;
+use warnings "all";
+use File::Basename;
+use File::Spec;
+use File::Temp qw/ tempdir /;
+
+use Getopt::Tabular;
+use MNI::Startup;
+use MNI::FileUtilities;
+use MNI::DataDir;
+
+# --- set the help & usage strings ---
+my $help = <<HELP;
+Required parameters:
+  wm_mask.mnc  : white matter mask
+  white.obj    : white matter surface (output)
+HELP
+
+my $license = <<LICENSE;
+Copyright Alan C. Evans
+Professor of Neurology
+McGill University
+
+LICENSE
+
+my $usage = <<USAGE;
+Usage: $ProgramName wm_mask.mnc white.obj civet_base_dir [options]
+       $ProgramName -help to list options
+
+$license
+USAGE
+
+Getopt::Tabular::SetHelp( $help, $usage );
+
+my $subsample = 0;
+my $refine = 0;
+
+my @options = ( 
+  ['-subsample', 'boolean', 0, \$subsample,
+   "Subsample white matter mask at half voxel size"],
+  ['-refine', 'boolean', 0, \$refine,
+   "Create a high-resolution surface at 327680 polygons"],
+  );
+
+GetOptions( \@options, \@ARGV ) or exit 1;
+die "$usage\n" unless @ARGV == 3;
+
+my $white_matter_mask = shift;
+my $white_surface = shift;
+my $CIVET_dir = shift;
+
+if( !( -e $white_matter_mask ) ) {
+  print "$usage\n";
+  die "White matter mask must exist.\n";
+}
+
+my $ICBM_white_model = MNI::DataDir::dir("surface-extraction") .
+                       "/white_model_320.obj";
+
+my $surfreg = "${CIVET_dir}/progs/bestsurfreg.pl";
+my $surfreg_model = "${CIVET_dir}/models/surf_reg_model_left.obj";
+
+my $tmpdir = &tempdir( "mcubes-XXXXXX", TMPDIR => 1, CLEANUP => 1 );
+
+# Preparation of the white matter mask for extraction of the surface
+# using marching cubes.
+
+&run( 'minccalc', '-clobber', '-quiet', '-expression', 'out=1',
+      '-unsigned', '-byte', $white_matter_mask, "${tmpdir}/filled.mnc" );
+&run( 'surface_mask2', '-binary', "${tmpdir}/filled.mnc",
+      $ICBM_white_model, "${tmpdir}/s0.mnc" );
+&run( 'mincresample', '-clobber', '-quiet', '-like',
+      "${tmpdir}/filled.mnc", "${tmpdir}/s0.mnc",
+      "${tmpdir}/s1.mnc" );
+&run( 'minccalc', '-clobber', '-quiet', '-expression',
+      'out=A[0]+A[1]', $white_matter_mask, 
+      "${tmpdir}/s1.mnc", "${tmpdir}/s0.mnc" );
+&run( 'mincreshape', '-quiet', '-clobber', '-unsigned', '-byte',
+      '-image_range', 0, 255, '-valid_range', 0, 255, "${tmpdir}/s0.mnc",
+      "${tmpdir}/s1.mnc" );
+&run( 'mincdefrag', "${tmpdir}/s1.mnc", "${tmpdir}/s0.mnc", 2, 6 );
+unlink( "${tmpdir}/filled.mnc" );
+unlink( "${tmpdir}/s1.mnc" );
+
+# Run the marching-cubes algorithm on the mask.
+
+&run( sphere_mesh, "${tmpdir}/s0.mnc", $white_surface, 
+      ( $subsample ) ? "-subsample" : "" );
+unlink( "${tmpdir}/s0.mnc" );
+
+# Coarsen and smooth the original marching-cubes surface.
+
+my $white_surface_sm = "${tmpdir}/white_surf_sm.obj";
+&run( adapt_object_mesh, $white_surface, $white_surface_sm, 120000 );
+
+# Inflate the white surface onto a unit sphere.
+
+my $white_sphere_sm = "${tmpdir}/white_sphere_sm.obj";
+&run( 'inflate_to_sphere', $white_surface_sm, $white_sphere_sm );
+
+# Interpolate from sphere-to-sphere to resample the white surface 
+# using the 40962 vertices on the standard ICBM surface average 
+# template. This unit sphere is the one used for surface registration.
+
+my $unit_sphere = "${tmpdir}/unit_sphere.obj";
+&run( 'create_tetra', $unit_sphere, 0, 0, 0, 1, 1, 1, 81920 );
+&run( 'interpolate_sphere', $white_surface_sm, $white_sphere_sm, $unit_sphere,
+      $white_surface );
+
+# Do surface registration on to the ICBM by geometrically blurring 
+# the surfces to keep only the primary structures, for more robust
+# registration. This will be a first alignment and will also ensure 
+# better isotropic mesh.
+
+my $white_surface_blurred = "${tmpdir}/white_surf_blurred.obj";
+my $surfreg_model_blurred = "${tmpdir}/surfreg_model_blurred.obj";
+&run( adapt_object_mesh, $white_surface, $white_surface_blurred, 999999, 120 );
+&run( adapt_object_mesh, $surfreg_model, $surfreg_model_blurred, 999999, 100 );
+
+&run( 'depth_potential', '-alpha', '0.05', '-depth_potential',
+      $white_surface_blurred, "${tmpdir}/white.vv" );
+&run( 'depth_potential', '-alpha', '0.05', '-depth_potential',
+      $surfreg_model_blurred, "${tmpdir}/model.vv" );
+
+&run( $surfreg, '-clobber', '-min_control_mesh', 80, '-max_control_mesh',
+      20480, '-blur_coef', '2.25', '-neighbourhood_radius', '2.8', 
+      '-target_spacing', '1.9', $surfreg_model, "${tmpdir}/model.vv",
+      $white_surface_blurred, "${tmpdir}/white.vv", "${tmpdir}/white.sm" );
+unlink( "${tmpdir}/white.vv" );
+unlink( "${tmpdir}/model.vv" );
+unlink( $white_surface_blurred );
+unlink( $surfreg_model_blurred );
+
+# Resample the unit sphere. Could do some smoothing if it helps prevent
+# self-intersections.
+
+my $unit_sphere_rsl = "${tmpdir}/unit_sphere_rsl.obj";
+&run( 'sphere_resample_obj', '-clobber', $unit_sphere, "${tmpdir}/white.sm",
+      $unit_sphere_rsl );
+unlink( "${tmpdir}/white.sm" );
+unlink( $unit_sphere );
+
+# New interpolation of surface based on points on the resampled sphere.
+
+&run( 'interpolate_sphere', $white_surface_sm, $white_sphere_sm, $unit_sphere_rsl,
+      $white_surface );
+
+unlink( $unit_sphere_rsl );
+unlink( $white_surface_sm );
+unlink( $white_sphere_sm );
+
+# Check for self-intersections in the marching-cubes surface.
+
+&run( 'check_self_intersect', $white_surface, '-fix', $white_surface );
+my @ret = `check_self_intersect $white_surface`;
+$ret[1] =~ /Number of self_intersecting triangles = (\d+)/;
+my $num_inter = $1;
+if( $num_inter > 0 ) {
+  die "Failed interpolation of marching-cubes surface with $num_inter self-intersections.\n";
+}
+
+# Run ASP on the resampled white surface to converge it fully
+# to the white matter mask. The ICBM model is used by ASP to
+# define the distribution of the edge lengths for the stretch
+# constraint.
+
+&run_asp( $white_surface, $white_matter_mask, 0.5, $ICBM_white_model,
+          ( $refine ) ? 1 : 0, $tmpdir );
+
+print "done\n";
+
+
+# Run ASP on the resampled white surface to converge it fully
+# to the white matter mask. This is a simplified version of 
+# extract_white_surface without the coarse steps.
+
+sub run_asp {
+
+  my $white = shift;
+  my $wm_mask = shift;
+  my $isovalue = shift;
+  my $white_model = shift;
+  my $refine = shift;
+  my $tmpdir = shift;
+
+  my $self_dist2 = 0.01;
+  my $n_selfs = 9;
+
+  my $stop_threshold = 1e-3;
+  my $stop_iters = 10;
+
+  my $n_per = 5;
+  my $tolerance = 1.0e-03;
+  my $f_tolerance = 1.0e-06;
+  my $oo_scale = 0.5;
+
+  my @schedule = (
+  #  size   sw    cw  n_itr  inc   offo   offi   si  in  out  over   sw   self
+  #  ----- ----  ---- -----  ----  ----   ----   --  --  ---  ----  ----  ----
+    81920, 100,    0,  200,   50,   50,    1,    1,  20,  3,    2,  1e0,  .25,
+    81920,  20,    0,  200,   50,   50,    1,    1,  20,  3,    2,  1e0,  .25,
+    81920,   5,    0,  200,   50,   50,    5,    1,  10,  2,    2,  1e0,  .25,
+    81920,   2,    0,  200,   50,   50,    5,  0.5,  10,  2,    2,  1e0,  .25,
+#  327680,  10,    0,  200,   50,   50,    1,  0.5,   5,  2,    1,  1e0,  .25,
+  );
+  my $sched_size =  13;
+  my $num_steps = @schedule / $sched_size;
+
+  &run( 'subdivide_polygons', $white_model, "${tmpdir}/white_model_tmp.obj", 81920 );
+  $white_model = "${tmpdir}/white_model_tmp.obj";
+
+  for( my $i = 0;  $i < @schedule;  $i += $sched_size ) {
+    my ( $size, $sw, $cw, $n_iters, $iter_inc, $offo, $offi,
+         $si_step, $in_dist, $out_dist, $oversample, $self_weight, 
+         $self_dist ) = @schedule[$i..$i+$sched_size-1];
+    if( !( $refine ) ) {
+      last if( $size == 327680 );
+    }
+    my $prev_size = `print_n_polygons $white`;
+    chomp( $prev_size );
+    if( $prev_size != $size ) {
+      &run( 'subdivide_polygons', $white, $white, $size );
+      &run( 'subdivide_polygons', $white_model, $white_model, $size );
+    }
+
+    $oversample *= $oo_scale;
+    my $self2 = get_self_intersect( $self_weight, $n_selfs, $self_dist,
+                                    $self_dist2 );
+
+    my $b2 = " -boundary $offo $offi $wm_mask " .
+             " $isovalue - $out_dist $in_dist 0 0 $oversample ";
+
+    for( my $iter = 0;  $iter < $n_iters;  $iter += $iter_inc ) {
+      print "echo Step ${size}: $iter / $n_iters    $sw\n";
+
+      my $ni = $n_iters - $iter;
+      if( $ni > $iter_inc )  { $ni = $iter_inc; }
+
+      my $command = "surface_fit -mode two -surface $white $white " .
+                    " -stretch $sw $white_model -.9 0 0 0 " .
+                    " $b2 $self2 -step $si_step " .
+                    " -fitting $ni $n_per $tolerance " .
+                    " -ftol $f_tolerance " .
+                    " -stop $stop_threshold $stop_iters ";
+      system( $command ) == 0 or die "Command $command failed with status: $?";
+    }
+  }
+  unlink( $white_model );
+}
+
+# from surface-extraction/deform_utils.pl
+
+sub get_self_intersect( $$$$ ) {
+
+    my( $self_weight, $n_selfs, $self_dist, $self_dist2 ) = @_;
+    my( $self, $weight, $s, $dist );
+
+    if( $self_weight > 0.0 ) {
+        $self = "";
+        $weight = $self_weight;
+
+        for( $s = 0;  $s < $n_selfs;  ++$s ) {
+            $dist = $self_dist + ($self_dist2 - $self_dist) *
+                    $s / $n_selfs;
+            $self = $self . " -self_intersect $weight $dist ";
+            $weight *= 10.0;
+        }
+        $self = $self . " -self_intersect 1e8 $self_dist2 ";
+    } else { 
+        $self = ""; 
+    }
+    $self;
+}
+
+
+# Execute a system call.
+
+sub run {
+  print "@_\n";
+  system(@_)==0 or die "Command @_ failed with status: $?";
+}
+

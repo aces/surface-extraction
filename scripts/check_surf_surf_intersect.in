@@ -1,0 +1,74 @@
+#! @PERL@
+#
+
+# May, 2011: Initial implementation. - Claude Lepage
+#
+# Copyright Alan C. Evans
+# Professor of Neurology
+# McGill University
+#
+
+use strict;
+use warnings "all";
+use File::Temp qw/ tempdir /;
+
+use Getopt::Tabular;
+use MNI::Startup;
+
+# --- set the help & usage strings ---
+my $help = <<HELP;
+Check for surface-surface intersections between two surfaces.
+HELP
+
+my $license = <<LICENSE;
+Copyright Alan C. Evans
+Professor of Neurology
+McGill University
+
+LICENSE
+
+my $usage = <<USAGE;
+Usage: $ProgramName white.obj gray.obj [output.txt
+       $ProgramName -help to list options
+
+$license
+USAGE
+
+Getopt::Tabular::SetHelp( $help, $usage );
+
+my @options = ();
+
+GetOptions( \@options, \@ARGV )
+  or exit 1;
+die "$usage\n" unless $#ARGV >= 1;
+
+my $white = shift;
+my $gray = shift;
+my $output = ( $#ARGV == 0 ) ? shift : undef;
+
+my $tmpdir = &tempdir( "surf-surf-XXXXXX", TMPDIR => 1, CLEANUP => 1 );
+
+my $obj = "${tmpdir}/tmp.obj";
+my $txt = "${tmpdir}/tmp.txt";
+
+&run( 'objconcat', $white, $gray, "none", "none", $obj, "none" );
+&run( 'check_self_intersect', $obj, $txt );
+unlink( $obj );
+
+if( defined( $output ) ) {
+  my @ret = split( / /, `wc -l $txt` );
+  my $npoints = $ret[0]; chomp( $npoints ); $npoints /= 2;
+  `head -${npoints} $txt > $output`;
+  &run( 'vertstats_math', '-const2', '-0.001', '0.001', '-seg',
+        '-old_style_file', $output, $output );
+}
+unlink( $txt );
+
+
+#Execute a system call.
+
+sub run {
+  print "@_\n";
+  system(@_)==0 or die "Command @_ failed with status: $?";
+}
+

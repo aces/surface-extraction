@@ -30,6 +30,7 @@ scripts/utils.pl
 scripts/deform_utils.pl
 scripts/asp
 scripts/calibrate_white
+scripts/check_surf_surf_intersect
 scripts/clasp
 scripts/classify_correct
 scripts/cortical_thickness
