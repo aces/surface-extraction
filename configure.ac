@@ -2,7 +2,7 @@
 AC_PREREQ([2.57])
 
 # The arguments are package name, and package version.
-AC_INIT([surface-extraction],[2.4.0], [Andrew Janke <a.janke@gmail.com>])
+AC_INIT([surface-extraction],[3.0.0], [Claude Lepage <claude@bic.mni.mcgill.ca>])
 AC_CONFIG_SRCDIR([src/surface_fit.c])
 
 AM_INIT_AUTOMAKE
@@ -36,6 +36,7 @@ scripts/cortical_thickness
 scripts/expand_from_white
 scripts/extract_white_surface
 scripts/make_asp_grid
+scripts/marching_cubes.pl
 scripts/mask_cortical_white_matter
 scripts/pve_defrag
 scripts/surface_qc

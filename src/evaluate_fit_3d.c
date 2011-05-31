@@ -11,6 +11,10 @@
 #define NO_ANCHOR 0
 #define BOUNDARY_DECREASE 1
 
+#define EVAL_NEAREST -1
+#define EVAL_LINEAR 0
+#define EVAL_CUBIC 2
+
 private  Real   evaluate_intersect_wm_fit(
     object_struct **objects,
     Real          weight,
@@ -98,7 +102,7 @@ private  Real   evaluate_intersect_wm_fit_deriv(
                                 parameter[p_index+0],
                                 parameter[p_index+1],
                                 parameter[p_index+2],
-                                0, FALSE,
+                                EVAL_LINEAR, FALSE,  // isoval=0.5 on 0:1 mask, so need linear
                                 0.0, &mask_value,
                                 NULL, NULL, NULL,
                                 NULL, NULL, NULL, NULL, NULL, NULL );
@@ -149,10 +153,7 @@ private  Real   evaluate_intersect_wm_fit_deriv(
 
 private  Real   evaluate_laplacian_fit(
     Real         weight,
-    int          direction,
     Volume       laplacian_map,
-    Real         deriv_factor,
-    Real         from,
     Real         to,
     int          n_neighbours[],
     int        * neighbours[],
@@ -173,19 +174,11 @@ private  Real   evaluate_laplacian_fit(
                                 parameter[p_index+0],
                                 parameter[p_index+1],
                                 parameter[p_index+2],
-                                0, FALSE,
+                                EVAL_LINEAR, FALSE,
                                 0.0, &value,
                                 NULL, NULL, NULL,
                                 NULL, NULL, NULL, NULL, NULL, NULL );
-
-      if( value >= to ) {
-        fit += value-to;            // linear
-        // fit += exp(value-to)-1.0;   // exponential is too much!
-      } else if( deriv_factor==0 ) {
-        fit += exp(to-value)-1.0;   // exponential
-      } else if( deriv_factor>0 ) {
-        fit += to-value;            // linear
-      }
+      fit += (value-to)*(value-to);
     }
 
     // Do oversampling. This is useful, but slows down the code.
@@ -228,25 +221,18 @@ private  Real   evaluate_laplacian_fit(
               zp = N0 * parameter[p0+2] + N1 * parameter[p1+2] + N2 * parameter[p2+2];
 
               evaluate_volume_in_world( laplacian_map, xp, yp, zp,
-                                        1, FALSE, 0.0, &value,
+                                        EVAL_LINEAR, FALSE, 0.0, &value,
                                         NULL, NULL, NULL,
                                         NULL, NULL, NULL, NULL, NULL, NULL );
 
-              if( value >= to ) {
-                fit += value-to;            // linear
-                // fit += exp(value-to)-1.0;   // exponential is too much!
-              } else if( deriv_factor==0 ) {
-                fit += exp(to-value)-1.0;   // exponential
-              } else if( deriv_factor>0 ) {
-                fit += to-value;            // linear
-              }
+              fit += (value-to)*(value-to);
             }
           }
         }
       }
     }
 
-    fit *= weight;
+    fit *= 0.5 * weight;
   }
 
   return fit;
@@ -269,13 +255,10 @@ private  Real   evaluate_laplacian_fit(
 
 private  Real   evaluate_laplacian_fit_deriv(
     Real         weight,
-    int          direction,
     Volume       laplacian_map,
     Volume       volume,
-    Real         threshold,
     Real         from,
     Real         to,
-    Real         deriv_factor,
     Real         parameter[],
     int          start_point,
     int          end_point,
@@ -288,7 +271,6 @@ private  Real   evaluate_laplacian_fit_deriv(
     Real         dxyz[3];
     int          point, p_index;
     Real         factor = 1e0;
-    Real         max_deriv = sqrt(to*to*3);
 
     int          count_res = 0;
     Real         phi_res = 0.0;
@@ -307,7 +289,7 @@ private  Real   evaluate_laplacian_fit_deriv(
                                   parameter[p_index+0],
                                   parameter[p_index+1],
                                   parameter[p_index+2],
-                                  1, FALSE,
+                                  EVAL_LINEAR, FALSE,
                                   0.0, &value1,
                                   dxyz, dxyz+1, dxyz+2,
                                   NULL, NULL, NULL, NULL, NULL, NULL );
@@ -316,24 +298,7 @@ private  Real   evaluate_laplacian_fit_deriv(
         if( value1 < phi_min ) phi_min = value1;
         if( value1 > phi_max ) phi_max = value1;
 
-        factor = weight;
-        if( value1 == to ) {
-          factor = 0.0;       // do not move the point
-        } else if( value1 > to ) {          // go inwards
-          // f(phi) = phi - to;     (linear)
-          // df/dphi = 1
-          // factor *= 1.0;   // do nothing
-        } else {
-          if( deriv_factor == 0 ) {
-            // f(phi) = exp(to-phi)-1;
-            // df/dphi = -exp(to-phi)
-            factor *= -exp(to-value1);
-          } else if( deriv_factor > 0) {
-            // f(phi) = to - phi;
-            // df/dphi = -1
-            factor *= -deriv_factor;
-          }
-        }
+        factor = weight * (value1 - to);
         deriv[p_index+0] += dxyz[0]*factor;
         deriv[p_index+1] += dxyz[1]*factor;
         deriv[p_index+2] += dxyz[2]*factor;
@@ -378,7 +343,7 @@ private  Real   evaluate_laplacian_fit_deriv(
                 zp = N0 * parameter[p0+2] + N1 * parameter[p1+2] + N2 * parameter[p2+2];
 
                 evaluate_volume_in_world( laplacian_map, xp, yp, zp,
-                                          1, FALSE, 0.0, &value1,
+                                          EVAL_LINEAR, FALSE, 0.0, &value1,
                                           dxyz, dxyz+1, dxyz+2,
                                           NULL, NULL, NULL, NULL, NULL, NULL );
 
@@ -387,25 +352,7 @@ private  Real   evaluate_laplacian_fit_deriv(
                 if( value1 < phi_min ) phi_min = value1;
                 if( value1 > phi_max ) phi_max = value1;
 
-                factor = weight;
-
-                if( value1 == to ) {
-                  factor = 0.0;       // do not move the point
-                } else if( value1 > to ) {          // go inwards
-                  // f(phi) = phi - to;     (linear)
-                  // df/dphi = 1
-                  // factor *= 1.0;   // do nothing
-                } else {
-                  if( deriv_factor == 0 ) {
-                    // f(phi) = exp(to-phi)-1;
-                    // df/dphi = -exp(to-phi)
-                    factor *= -exp(to-value1);
-                  } else if( deriv_factor > 0) {
-                    // f(phi) = to - phi;
-                    // df/dphi = -1
-                    factor *= -deriv_factor;
-                  }
-                }
+                factor = weight * (value1 - to);
 
                 deriv[p0+0] += dxyz[0]*factor*N0;
                 deriv[p0+1] += dxyz[1]*factor*N0;
@@ -458,7 +405,7 @@ private  Real   evaluate_volume_fit(
                                 parameter[p_index+0],
                                 parameter[p_index+1],
                                 parameter[p_index+2],
-                                0, FALSE,
+                                EVAL_LINEAR, FALSE,
                                 0.0, &value,
                                 NULL, NULL, NULL,
                                 NULL, NULL, NULL, NULL, NULL, NULL );
@@ -482,7 +429,7 @@ private  Real   evaluate_volume_fit(
                                 parameter[p_index+0],
                                 parameter[p_index+1],
                                 parameter[p_index+2],
-                                0, FALSE,
+                                EVAL_LINEAR, FALSE,
                                 0.0, &value,
                                 NULL, NULL, NULL,
                                 NULL, NULL, NULL, NULL, NULL, NULL );
@@ -542,7 +489,7 @@ private  Real   evaluate_volume_fit_deriv(
                                 parameter[p_index+0],
                                 parameter[p_index+1],
                                 parameter[p_index+2],
-                                0, FALSE,
+                                EVAL_LINEAR, FALSE,
                                 0.0, &value,
                                 NULL, NULL, NULL,
                                 NULL, NULL, NULL, NULL, NULL, NULL );
@@ -568,7 +515,7 @@ private  Real   evaluate_volume_fit_deriv(
                                     parameter[p_index+0],
                                     parameter[p_index+1],
                                     parameter[p_index+2],
-                                    0, FALSE,
+                                    EVAL_LINEAR, FALSE,
                                     0.0, &value,
                                     NULL, NULL, NULL,
                                     NULL, NULL, NULL, NULL, NULL, NULL );
@@ -5395,10 +5342,7 @@ private  int   private_evaluate_fit(
           if( which == -2 || which == count ) {
             f = evaluate_laplacian_fit(
                            deform->surfaces[surface].laplacian->weight,
-                           deform->surfaces[surface].laplacian->direction,
                            deform->surfaces[surface].laplacian->volume,
-                           deform->surfaces[surface].laplacian->deriv_factor,
-                           deform->surfaces[surface].laplacian->from_value,
                            deform->surfaces[surface].laplacian->to_value,
                            deform->surfaces[surface].surface.n_neighbours,
                            deform->surfaces[surface].surface.neighbours,
@@ -6041,14 +5985,11 @@ public  void   evaluate_fit_deriv(
       for_less( i, 0, deform->surfaces[surface].n_laplacian ) {
         deriv_modified = TRUE;
         evaluate_laplacian_fit_deriv(
-                           deform->surfaces[surface].laplacian->weight,
                            deform->surfaces[surface].laplacian->direction,
                            deform->surfaces[surface].laplacian->volume,
                            deform->surfaces[surface].bound->volume,
-                           deform->surfaces[surface].bound->threshold,
                            deform->surfaces[surface].laplacian->from_value,
                            deform->surfaces[surface].laplacian->to_value,
-                           deform->surfaces[surface].laplacian->deriv_factor,
                            this_parms, 0,
                            deform->surfaces[surface].surface.n_points,
                            deform->surfaces[surface].surface.n_neighbours,
@@ -6602,7 +6543,7 @@ private  void  get_oversample_boundaries(
                                       RPoint_x(search_point),
                                       RPoint_y(search_point),
                                       RPoint_z(search_point),
-                                      0, FALSE,
+                                      EVAL_LINEAR, FALSE,
                                       0.0, &value,
                                       NULL, NULL, NULL,
                                       NULL, NULL, NULL, NULL, NULL, NULL );
@@ -6785,7 +6726,7 @@ private  void  find_image_boundaries(
                                       parameters[IJ(node,0,3)],
                                       parameters[IJ(node,1,3)],
                                       parameters[IJ(node,2,3)],
-                                      0, FALSE, 0.0, &value,
+                                      EVAL_LINEAR, FALSE, 0.0, &value,
                                       NULL, NULL, NULL,
                                       NULL, NULL, NULL, NULL, NULL, NULL );
 

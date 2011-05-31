@@ -138,8 +138,8 @@ if( $tlaplace ) {
 
 if( $fwhm gt 0 ) {
   my $output_blurred = "${TmpDir}/thickness_blurred.mnc";
-  &run( "diffuse", "-kernel", $fwhm, "-iterations", 1000, "-parametric", 1,
-        $midSurface, $output, $output_blurred );
+  &run( "depth_potential", "-smooth", $fwhm, $output, 
+        $midSurface, $output_blurred );
   &run( "mv", "-f", $output_blurred, $output );
 }
 

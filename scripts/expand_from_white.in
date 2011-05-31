@@ -86,7 +86,7 @@ die "$usage\n" unless @ARGV >= 4;
 
     my ($i, $step, $size, $sw, $cw, $n_iters, $iter_inc);
     my ($si_step, $oversample, $self_weight, $self_dist);
-    my ($laplacian_sampling, $laplacian_factor, $laplacian_weight);
+    my ($laplacian_isovalue, $laplacian_sampling, $laplacian_weight);
     my ($self2, $surf2_info, $n_failures, $iter, $ni, $command, $ret, $b2);
     my ($laplace_info);
 
@@ -100,19 +100,41 @@ die "$usage\n" unless @ARGV >= 4;
       $log = " -log $logfile";
     }
 
+# self : distance from self intersection;
+# iso : isovalue of Laplacian field to converge to
+# l_s : do subsampling (0=none, n=#points extra along edge);
+#       (helps to get through isolated csf voxels in insula region,
+#       but must finish off the job without subsampling)
+# l_w : weight for Laplacian field: large value means tighter fit,
+#       but it seems that a small value is better convergence wise
+#       to ensure mesh quality.
+#   
+# Basically, choose a small enough value of l_w to see some 
+# convergence in phi. The smaller l_w, the slower the convergence,
+# but it will converge nonetheless. Then choose a large enough
+# value of sw (stretch) such as to maintain mesh smoothness and
+# see convergence in stretch constraint as well as in Laplacian
+# constraint. 
+
     my @schedule;
     @schedule = (
-      #size   sw        n_it  inc  si over   sw   self   l_s  l_d   l_w
-      #----- ----       ----  ---  -- ----  ----  ----   ---  ---  ----
-       20480, 1e1,   0,  100,  50, 1.0,  1,  1e1,  .25,  1.0, 1.0, 2e-5,
-       20480, 1e1,   0,  200,  50, 1.0,  1,  1e1,  .25,  0.0, 1.0, 4e-5,
-       20480, 1e1,   0,  200,  50, 1.0,  1,  1e1,  .25,  0.0, 1.0, 8e-5,
-       20480, 1e1,   0,  200,  50, 1.0,  1,  1e1,  .25,  0.0, 1.0, 1e-4,
-       81920, 1e1,   0,  300,  50,  .5,  1,  1e1,  .25,  0.0, 1.0, 5e-4,
-       81920, 1e1,   0,  500,  50,  .5,  1,  1e1,  .25,  0.0, 1.0, 1e-3,
-       81920, 1e1,   0,  400,  50,  .5,  1,  1e1,  .25,  0.0, 1.0, 1e-2,
-       81920, 2e1,   0,  300,  50,  .5,  1,  1e1,  .25,  1.0, 1.0, 1e-2,
-      327680, 2e1,   0,  500,  50,  .5,  1,  1e1, .125,  1.0, 1.0, 2e-3,
+      #size   sw   c_w  n_it  inc  si over   sw   self  iso  l_s  l_w
+      #----- ----  ---  ----  ---  -- ----  ----  ----  ---  ---  ----
+       81920, 1e1,  0,  100,  50, 1.0,  1,  1e1,  .25,   5,  1.0, 1e-3,
+       81920, 1e1,  0,  200,  50, 1.0,  1,  1e1,  .25,   5,  0.0, 1e-2,
+       81920, 1e1,  0,  100,  50, 0.5,  1,  1e1,  .25,   6,  1.0, 1e-2,
+       81920, 1e1,  0,  300,  50, 0.5,  1,  1e1,  .25,   6,  0.0, 1e-2,
+       81920, 1e1,  0,  100,  50, 0.5,  1,  1e1,  .25,   7,  1.0, 2e-2,
+       81920, 1e1,  0,  350,  50, 0.5,  1,  1e1,  .25,   7,  0.0, 2e-2,
+       81920, 1e1,  0,  150,  50, 0.5,  1,  1e1,  .25,   8,  1.0, 2e-2,
+       81920, 1e1,  0,  400,  50, 0.5,  1,  1e1,  .25,   8,  0.0, 2e-2,
+       81920, 1e1,  0,  150,  50, 0.5,  1,  1e1,  .25,   9,  1.0, 2e-2,
+       81920, 1e1,  0,  450,  50, 0.5,  1,  1e1,  .25,   9,  0.0, 2e-2,
+       81920, 1e1,  0,  500,  50, 0.25, 1,  1e1, .125, 9.5,  0.0, 2e-2,
+       81920, 1e1,  0,  500,  50, 0.25, 1,  1e1, .125,  10,  0.0, 5e-2,
+      # not moving much on hi-res.
+      327680, 1e1,  0,  200,  50, 0.125,1,  1e1, .0625, 10,  0.0, 5e-2,
+      327680, 1e1,  0,  100,  50, 0.125,1,  1e1, .0625, 10,  1.0, 2e-3,
     );
 
     my $sched_size =  12;
@@ -123,8 +145,8 @@ die "$usage\n" unless @ARGV >= 4;
             $step = $i / $sched_size;
             ( $size, $sw, $cw, $n_iters, $iter_inc,
               $si_step, $oversample, $self_weight, $self_dist, 
-              $laplacian_sampling, $laplacian_factor, $laplacian_weight ) =
-                         @schedule[$i..$i+$sched_size-1];
+              $laplacian_isovalue, $laplacian_sampling, 
+              $laplacian_weight ) = @schedule[$i..$i+$sched_size-1];
             print( "Step $step : $size polygons, stetch weight $sw, " );
             print( "Laplace weight $laplacian_weight\n" );
         }
@@ -200,8 +222,8 @@ die "$usage\n" unless @ARGV >= 4;
     my $n_selfs = 9;
     my $self_factor = 1.0;
 
-    my $stop_threshold = 3e-2;
-    my $stop_iters = 10;
+    my $stop_threshold = 1e-4;
+    my $stop_iters = 50;
 
     my $n_per = 1;
     my $tolerance = 1.0e-3;
@@ -284,8 +306,8 @@ die "$usage\n" unless @ARGV >= 4;
 
         ( $size, $sw, $cw, $n_iters, $iter_inc,
           $si_step, $oversample, $self_weight, $self_dist, 
-          $laplacian_sampling, $laplacian_factor, $laplacian_weight ) =
-                     @schedule[$i..$i+$sched_size-1];
+          $laplacian_isovalue, $laplacian_sampling,
+          $laplacian_weight ) = @schedule[$i..$i+$sched_size-1];
 
         if( $step < $start_n ) {
             $prev_n = $size;
@@ -343,14 +365,13 @@ die "$usage\n" unless @ARGV >= 4;
         print( "Fitting polygons, max $n_iters iters.\n" );
 
         $b2 = " -boundary 1 1 $cls 1.5 - 0 0 0 0 $oversample";
-        $laplace_info = " -laplacian $laplacian_file $laplacian_weight 0 10 " .
-                        " $laplacian_factor $laplacian_sampling ";
+        $laplace_info = " -laplacian $laplacian_file $laplacian_weight 0 " .
+                        "$laplacian_isovalue $laplacian_sampling ";
 
         $iter_inc *= $break_scale;
         if( $iter_inc <= 0 )  { $iter_inc = $n_iters; }
 
         $surf2_info = " -surface ${gray_surface} ${gray_surface} ${white_surface}" .
-          " -equal_lengths".
           " -stretch $sw ${white_surface} -1.0 0 0 0".
           " $b2 ".
           " $self2 ".
@@ -365,7 +386,6 @@ die "$usage\n" unless @ARGV >= 4;
             if( $ni > $iter_inc )  { $ni = $iter_inc; }
 
             $command = "$fit -mode three $surf2_info ".
-                       " -print_deriv " .
                        " -step $si_step " .
                        " -fitting $ni $n_per $tolerance " .
                        " -ftol $f_tolerance " .

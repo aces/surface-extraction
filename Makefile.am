@@ -16,6 +16,7 @@ bin_SCRIPTS = \
    scripts/expand_from_white \
    scripts/extract_white_surface \
    scripts/make_asp_grid \
+   scripts/marching_cubes.pl \
    scripts/mask_cortical_white_matter \
    scripts/pve_defrag \
    scripts/surface_qc
@@ -60,6 +61,7 @@ EXTRA_DIST = \
    scripts/expand_from_white.in \
    scripts/extract_white_surface.in \
    scripts/make_asp_grid.in \
+   scripts/marching_cubes.pl.in \
    scripts/mask_cortical_white_matter.in \
    scripts/pve_defrag.in \
    scripts/surface_qc.in \

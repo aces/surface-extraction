@@ -1,3 +1,11 @@
+New in Release 3.0.0
+--------------------
+        * improved stretch constraint
+        * corrected Laplacian constraint
+        * new marching-cubes algorithm and tools for white surface extraction
+        * upgraded scripts for surfaces based on new constraints
+        * cortical_thickness now uses depth_potential for blurring
+
 New in Release 2.4.0
 --------------------
         * new license Copyright Alan C. Evans
