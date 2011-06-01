@@ -99,14 +99,14 @@ unlink( "${tmpdir}/s1.mnc" );
 
 # Run the marching-cubes algorithm on the mask.
 
-&run( sphere_mesh, "${tmpdir}/s0.mnc", $white_surface, 
+&run( 'sphere_mesh', "${tmpdir}/s0.mnc", $white_surface, 
       ( $subsample ) ? "-subsample" : "" );
 unlink( "${tmpdir}/s0.mnc" );
 
 # Coarsen and smooth the original marching-cubes surface.
 
 my $white_surface_sm = "${tmpdir}/white_surf_sm.obj";
-&run( adapt_object_mesh, $white_surface, $white_surface_sm, 120000 );
+&run( 'adapt_object_mesh', $white_surface, $white_surface_sm, 120000 );
 
 # Inflate the white surface onto a unit sphere.
 
@@ -129,8 +129,8 @@ my $unit_sphere = "${tmpdir}/unit_sphere.obj";
 
 my $white_surface_blurred = "${tmpdir}/white_surf_blurred.obj";
 my $surfreg_model_blurred = "${tmpdir}/surfreg_model_blurred.obj";
-&run( adapt_object_mesh, $white_surface, $white_surface_blurred, 999999, 120 );
-&run( adapt_object_mesh, $surfreg_model, $surfreg_model_blurred, 999999, 100 );
+&run( 'adapt_object_mesh', $white_surface, $white_surface_blurred, 999999, 120 );
+&run( 'adapt_object_mesh', $surfreg_model, $surfreg_model_blurred, 999999, 100 );
 
 &run( 'depth_potential', '-alpha', '0.05', '-depth_potential',
       $white_surface_blurred, "${tmpdir}/white.vv" );
