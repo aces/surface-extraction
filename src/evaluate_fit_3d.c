@@ -7,6 +7,7 @@
 #include <time.h>
 #include <fit_3d.h>
 
+#define NEW_CURVATURE 0
 #define ADAPTIVE_RATIO 1
 #define NO_ANCHOR 0
 #define BOUNDARY_DECREASE 1
@@ -1942,22 +1943,13 @@ private  void   evaluate_image_value_fit_deriv(
 
 private  Real   evaluate_stretch_fit(
     Real          stretch_weight,
-    Real          max_stretch_weight,
-    Real          min_stretch,
-    Real          max_stretch,
-    Real          differential_offset,
-    Real          differential_ratio,
     int           n_points,
     Real          parameters[],
-    Smallest_int  active_flags[],
     int           n_neighbours[],
-    int           *neighbours[],
-    float         model_lengths[] )
+    int           *neighbours[] )
 {
-    int     point, neigh, ind, n, ind0, ind1, *neigh_ptr, n_neighs;
-    Real    fit1, fit2, dx, dy, dz, len, x1, y1, z1, model_len;
-    Real    actual_len, ln_start_weight;
-    BOOLEAN active;
+    int     point, neigh, ind, n, ind0, ind1, ind2, ind3, *neigh_ptr, n_neighs;
+    Real    fit1, fit2, dx, dy, dz, len, x1, y1, z1, elen[3];
 
     if( stretch_weight < 0.0 )
         return( 0.0 );
@@ -1965,131 +1957,108 @@ private  Real   evaluate_stretch_fit(
     fit1 = 0.0;
     fit2 = 0.0;
 
+    Real * areas;
+    ALLOC( areas, n_points );
+    for_less( point, 0, n_points ) areas[point] = 0.0;
+
+    for_less( point, 0, n_points ) {
+      ind0 = IJ(point,0,3);
+      for_less( n, 0, n_neighbours[point] ) {
+        int n1 = neighbours[point][n];
+        int n2 = neighbours[point][(n+1)%n_neighbours[point]];
+        if( !( point < n1 && point < n2 ) ) continue;
+        ind1 = IJ(n1,0,3);
+        ind2 = IJ(n2,0,3);
+        elen[0] = sqrt( ( parameters[ind0+0] - parameters[ind1+0] ) *
+                        ( parameters[ind0+0] - parameters[ind1+0] ) +
+                        ( parameters[ind0+1] - parameters[ind1+1] ) *
+                        ( parameters[ind0+1] - parameters[ind1+1] ) +
+                        ( parameters[ind0+2] - parameters[ind1+2] ) *
+                        ( parameters[ind0+2] - parameters[ind1+2] ) );
+        elen[1] = sqrt( ( parameters[ind2+0] - parameters[ind1+0] ) *
+                        ( parameters[ind2+0] - parameters[ind1+0] ) +
+                        ( parameters[ind2+1] - parameters[ind1+1] ) *
+                        ( parameters[ind2+1] - parameters[ind1+1] ) +
+                        ( parameters[ind2+2] - parameters[ind1+2] ) *
+                        ( parameters[ind2+2] - parameters[ind1+2] ) );
+        elen[2] = sqrt( ( parameters[ind0+0] - parameters[ind2+0] ) *
+                        ( parameters[ind0+0] - parameters[ind2+0] ) +
+                        ( parameters[ind0+1] - parameters[ind2+1] ) *
+                        ( parameters[ind0+1] - parameters[ind2+1] ) +
+                        ( parameters[ind0+2] - parameters[ind2+2] ) *
+                        ( parameters[ind0+2] - parameters[ind2+2] ) );
+        Real s = 0.5 * ( elen[0] + elen[1] + elen[2] );
+        Real local_area = sqrt( fabs( s * ( s - elen[0] ) * ( s - elen[1] ) * ( s - elen[2] ) ) +
+                                1.0e-10 );
+        areas[point] += local_area;
+        areas[n1] += local_area;
+        areas[n2] += local_area;
+      }
+#if NEW_CURVATURE
+      // some regularization on curvature
+      for_less( n, 0, n_neighbours[point] ) {
+        int n1 = neighbours[point][n];
+        if( !( point < n1 ) ) continue;
+        int n2 = neighbours[point][(n+1)%n_neighbours[point]];
+        int n3 = neighbours[point][(n+n_neighbours[point]-1)%n_neighbours[point]];
+        ind1 = IJ(n1,0,3);
+        ind2 = IJ(n2,0,3);
+        ind3 = IJ(n3,0,3);
+        dx = parameters[ind0+0] + parameters[ind1+0] - parameters[ind2+0] - parameters[ind3+0];
+        dy = parameters[ind0+1] + parameters[ind1+1] - parameters[ind2+1] - parameters[ind3+1];
+        dz = parameters[ind0+2] + parameters[ind1+2] - parameters[ind2+2] - parameters[ind3+2];
+        fit2 += dx * dx + dy * dy + dz  * dz;
+      }
+#endif
+    }
+
     // Starting edge
     ind = 0;
 
-    if( active_flags == NULL &&
-        (min_stretch >= max_stretch || max_stretch_weight <= 0.0) )
-    {
-        for_less( point, 0, n_points )
-        {
-            ind0 = IJ(point,0,3);
-            x1 = parameters[ind0+0];
-            y1 = parameters[ind0+1];
-            z1 = parameters[ind0+2];
+    for_less( point, 0, n_points ) {
+        ind0 = IJ(point,0,3);
+        x1 = parameters[ind0+0];
+        y1 = parameters[ind0+1];
+        z1 = parameters[ind0+2];
 
-            neigh_ptr = neighbours[point];
-            n_neighs = n_neighbours[point];
+        neigh_ptr = neighbours[point];
+        n_neighs = n_neighbours[point];
 
-            for_less( n, 0, n_neighs )
-            {
-                neigh = neigh_ptr[n];
-
-                if( !THIS_IS_UNIQUE_EDGE( point, neigh ) )
-                    continue;
-
-                ind1 = IJ(neigh,0,3);
-                dx = parameters[ind1+0] - x1;
-                dy = parameters[ind1+1] - y1;
-                dz = parameters[ind1+2] - z1;
-
-                actual_len = dx * dx + dy * dy + dz * dz;
-#ifdef USE_STRETCH_SQRT
-                if( actual_len > 0.0 )
-                    actual_len = sqrt( actual_len );
-                else
-                    actual_len = 0.0;
-#endif
-
-                model_len = (Real) model_lengths[ind];
-                ++ind;
-                len = actual_len - model_len;
-                if( model_len != 0.0 )
-                    len /= model_len;
-                fit1 += len * len;
-            }
+        Real sum_areas = 0.0;
+        for_less( n, 0, n_neighs ) {
+            neigh = neigh_ptr[n];
+            ind1 = IJ(neigh,0,3);
+            dx += areas[neigh] * parameters[ind1+0];
+            dy += areas[neigh] * parameters[ind1+1];
+            dz += areas[neigh] * parameters[ind1+2];
+            sum_areas += areas[neigh];
         }
-    }
-    else
-    {
-        ln_start_weight = log( differential_ratio );
 
-        for_less( point, 0, n_points )
-        {
-            ind0 = IJ(point,0,3);
-            x1 = parameters[ind0+0];
-            y1 = parameters[ind0+1];
-            z1 = parameters[ind0+2];
-
-            active = active_flags == NULL || active_flags[point];
-
-            neigh_ptr = neighbours[point];
-            n_neighs = n_neighbours[point];
-
-            for_less( n, 0, n_neighs )
-            {
-                neigh = neigh_ptr[n];
-
-                if( !THIS_IS_UNIQUE_EDGE( point, neigh ) )
-                    continue;
-
-                if( !active && !active_flags[neigh] )
-                {
-                    ++ind;
-                    continue;
-                }
-
-                ind1 = IJ(neigh,0,3);
-                dx = parameters[ind1+0] - x1;
-                dy = parameters[ind1+1] - y1;
-                dz = parameters[ind1+2] - z1;
-
-                actual_len = dx * dx + dy * dy + dz * dz;
-#ifdef USE_STRETCH_SQRT
-                if( actual_len >= 0.0 )
-                    actual_len = sqrt( actual_len );
-                else
-                    actual_len = 0.0;
-#endif
-
-                model_len = (Real) model_lengths[ind];
-                ++ind;
-                len = actual_len - model_len;
-                if( model_len != 0.0 )
-                    len /= model_len;
-                fit1 += len * len;
-
-                if( min_stretch >= max_stretch || max_stretch_weight <= 0.0 )
-                    continue;
-
-                fit2 += differential_weights( len, min_stretch, max_stretch,
-                                              differential_offset,
-                                              ln_start_weight );
-            }
-        }
+        dx = dx / sum_areas - x1;
+        dy = dy / sum_areas - y1;
+        dz = dz / sum_areas - z1;
+        fit1 += dx * dx + dy * dy + dz * dz;
     }
 
-    return( fit1 * stretch_weight + fit2 * max_stretch_weight );
+    FREE( areas );
+
+#if NEW_CURVATURE
+    return( 0.5 * ( fit1 + 10.0 * fit2 ) * stretch_weight );
+#else
+    return( 0.5 * fit1 * stretch_weight );
+#endif
 }
 
 private  void   evaluate_stretch_fit_deriv(
     Real          stretch_weight,
-    Real          max_stretch_weight,
-    Real          min_stretch,
-    Real          max_stretch,
-    Real          differential_offset,
-    Real          differential_ratio,
     int           n_points,
     Real          parameters[],
     int           n_neighbours[],
     int           *neighbours[],
-    float         model_lengths[],
     Real          deriv[] )
 {
-    int    point, neigh, ind, n, ind0, ind1;
-    Real   dx, dy, dz, len, x1, y1, z1, x2, y2, z2;
-    Real   model_length, model_length_dividend, factor;
-    Real   actual_len, derivative, ln_start_weight;
+    int    point, neigh, ind, n, ind0, ind1, ind2, ind3, j;
+    Real   dx, dy, dz;
 
     if( stretch_weight < 0.0 )
         return;
@@ -2098,83 +2067,116 @@ private  void   evaluate_stretch_fit_deriv(
 
     ind = 0;
 
-    ln_start_weight = log( differential_ratio );
+    Real   elen[3];
+    Real * areas;
+    ALLOC( areas, n_points );
+    for_less( point, 0, n_points ) areas[point] = 0.0;
 
-    for_less( point, 0, n_points )
-    {
-        ind0 = IJ(point,0,3);
-        x1 = parameters[ind0+0];
-        y1 = parameters[ind0+1];
-        z1 = parameters[ind0+2];
-
-        for_less( n, 0, n_neighbours[point] )
-        {
-            neigh = neighbours[point][n];
-
-            if( !THIS_IS_UNIQUE_EDGE( point, neigh ) )
-                continue;
-
-            ind1 = IJ(neigh,0,3);
-            x2 = parameters[ind1+0];
-            y2 = parameters[ind1+1];
-            z2 = parameters[ind1+2];
-
-            dx = x2 - x1;
-            dy = y2 - y1;
-            dz = z2 - z1;
-
-            actual_len = dx * dx + dy * dy + dz * dz;
-#ifdef USE_STRETCH_SQRT
-            if( actual_len >= 0.0 )
-                actual_len = sqrt( actual_len );
-            else
-                actual_len = 0.0;
-#endif
-
-            model_length = (Real) model_lengths[ind];
-            if( model_length == 0.0 )
-                model_length_dividend = 1.0;
-            else
-                model_length_dividend = model_length;
-
-            ++ind;
-            len = (actual_len - model_length) / model_length_dividend;
-
-#ifdef USE_STRETCH_SQRT
-            factor = 2.0 * stretch_weight * len / model_length_dividend /
-                     actual_len;
-#else
-            factor = 4.0 * stretch_weight * len / model_length_dividend;
-#endif
-            deriv[ind0+0] += factor * -dx;
-            deriv[ind0+1] += factor * -dy;
-            deriv[ind0+2] += factor * -dz;
-            deriv[ind1+0] += factor * dx;
-            deriv[ind1+1] += factor * dy;
-            deriv[ind1+2] += factor * dz;
-
-            if( min_stretch < max_stretch && max_stretch_weight > 0.0 &&
-                (len < min_stretch || len > max_stretch) )
-            {
-                derivative = differential_weights_deriv( len, min_stretch,
-                                  max_stretch, differential_offset,
-                                  ln_start_weight );
-
-#ifdef USE_STRETCH_SQRT
-                factor = max_stretch_weight * derivative /
-                         model_length_dividend / actual_len;
-#else
-not implemented
-#endif
-                deriv[ind0+0] += factor * -dx;
-                deriv[ind0+1] += factor * -dy;
-                deriv[ind0+2] += factor * -dz;
-                deriv[ind1+0] += factor * dx;
-                deriv[ind1+1] += factor * dy;
-                deriv[ind1+2] += factor * dz;
-            }
-        }
+    for_less( point, 0, n_points ) {
+      ind0 = IJ(point,0,3);
+      for_less( n, 0, n_neighbours[point] ) {
+        int n1 = neighbours[point][n];
+        int n2 = neighbours[point][(n+1)%n_neighbours[point]];
+        if( !( point < n1 && point < n2 ) ) continue;
+        ind1 = IJ(n1,0,3);
+        ind2 = IJ(n2,0,3);
+        elen[0] = sqrt( ( parameters[ind0+0] - parameters[ind1+0] ) *
+                        ( parameters[ind0+0] - parameters[ind1+0] ) +
+                        ( parameters[ind0+1] - parameters[ind1+1] ) *
+                        ( parameters[ind0+1] - parameters[ind1+1] ) +
+                        ( parameters[ind0+2] - parameters[ind1+2] ) *
+                        ( parameters[ind0+2] - parameters[ind1+2] ) );
+        elen[1] = sqrt( ( parameters[ind2+0] - parameters[ind1+0] ) *
+                        ( parameters[ind2+0] - parameters[ind1+0] ) +
+                        ( parameters[ind2+1] - parameters[ind1+1] ) *
+                        ( parameters[ind2+1] - parameters[ind1+1] ) +
+                        ( parameters[ind2+2] - parameters[ind1+2] ) *
+                        ( parameters[ind2+2] - parameters[ind1+2] ) );
+        elen[2] = sqrt( ( parameters[ind0+0] - parameters[ind2+0] ) *
+                        ( parameters[ind0+0] - parameters[ind2+0] ) +
+                        ( parameters[ind0+1] - parameters[ind2+1] ) *
+                        ( parameters[ind0+1] - parameters[ind2+1] ) +
+                        ( parameters[ind0+2] - parameters[ind2+2] ) *
+                        ( parameters[ind0+2] - parameters[ind2+2] ) );
+        Real s = 0.5 * ( elen[0] + elen[1] + elen[2] );
+        Real local_area = sqrt( fabs( s * ( s - elen[0] ) * ( s - elen[1] ) * ( s - elen[2] ) ) +
+                                1.0e-10 );
+        areas[point] += local_area;
+        areas[n1] += local_area;
+        areas[n2] += local_area;
+      }
     }
+
+    Real * delta, * norm_areas;
+    ALLOC( delta, 3 * n_points ); 
+    ALLOC( norm_areas, n_points ); 
+
+    for_less( point, 0, n_points ) {
+      ind0 = IJ(point,0,3);
+      for( j = 0; j < 3; j++ ) delta[ind0+j] = 0.0;
+      Real sum_areas = 0.0;
+      for_less( n, 0, n_neighbours[point] ) {
+        neigh = neighbours[point][n];
+        ind1 = IJ(neigh,0,3);
+        for( j = 0; j < 3; j++ ) {
+          delta[ind0+j] += areas[neigh] * parameters[ind1+j];
+        }
+        sum_areas += areas[neigh];
+      }
+      norm_areas[point] = areas[point] / sum_areas;
+      for( j = 0; j < 3; j++ ) {
+        delta[ind0+j] /= sum_areas;
+        delta[ind0+j] -= parameters[ind0+j];
+      }
+    }
+    FREE( areas );
+
+    for_less( point, 0, n_points ) {
+        ind0 = IJ(point,0,3);
+
+        deriv[ind0+0] -= stretch_weight * delta[ind0+0];
+        deriv[ind0+1] -= stretch_weight * delta[ind0+1];
+        deriv[ind0+2] -= stretch_weight * delta[ind0+2];
+        for_less( n, 0, n_neighbours[point] ) {
+            neigh = neighbours[point][n];
+            ind1 = IJ(neigh,0,3);
+            deriv[ind0+0] += stretch_weight * delta[ind1+0] * norm_areas[neigh];
+            deriv[ind0+1] += stretch_weight * delta[ind1+1] * norm_areas[neigh];
+            deriv[ind0+2] += stretch_weight * delta[ind1+2] * norm_areas[neigh];
+        }
+
+#if NEW_CURVATURE
+        // some regularization on curvature
+        for_less( n, 0, n_neighbours[point] ) {
+          int n1 = neighbours[point][n];
+          if( !( point < n1 ) ) continue;
+          int n2 = neighbours[point][(n+1)%n_neighbours[point]];
+          int n3 = neighbours[point][(n+n_neighbours[point]-1)%n_neighbours[point]];
+          ind1 = IJ(n1,0,3);
+          ind2 = IJ(n2,0,3);
+          ind3 = IJ(n3,0,3);
+          dx = parameters[ind0+0] + parameters[ind1+0] - parameters[ind2+0] - parameters[ind3+0];
+          dy = parameters[ind0+1] + parameters[ind1+1] - parameters[ind2+1] - parameters[ind3+1];
+          dz = parameters[ind0+2] + parameters[ind1+2] - parameters[ind2+2] - parameters[ind3+2];
+          Real alpha = 10.0;
+          deriv[ind0+0] += alpha * stretch_weight * dx;
+          deriv[ind0+1] += alpha * stretch_weight * dy;
+          deriv[ind0+2] += alpha * stretch_weight * dz;
+          deriv[ind1+0] += alpha * stretch_weight * dx;
+          deriv[ind1+1] += alpha * stretch_weight * dy;
+          deriv[ind1+2] += alpha * stretch_weight * dz;
+          deriv[ind2+0] -= alpha * stretch_weight * dx;
+          deriv[ind2+1] -= alpha * stretch_weight * dy;
+          deriv[ind2+2] -= alpha * stretch_weight * dz;
+          deriv[ind3+0] -= alpha * stretch_weight * dx;
+          deriv[ind3+1] -= alpha * stretch_weight * dy;
+          deriv[ind3+2] -= alpha * stretch_weight * dz;
+        }
+#endif
+    }
+
+    FREE( delta );
+    FREE( norm_areas );
 }
 
 public  Real  get_base_length(
@@ -5548,16 +5550,10 @@ private  int   private_evaluate_fit(
             if( which == -2 || which == count ) {
                 stretch = &deform->surfaces[surface].stretch[i];
                 f = evaluate_stretch_fit( stretch->stretch_weight,
-                                      stretch->max_stretch_weight,
-                                      stretch->min_stretch,
-                                      stretch->max_stretch,
-                                      stretch->differential_offset,
-                                      stretch->differential_ratio,
-                                      stretch->n_points,
-                                      this_parms, this_active,
-                                      stretch->n_neighbours,
-                                      stretch->neighbours,
-                                      stretch->model_lengths );
+                                          stretch->n_points,
+                                          this_parms,
+                                          stretch->n_neighbours,
+                                          stretch->neighbours );
 
                 eval->stretch_fit += f;
                 *fit += f;
@@ -5857,15 +5853,10 @@ public  void   evaluate_fit_deriv(
             stretch = &deform->surfaces[surface].stretch[i];
 
             evaluate_stretch_fit_deriv( stretch->stretch_weight,
-                                        stretch->max_stretch_weight,
-                                        stretch->min_stretch,
-                                        stretch->max_stretch,
-                                        stretch->differential_offset,
-                                        stretch->differential_ratio,
-                                        stretch->n_points, this_parms,
+                                        stretch->n_points, 
+                                        this_parms,
                                         stretch->n_neighbours,
                                         stretch->neighbours,
-                                        stretch->model_lengths,
                                         this_deriv );
         }
     }

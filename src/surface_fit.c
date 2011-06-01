@@ -430,7 +430,6 @@ int  main(
               !get_real_argument( 0.0, &laplacian.weight ) ||
               !get_real_argument( 0.0, &laplacian.from_value ) ||
               !get_real_argument( 0.0, &laplacian.to_value ) ||
-              !get_real_argument( 0.0, &laplacian.deriv_factor ) ||
               !get_real_argument( 1.0, &laplacian.oversample ) )
           {
             print_error( "Error in -laplacian arguments.\n" );
