@@ -168,7 +168,7 @@ unlink( $white_sphere_sm );
 
 &run( 'check_self_intersect', $white_surface, '-fix', $white_surface );
 my @ret = `check_self_intersect $white_surface`;
-$ret[1] =~ /Number of self_intersecting triangles = (\d+)/;
+$ret[1] =~ /Number of self-intersecting triangles = (\d+)/;
 my $num_inter = $1;
 if( $num_inter > 0 ) {
   die "Failed interpolation of marching-cubes surface with $num_inter self-intersections.\n";
