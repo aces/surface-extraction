@@ -77,6 +77,12 @@ my $surfreg_model = "${CIVET_dir}/models/surf_reg_model_left.obj";
 
 my $tmpdir = &tempdir( "mcubes-XXXXXX", TMPDIR => 1, CLEANUP => 1 );
 
+# Make sure that the mask is not empty.
+
+my $sum = `mincstats -quiet -sum $white_matter_mask`;
+chomp( $sum );
+die "Empty white matter mask.\n" if( $sum == 0 );
+
 # Preparation of the white matter mask for extraction of the surface
 # using marching cubes.
 
@@ -166,6 +172,8 @@ unlink( $white_sphere_sm );
 
 # Check for self-intersections in the marching-cubes surface.
 
+&run( 'check_self_intersect', $white_surface, '-fix', $white_surface );
+&run( 'check_self_intersect', $white_surface, '-fix', $white_surface );
 &run( 'check_self_intersect', $white_surface, '-fix', $white_surface );
 my @ret = `check_self_intersect $white_surface`;
 $ret[1] =~ /Number of self-intersecting triangles = (\d+)/;

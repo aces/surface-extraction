@@ -713,8 +713,11 @@ private Real point_triangle_distance( Real p0[3], Real p1[3], Real p2[3],
 
   if( det == 0.0 ) {
     // ????? something is wrong???
-    printf( "fatal error in intersection\n" );
-    exit(1);
+    // printf( "fatal error in intersection\n" );
+    // exit(1);
+    // looks like a flat triangle, so project point to
+    // a different closest triangle instead.
+    return( 1.0e20 );
   } else {
     Real rhs_t, rhs_s, xi, eta, dx, dy, dz, dist_sq, min_dist_sq;
     // Point p0.
@@ -926,8 +929,11 @@ private int edge_triangle_intersect( Real p0[3], Real p1[3],
 
     if( det == 0.0 ) {
       // ????? something is wrong???
-      printf( "fatal error in intersection\n" );
-      exit(1);
+      // printf( "fatal error in intersection\n" );
+      // exit(1);
+      // looks like a flat triangle, so project point to
+      // a different closest triangle instead.
+      return( 0 );
     } else {
       Real xi = ( A_ss * rhs_t - A_st * rhs_s ) / det;
       Real eta = ( A_tt * rhs_s - A_st * rhs_t ) / det;
@@ -1225,8 +1231,11 @@ private Real single_point_triangle_distance( Real x, Real y, Real z,
 
   if( det == 0.0 ) {
     // ????? something is wrong???
-    printf( "fatal error in intersection\n" );
-    exit(1);
+    // printf( "fatal error in intersection\n" );
+    // exit(1);
+    // looks like a flat triangle, so project point to
+    // a different closest triangle instead.
+    return( 1.0e20 );
   } else {
     Real rhs_t, rhs_s, xi, eta, dx, dy, dz, dist_sq, min_dist_sq;
     // Point p0.
