@@ -5976,7 +5976,7 @@ public  void   evaluate_fit_deriv(
       for_less( i, 0, deform->surfaces[surface].n_laplacian ) {
         deriv_modified = TRUE;
         evaluate_laplacian_fit_deriv(
-                           deform->surfaces[surface].laplacian->direction,
+                           deform->surfaces[surface].laplacian->weight,
                            deform->surfaces[surface].laplacian->volume,
                            deform->surfaces[surface].bound->volume,
                            deform->surfaces[surface].laplacian->from_value,
