@@ -35,7 +35,6 @@ Required parameters:
   gray.obj   : gray matter surface (output)
   field.obj  : Laplacian field for gray matter
 Optional parameters:
-  [-quick]   : start from 20k white surface (quick but risky)
   [-refine]  : to generate the gray surface with 327680 triangles
   [-log]     : log file for stdout
   [-start]   : first step in schedule (for restart)
@@ -60,7 +59,6 @@ USAGE
 
 Getopt::Tabular::SetHelp( $help, $usage );
 
-my $quick = 0;
 my $refine = 0;
 my $start_n = -1;
 my $end_n = 9999;
@@ -70,8 +68,6 @@ my $logfile;
 # --- process options ---
 my @options = 
   ( @DefaultArgs,     # from MNI::Startup
-  ['-quick', 'boolean', 0, \$quick,
-   "Start from low-resolution 20480 polygons white surface (quick but risky)"],
   ['-refine', 'boolean', 0, \$refine, 
    "Create a high-resolution surface at 327680 polygons"],
   ['-start', 'string', 1, \$start_n, "First step in schedule"],
@@ -134,7 +130,6 @@ die "$usage\n" unless @ARGV >= 4;
        81920, 1e1,  0,  500,  50, 0.25, 1,  1e1, .125,  10,  0.0, 5e-2,
       # not moving much on hi-res.
       327680, 1e1,  0,  200,  50, 0.125,1,  1e1, .0625, 10,  0.0, 5e-2,
-      327680, 1e1,  0,  100,  50, 0.125,1,  1e1, .0625, 10,  1.0, 2e-3,
     );
 
     my $sched_size =  12;
@@ -161,16 +156,6 @@ die "$usage\n" unless @ARGV >= 4;
     }
     if( $end_n < $start_n ) {
       die "Nothing to do, all steps are done.\n";
-    }
-
-    # ignore initial few steps if no lo-res surface is desired;
-    # replace these iterations by 81920.
-    if( !( $quick ) ) {
-      for( $i = 0;  $i < @schedule;  $i += $sched_size ) {
-        if( $schedule[$i] == 20480 ) {
-          $schedule[$i] = 81920;
-        }
-      }
     }
 
     # ignore last few steps if no hi-res surface is desired.

@@ -220,16 +220,18 @@ sub run_asp {
   my @schedule = (
   #  size   sw    cw  n_itr  inc   offo   offi   si  in  out  over   sw   self
   #  ----- ----  ---- -----  ----  ----   ----   --  --  ---  ----  ----  ----
-    81920, 100,    0,  200,   50,   50,    1,    1,  20,  3,    2,  1e0,  .25,
-    81920,  20,    0,  200,   50,   50,    1,    1,  20,  3,    2,  1e0,  .25,
-    81920,   5,    0,  200,   50,   50,    5,    1,  10,  2,    2,  1e0,  .25,
-    81920,   2,    0,  200,   50,   50,    5,  0.5,  10,  2,    2,  1e0,  .25,
-#  327680,  10,    0,  200,   50,   50,    1,  0.5,   5,  2,    1,  1e0,  .25,
+    81920, 100,    0,  200,   50,   50,    1,    1,  20,  3,    0,  1e0,  .25,
+    81920,  20,    0,  200,   50,   50,    1,    1,  20,  3,    0,  1e0,  .25,
+    81920,   5,    0,  200,   50,   50,    5,    1,  10,  2,    0,  1e0,  .25,
+    81920,   2,    0,  200,   50,   50,    5,  0.5,  10,  2,    0,  1e0,  .25,
+    81920,   1,    0,  200,   50,   20,   10,  0.5,   5,  1,    0,  1e0,  .25,
+   327680,  50,    0,  200,   50,   10,    2, 0.25,   5,  1,    0,  1e0, .125,
+   327680,  20,    0,  100,   50,   10,    2, 0.25,   5,  1,    0,  1e0, .125,
   );
   my $sched_size =  13;
   my $num_steps = @schedule / $sched_size;
 
-  &run( 'subdivide_polygons', $white_model, "${tmpdir}/white_model_tmp.obj", 81920 );
+  &run( 'cp', '-f', $white_model, "${tmpdir}/white_model_tmp.obj" );
   $white_model = "${tmpdir}/white_model_tmp.obj";
 
   for( my $i = 0;  $i < @schedule;  $i += $sched_size ) {
@@ -239,6 +241,9 @@ sub run_asp {
     if( !( $refine ) ) {
       last if( $size == 327680 );
     }
+
+    &run( 'subdivide_polygons', $white_model, $white_model, $size );
+
     my $prev_size = `print_n_polygons $white`;
     chomp( $prev_size );
     if( $prev_size != $size ) {
