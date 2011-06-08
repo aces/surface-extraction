@@ -210,7 +210,7 @@ sub run_asp {
   my $n_selfs = 9;
 
   my $stop_threshold = 1e-3;
-  my $stop_iters = 10;
+  my $stop_iters = 1000;
 
   my $n_per = 5;
   my $tolerance = 1.0e-03;
