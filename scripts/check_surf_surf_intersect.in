@@ -68,7 +68,6 @@ unlink( $txt );
 #Execute a system call.
 
 sub run {
-  print "@_\n";
   system(@_)==0 or die "Command @_ failed with status: $?";
 }
 
