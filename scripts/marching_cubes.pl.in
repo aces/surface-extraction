@@ -133,29 +133,10 @@ my $unit_sphere = "${tmpdir}/unit_sphere.obj";
 # registration. This will be a first alignment that will ensure 
 # better isotropic mesh.
 
-&run( $surfreg, '-clobber', '-min_control_mesh', 80, '-max_control_mesh',
-      20480, '-blur_coef', '1.25', '-neighbourhood_radius', '2.8', 
+&run( $surfreg, '-clobber', '-min_control_mesh', 320, '-max_control_mesh',
+      20480, '-blur_coef', '1.25', '-neighbourhood_radius', '1.8', 
       '-target_spacing', '1.9', $surfreg_model, $white_surface, 
       "${tmpdir}/white.sm" );
-
-# my $white_surface_blurred = "${tmpdir}/white_surf_blurred.obj";
-# my $surfreg_model_blurred = "${tmpdir}/surfreg_model_blurred.obj";
-# &run( 'adapt_object_mesh', $white_surface, $white_surface_blurred, 999999, 120 );
-# &run( 'adapt_object_mesh', $surfreg_model, $surfreg_model_blurred, 999999, 100 );
-# 
-# &run( 'depth_potential', '-alpha', '0.05', '-depth_potential',
-#       $white_surface_blurred, "${tmpdir}/white.vv" );
-# &run( 'depth_potential', '-alpha', '0.05', '-depth_potential',
-#       $surfreg_model_blurred, "${tmpdir}/model.vv" );
-# 
-# &run( $surfreg, '-clobber', '-min_control_mesh', 80, '-max_control_mesh',
-#       20480, '-blur_coef', '2.25', '-neighbourhood_radius', '2.8', 
-#       '-target_spacing', '1.9', $surfreg_model_blurred, "${tmpdir}/model.vv",
-#       $white_surface_blurred, "${tmpdir}/white.vv", "${tmpdir}/white.sm" );
-# unlink( "${tmpdir}/white.vv" );
-# unlink( "${tmpdir}/model.vv" );
-# unlink( $white_surface_blurred );
-# unlink( $surfreg_model_blurred );
 
 # Resample the unit sphere. Could do some smoothing if it helps prevent
 # self-intersections.
