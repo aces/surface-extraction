@@ -5,6 +5,7 @@ New in Release 3.0.0
         * new marching-cubes algorithm and tools for white surface extraction
         * upgraded scripts for surfaces based on new constraints
         * cortical_thickness now uses depth_potential for blurring
+        * clean-up some erroneous self-intersection cases
 
 New in Release 2.4.0
 --------------------

@@ -302,7 +302,7 @@ int main( int argc, char * argv[] ) {
       int * triangles = deform.surfaces[0].surface.triangles;
       for( s = 0; s < n_candidates; s++ ) {
         Real dist = sqrt( si_lookup->min_line_dists[s] );
-        if( dist <= 1.0e-08 ) {
+        if( dist <= 1.0e-04 ) {
           int poly1 = si_lookup->p1s[s];
           int poly2 = si_lookup->p2s[s];
           node_flags[triangles[3*poly1]] = 1;
@@ -313,6 +313,16 @@ int main( int argc, char * argv[] ) {
           node_flags[triangles[3*poly2+2]] = 1;
         }
       }   
+      // Dilate one connectivity layer.
+      for( s = 0; s < deform.surfaces[0].surface.n_polygons; s++ ) {
+        if( node_flags[triangles[3*s]] == 1 ||
+            node_flags[triangles[3*s+1]] == 1 ||
+            node_flags[triangles[3*s+2]] == 1 ) {
+          if( node_flags[triangles[3*s]] == 0 ) node_flags[triangles[3*s]] = 2;
+          if( node_flags[triangles[3*s+1]] == 0 ) node_flags[triangles[3*s+1]] = 2;
+          if( node_flags[triangles[3*s+2]] == 0 ) node_flags[triangles[3*s+2]] = 2;
+        }
+      }
 
       Real alpha = 0.4;
       int iter, i;

@@ -4,6 +4,7 @@
         * new marching-cubes algorithm and tools for white surface extraction
         * upgraded scripts for surfaces based on new constraints
         * cortical_thickness now uses depth_potential for blurring
+        * clean-up some erroneous self-intersection cases
 
 2009-07-27  Claude Lepage      <claude@bic.mni.mcgill.ca>
 	* new license Copyright Alan C. Evans

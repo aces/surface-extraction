@@ -14,6 +14,13 @@
 static Real sum_dist;
 #endif
 
+#define  A0  (1 << 0)
+#define  A1  (1 << 1)
+#define  A2  (1 << 2)
+#define  B0  (1 << 3)
+#define  B1  (1 << 4)
+#define  B2  (1 << 5)
+
 private  void    recursive_find_close_pairs( 
     Real               min_distance,
     Real               search_distance,
@@ -289,15 +296,16 @@ private  void    recursive_find_close_pairs(
             for_less( i2, start, n_to_compare ) {
                 info_ptr = compare[i2];
 
+                p2 = info_ptr->p1;
+                n21 = info_ptr->n11;
+                n22 = info_ptr->n12;
                 if( info_ptr->low_limits[X] > x1_high ||
                     info_ptr->high_limits[X] < x1_low ||
                     info_ptr->low_limits[Y] > y1_high ||
                     info_ptr->high_limits[Y] < y1_low ||
                     info_ptr->low_limits[Z] > z1_high ||
                     info_ptr->high_limits[Z] < z1_low ||
-                    used_flags[ p2 = info_ptr->p1 ] ||
-                    used_flags[ n21 = info_ptr->n11 ] ||
-                    used_flags[ n22 = info_ptr->n12 ] )
+                    used_flags[p2] || used_flags[n21] || used_flags[n22] )
                 {
                     continue;
                 }
@@ -399,6 +407,8 @@ private  void   find_self_intersect_candidates(
     int                n_points,
     int                n_triangles,
     int                triangles[],
+    int              * n_neighbours,
+    int              * neighbours[],
     Real               parameters[],
     Real               max_movement,
     Real               line_dir[],
@@ -408,6 +418,7 @@ private  void   find_self_intersect_candidates(
     int               poly1, n_polygons;
     int               p1, dim, p, n;
     int               n11, n12;
+    int               i, j;
     int               *list_of_polys, n_alloced;
     unsigned int      *poly_classes;
     Real              search_distance;
@@ -509,10 +520,68 @@ sum_dist = 0.0;
         FREE( poly_classes );
     }
 
-    FREE( poly_info );
-
     if( *closest_distance > 0.0 )
         *closest_distance = sqrt( *closest_distance );
+
+    // Ignore cases for which the vertices involved are 
+    // directly connected via another vertex.
+
+    int new_n_pairs_ptr = 0;
+    for( n = 0; n < *n_pairs_ptr; n++ ) {
+      int poly1 = (*p1s_ptr)[n];
+      int poly2 = (*p2s_ptr)[n];
+      int which_case = (*cases_ptr)[n];
+      
+      int a0 = poly_info[poly1].p1;
+      int a1 = poly_info[poly1].n11;
+      int a2 = poly_info[poly1].n12;
+      int b0 = poly_info[poly2].p1;
+      int b1 = poly_info[poly2].n11;
+      int b2 = poly_info[poly2].n12;
+
+      int nn[6];
+      nn[0] = ( which_case & A0 ) ? ( a0 ) : ( -1 );
+      nn[1] = ( which_case & A1 ) ? ( a1 ) : ( -1 );
+      nn[2] = ( which_case & A2 ) ? ( a2 ) : ( -1 );
+      nn[3] = ( which_case & B0 ) ? ( b0 ) : ( -1 );
+      nn[4] = ( which_case & B1 ) ? ( b1 ) : ( -1 );
+      nn[5] = ( which_case & B2 ) ? ( b2 ) : ( -1 );
+      
+      int count = 6;
+      for( i = 0; i < 6; i++ ) {
+        if( nn[i] == -1 ) count--;
+      }
+
+      // check if any of the a's shares a vertex neighbour with
+      // any of the b's. Note that the a's are connected to each
+      // other and so are the b's.
+
+      int common = 0, ki, kj;
+      if( count == 3 || count == 4 ) {
+        for( i = 0; i < 3; i++ ) {
+          if( nn[i] == -1 ) continue;
+          for( j = 3; j < 6; j++ ) {
+            if( nn[j] == -1 ) continue;
+            for( kj = 0; kj < n_neighbours[nn[j]]; kj++ ) {
+              for( ki = 0; ki < n_neighbours[nn[i]]; ki++ ) {
+                if( neighbours[nn[i]][ki] == neighbours[nn[j]][kj] ) common = 1;
+              }
+            }
+          } 
+          break;
+        }
+      }
+      if( common == 0 ) {
+        (*p1s_ptr)[new_n_pairs_ptr] = (*p1s_ptr)[n];
+        (*p2s_ptr)[new_n_pairs_ptr] = (*p2s_ptr)[n];
+        (*cases_ptr)[new_n_pairs_ptr] = (*cases_ptr)[n];
+        (*min_line_dists_ptr)[new_n_pairs_ptr] = (*min_line_dists_ptr)[n];
+        new_n_pairs_ptr++;
+      }
+    }
+    *n_pairs_ptr = new_n_pairs_ptr;
+
+    FREE( poly_info );
 
 #ifdef PRINT_DIST
 print( "Sum dist: %.15g\n", sum_dist );
@@ -579,6 +648,8 @@ public  Real  recompute_self_intersects(
                        deform->surfaces[surface].surface.n_points,
                        deform->surfaces[surface].surface.n_polygons,
                        deform->surfaces[surface].surface.triangles,
+                       deform->surfaces[surface].surface.n_neighbours,
+                       deform->surfaces[surface].surface.neighbours,
                        this_parms, max_movement, this_line,
                        &close );
 
