@@ -27,7 +27,6 @@ use Getopt::Tabular;
 use MNI::Spawn;
 use MNI::FileUtilities qw(check_output_dirs);
 
-
 # ===== Global Variables =====
 my ($usage, $help, $license);
 my ($mri, $cls, $white, $gradient, $gradient_masked);
@@ -148,28 +147,32 @@ chomp( $mean = qx(intensity_statistics ${gradient_masked} none | grep Mean | cut
 chomp( $std = qx(intensity_statistics ${gradient_masked} none | grep Std | cut -c 12-) );
 $gradient_weight = 1e-2 / ($mean * $mean);
 $gradient_threshold = $mean + $std;
-my $oversample = 0;
 
-## NOTE: stretch weight should depend on mesh size 80K or 320K.
+my $npoly= `print_n_polygons $white`;
+chomp( $npoly);
 
-Spawn(["surface_fit", "-surface", $white, $white_fix, "-stretch", "4", $white,
-       "-.9", "0", "0", "0", "-boundary", "50", "5", $cls, "2.5", "-", "3", 
-       "10", "0", "0", $oversample, 
-       "-self_intersect", "1",         "0.25000000000000", 
-       "-self_intersect", "10",        "0.22333333333333", 
-       "-self_intersect", "100",       "0.19666666666666", 
-       "-self_intersect", "1000",      "0.17000000000000", 
-       "-self_intersect", "10000",     "0.14333333333333", 
-       "-self_intersect", "100000",    "0.11666666666666", 
-       "-self_intersect", "1000000",   "0.09000000000000", 
+Spawn(["surface_fit", "-surface", $white, $white_fix, 
+       "-stretch", ($npoly<=81920)?"2":"0.5", $white,
+       "-.9", "0", "0", "0", "-boundary", "50", "1", $cls, "2.5", "-", "3", 
+       "10", "0", "0", "1", 
+       "-self_intersect", "1",         "0.25000000000000",
+       "-self_intersect", "10",        "0.22333333333333",
+       "-self_intersect", "100",       "0.19666666666666",
+       "-self_intersect", "1000",      "0.17000000000000",
+       "-self_intersect", "10000",     "0.14333333333333",
+       "-self_intersect", "100000",    "0.11666666666666",
+       "-self_intersect", "1000000",   "0.09000000000000",
        "-self_intersect", "10000000",  "0.06333333333333",
-       "-self_intersect", "100000000", "0.03666666666666", 
-       "-self_intersect", "1e8",       "0.01000000000000", 
-       "-step", "0.5", "-fitting", "300", "5", "1e-03", 
-       "-ftol", "1e-06", "-stop", "0.001", "10", 
+       "-self_intersect", "100000000", "0.03666666666666",
+       "-self_intersect", "1e8",       "0.01000000000000",
+       "-step", ($npoly<=81920)?"1":"0.25", 
+       "-fitting", "300", "5", "1e-03", 
+       "-ftol", "1e-06", "-stop", "0.03", "10", 
        "-gradient", $gradient_weight, $gradient_parm, "0", 
        $gradient_threshold, "0", $gradient_threshold, "1", "0", "1"],
        err_action => 'ignore');
+
+# done
 
 #Create the kernel files used in taking the image derivative
 sub CreateKernelFiles

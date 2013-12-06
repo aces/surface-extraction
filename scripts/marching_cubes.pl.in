@@ -39,7 +39,9 @@ McGill University
 LICENSE
 
 my $usage = <<USAGE;
-Usage: $ProgramName wm_mask.mnc white.obj civet_base_dir [options]
+Usage: $ProgramName t1.mnc cls.mnc wm_mask.mnc white.obj surf_reg_model 
+       white_surf_mask.txt 
+       [-left] [-right] [-refine] [-subsample] [-calibrate]
        $ProgramName -help to list options
 
 $license
@@ -47,35 +49,84 @@ USAGE
 
 Getopt::Tabular::SetHelp( $help, $usage );
 
-my $subsample = 0;
+my $side = undef;
 my $refine = 0;
+my $subsample = 0;
+my $calibrate = 0;
+my $mask = undef;
+my $mask_label = 0;
 
 my @options = ( 
-  ['-subsample', 'boolean', 0, \$subsample,
-   "Subsample white matter mask at half voxel size"],
+  ['-left', 'const', "Left", \$side, "Extract left surface"],
+  ['-right', 'const', "Right", \$side, "Extract right surface"],
   ['-refine', 'boolean', 0, \$refine,
    "Create a high-resolution surface at 327680 polygons"],
+  ['-subsample', 'boolean', 0, \$subsample,
+   "Subsample white matter mask at half voxel size"],
+  ['-calibrate', 'boolean', 0, \$calibrate,
+   "Calibrate white surface to gray-white gradient"],
+  ['-mask', 'string', 0, \$mask,
+   "Surface mask where to ignore gray-white gradient correction"],
+  ['-mask-label', 'string', 0, \$mask_label,
+   "Surface mask label where to ignore gray-white gradient correction"],
   );
 
 GetOptions( \@options, \@ARGV ) or exit 1;
-die "$usage\n" unless @ARGV == 3;
+die "$usage\n" unless @ARGV == 6;
 
+my $t1 = shift;
+my $cls = shift;
 my $white_matter_mask = shift;
 my $white_surface = shift;
-my $CIVET_dir = shift;
+my $surfreg_model = shift;
+my $white_surf_mask = shift;
 
+if( !( defined $side ) ) {
+  print "$usage\n";
+  die "You must specify left or right hemisphere.\n";
+}
+if( !( -e $t1 ) ) {
+  print "$usage\n";
+  die "t1 image must exist.\n";
+}
+if( !( -e $cls ) ) {
+  print "$usage\n";
+  die "Tissue classification image must exist.\n";
+}
 if( !( -e $white_matter_mask ) ) {
   print "$usage\n";
   die "White matter mask must exist.\n";
 }
+if( !( -e $surfreg_model ) ) {
+  print "$usage\n";
+  die "You must specify a model for surface registration.\n";
+}
+
+my $surfreg = "geom_surfreg.pl";
+
+my $tmpdir = &tempdir( "mcubes-XXXXXX", TMPDIR => 1, CLEANUP => 1 );
 
 my $ICBM_white_model = MNI::DataDir::dir("surface-extraction") .
                        "/white_model_320.obj";
-
-my $surfreg = "${CIVET_dir}/progs/geom_surfreg.pl";
-my $surfreg_model = "${CIVET_dir}/models/surf_reg_model_left.obj";
-
-my $tmpdir = &tempdir( "mcubes-XXXXXX", TMPDIR => 1, CLEANUP => 1 );
+my $initial_model = "${tmpdir}/initial_white_model.obj";
+if( $side eq "Left" ) {
+  &run( "param2xfm", "-translation", -25, 0, 0,
+        "${tmpdir}/slide_left.xfm" );
+  &run( "transform_objects", $ICBM_white_model,
+        "${tmpdir}/slide_left.xfm", $initial_model );
+  unlink( "${tmpdir}/slide_left.xfm" );
+} else {
+  &run( "param2xfm", "-scales", -1, 1, 1,
+        "${tmpdir}/flip.xfm" );
+  &run( "transform_objects", $ICBM_white_model,
+        "${tmpdir}/flip.xfm", $initial_model );
+  unlink( "${tmpdir}/flip.xfm" );
+  &run( "param2xfm", "-translation", 25, 0, 0,
+        "${tmpdir}/slide_right.xfm" );
+  &run( "transform_objects", $initial_model,
+        "${tmpdir}/slide_right.xfm", $initial_model );
+  unlink( "${tmpdir}/slide_right.xfm" );
+}
 
 # Make sure that the mask is not empty.
 
@@ -83,25 +134,72 @@ my $sum = `mincstats -quiet -sum $white_matter_mask`;
 chomp( $sum );
 die "Empty white matter mask.\n" if( $sum == 0 );
 
+# Remove loosely connected voxels and fill-in tightly connected voxels 
+# to have a smoother surface.
+
+open KRNL, "> ${tmpdir}/ngh_count.kernel";
+print KRNL "MNI Morphology Kernel File\n";
+print KRNL "Kernel_Type = Normal_Kernel;\n";
+print KRNL "Kernel =\n";
+print KRNL " 1.0  0.0  0.0  0.0  0.0  1.0\n";
+print KRNL "-1.0  0.0  0.0  0.0  0.0  1.0\n";
+print KRNL " 0.0  1.0  0.0  0.0  0.0  1.0\n";
+print KRNL " 0.0 -1.0  0.0  0.0  0.0  1.0\n";
+print KRNL " 0.0  0.0  1.0  0.0  0.0  1.0\n";
+print KRNL " 0.0  0.0 -1.0  0.0  0.0  1.0;\n";
+close KRNL;
+
+my $ngh_count = "${tmpdir}/ngh_count.mnc";
+my $old_wm_mask = "${tmpdir}/old_wm_mask.mnc";
+my $new_wm_mask = "${tmpdir}/new_wm_mask.mnc";
+
+&run( 'cp', '-f', $white_matter_mask, $old_wm_mask );
+my $ret = `mincstats -sum $old_wm_mask`; chomp( $ret );
+print "Connectivity iteration 0: $ret\n";
+
+for( my $iter = 1; $iter <= 10; $iter++ ) {
+  &run( 'mincmorph', '-clobber', '-unsigned', '-byte', '-convolve', '-kernel', 
+        "${tmpdir}/ngh_count.kernel", $old_wm_mask, $ngh_count );
+  &run( 'minccalc', '-clob', '-quiet', '-expr', 
+        'if(A[1]<2.5){0}else{if(A[1]>4.5){1}else{A[0]}}',
+        $old_wm_mask, $ngh_count, $new_wm_mask );
+  &run( 'mv', '-f', $new_wm_mask, $old_wm_mask );
+  my $ret = `mincstats -sum $old_wm_mask`; chomp( $ret );
+  print "Connectivity iteration $iter: $ret\n";
+}
+
+unlink( $ngh_count );
+unlink( "${tmpdir}/ngh_count.kernel" );
+$white_matter_mask = $old_wm_mask;
+
 # Preparation of the white matter mask for extraction of the surface
 # using marching cubes.
 
 &run( 'minccalc', '-clobber', '-quiet', '-expression', 'out=1',
       '-unsigned', '-byte', $white_matter_mask, "${tmpdir}/filled.mnc" );
 &run( 'surface_mask2', '-binary', "${tmpdir}/filled.mnc",
-      $ICBM_white_model, "${tmpdir}/s0.mnc" );
+      $initial_model, "${tmpdir}/s0.mnc" );
 &run( 'mincresample', '-clobber', '-quiet', '-like',
       "${tmpdir}/filled.mnc", "${tmpdir}/s0.mnc",
       "${tmpdir}/s1.mnc" );
 &run( 'minccalc', '-clobber', '-quiet', '-expression',
-      'out=A[0]+A[1]', $white_matter_mask, 
-      "${tmpdir}/s1.mnc", "${tmpdir}/s0.mnc" );
+      'if(A[0]>0.5||A[1]>0.5){1}else{0}',
+      $white_matter_mask, "${tmpdir}/s1.mnc", "${tmpdir}/s0.mnc" );
+&run( 'dilate_volume', "${tmpdir}/s0.mnc", "${tmpdir}/s1.mnc", 1, 26, 1 );
+&run( 'minccalc', '-clobber', '-quiet', '-expression', 'A[0]+A[1]', 
+      $white_matter_mask, "${tmpdir}/s1.mnc", "${tmpdir}/s0.mnc" );
 &run( 'mincreshape', '-quiet', '-clobber', '-unsigned', '-byte',
       '-image_range', 0, 255, '-valid_range', 0, 255, "${tmpdir}/s0.mnc",
       "${tmpdir}/s1.mnc" );
-&run( 'mincdefrag', "${tmpdir}/s1.mnc", "${tmpdir}/s0.mnc", 2, 6 );
+&run( 'mincdefrag', "${tmpdir}/s1.mnc", "${tmpdir}/s0.mnc", 2, 19 );  ## was 6 before
 unlink( "${tmpdir}/filled.mnc" );
 unlink( "${tmpdir}/s1.mnc" );
+
+# Do not use sub-sampling if voxel resolution is already below 1mm.
+# Too slow.
+
+my $dx = `mincinfo -attvalue xspace:step $white_matter_mask`; chomp($dx);
+$subsample = 0 if( $dx < 0.90 );
 
 # Run the marching-cubes algorithm on the mask.
 
@@ -125,6 +223,14 @@ my $white_sphere_sm = "${tmpdir}/white_sphere_sm.obj";
 
 my $unit_sphere = "${tmpdir}/unit_sphere.obj";
 &run( 'create_tetra', $unit_sphere, 0, 0, 0, 1, 1, 1, 81920 );
+if( $side eq "Right" ) {
+  &run( "param2xfm", "-scales", -1, 1, 1,
+        "${tmpdir}/flip.xfm" );
+  &run( "transform_objects", $unit_sphere,
+        "${tmpdir}/flip.xfm", $unit_sphere );
+  unlink( "${tmpdir}/flip.xfm" );
+}
+
 &run( 'interpolate_sphere', $white_surface_sm, $white_sphere_sm, $unit_sphere,
       $white_surface );
 
@@ -148,6 +254,8 @@ unlink( "${tmpdir}/white.sm" );
 unlink( $unit_sphere );
 
 # New interpolation of surface based on points on the resampled sphere.
+# Note: no self-inter in unit_sphere_rsl. Can have self-inter in white_sphere_sm
+#       if inflation to sphere is difficult.
 
 &run( 'interpolate_sphere', $white_surface_sm, $white_sphere_sm, $unit_sphere_rsl,
       $white_surface );
@@ -173,10 +281,18 @@ if( $num_inter > 0 ) {
 # define the distribution of the edge lengths for the stretch
 # constraint.
 
-&run_asp( $white_surface, $white_matter_mask, 0.5, $ICBM_white_model,
-          ( $refine ) ? 1 : 0, $tmpdir );
+&run_asp( $white_surface, $white_matter_mask, 0.5, $initial_model,
+          ($refine && !$calibrate), $tmpdir );
 
-print "done\n";
+# Run ASP on the resampled white surface to move the surface to
+# the maximum gm-wm gradient.
+
+if( $calibrate ) {
+  &calibrate_white( $t1, $cls, $white_matter_mask, $white_surface, 
+                    $white_surf_mask, $initial_model, $refine,
+                    $tmpdir );
+}
+
 
 
 # Run ASP on the resampled white surface to converge it fully
@@ -197,62 +313,70 @@ sub run_asp {
 
   my $stop_threshold = 1e-3;
   my $stop_iters = 1000;
-
   my $n_per = 5;
   my $tolerance = 1.0e-03;
   my $f_tolerance = 1.0e-06;
   my $oo_scale = 0.5;
 
   my @schedule = (
-  #  size   sw    cw  n_itr  inc   offo   offi   si  in  out  over   sw   self
-  #  ----- ----  ---- -----  ----  ----   ----   --  --  ---  ----  ----  ----
-    81920, 100,    0,  200,   50,   50,    1,    1,  20,  3,    0,  1e0,  .25,
-    81920,  20,    0,  200,   50,   50,    1,    1,  20,  3,    0,  1e0,  .25,
-    81920,   5,    0,  200,   50,   50,    5,    1,  10,  2,    0,  1e0,  .25,
-    81920,   2,    0,  200,   50,   50,    5,  0.5,  10,  2,    0,  1e0,  .25,
-    81920,   1,    0,  200,   50,   20,   10,  0.5,   5,  1,    0,  1e0,  .25,
-    # these 2 stages are to "plug" holes 
-    81920,   1,    0,  200,   50,    2,    2,  0.5,   1,  1,    0,  1e0,  .25,
-    81920,   1,    0,  100,   50,   10,    5,  0.5,   2,  1,    0,  1e0,  .25,
-   327680,  50,    0,  200,   50,   10,    2, 0.25,   5,  1,    0,  1e0, .125,
-   327680,  20,    0,  100,   50,   10,    2, 0.25,   5,  1,    0,  1e0, .125,
+  #  size    sw   n_itr  inc   offo   offi   si  in  out  over   sw   self
+  #  -----  ----  -----  ----  ----   ----   --  --  ---  ----  ----  ----
+    81920,  100,   200,   50,   50,    1,    1,  20,  5,    2,  1e0,  .25,
+    81920,   20,   200,   50,   50,    1,    1,  20,  3,    2,  1e0,  .25,
+    81920,    5,   200,   50,   50,    5,    1,  10,  2,    2,  1e0,  .25,
+    81920,    2,   200,   50,   50,    5,  0.5,  10,  2,    2,  1e0,  .25,
+    81920,    1,   200,   50,   20,   10,  0.5,   5,  1,    2,  1e0,  .25,
+    # these 2 stages are to "plug" holes
+    81920,    1,   200,   50,    2,    2,  0.5,   1,  1,    2,  1e0,  .25,
+    81920,    1,   100,   50,   10,    5,  0.5,   2,  1,    2,  1e0,  .25,
+   327680,  5e4,    50,   50,   10,    2, 0.25,   5,  1,    1,  1e0, .125,
+   327680,  2e4,    50,   50,   10,    2, 0.25,   5,  1,    1,  1e0, .125,
+   327680,  1e4,    50,   50,   10,    2, 0.25,   5,  1,    1,  1e0, .125,
+   327680,  5e3,    50,   50,   10,    2, 0.25,   5,  1,    1,  1e0, .125,
+   327680,  2e3,    50,   50,   10,    2, 0.25,   5,  1,    1,  1e0, .125,
+   327680,  1e3,    50,   50,   10,    2, 0.25,   5,  1,    1,  1e0, .125,
   );
-  my $sched_size =  13;
+  my $sched_size =  12;
   my $num_steps = @schedule / $sched_size;
 
   &run( 'cp', '-f', $white_model, "${tmpdir}/white_model_tmp.obj" );
   $white_model = "${tmpdir}/white_model_tmp.obj";
+  subdivide_mesh( $white_model, 81920, $white_model );
 
   for( my $i = 0;  $i < @schedule;  $i += $sched_size ) {
-    my ( $size, $sw, $cw, $n_iters, $iter_inc, $offo, $offi,
-         $si_step, $in_dist, $out_dist, $oversample, $self_weight, 
+    my ( $size, $sw, $n_iters, $iter_inc, $offo, $offi,
+         $si_step, $in_dist, $out_dist, $oversample, $self_weight,
          $self_dist ) = @schedule[$i..$i+$sched_size-1];
     if( !( $refine ) ) {
       last if( $size == 327680 );
     }
 
-    &run( 'subdivide_polygons', $white_model, $white_model, $size );
-
     my $prev_size = `print_n_polygons $white`;
     chomp( $prev_size );
     if( $prev_size != $size ) {
-      &run( 'subdivide_polygons', $white, $white, $size );
-      &run( 'subdivide_polygons', $white_model, $white_model, $size );
+      my @objsuffix = ( ".obj", "_320", "_1280", "_5120", "_20480",
+                        "_81920", "_327680" );
+      my $white_dir = dirname( $white );
+      my $white_prefix = basename( $white, @objsuffix ) ;
+      $white_prefix = "${white_dir}/${white_prefix}";
+      subdivide_mesh( $white, $size, "${white_prefix}_$size.obj" );
+      $white = "${white_prefix}_$size.obj";
+      subdivide_mesh( $white_model, $size, $white_model );
     }
 
     $oversample *= $oo_scale;
     my $self2 = get_self_intersect( $self_weight, $n_selfs, $self_dist,
                                     $self_dist2 );
-
+  
     my $b2 = " -boundary $offo $offi $wm_mask " .
              " $isovalue - $out_dist $in_dist 0 0 $oversample ";
-
+  
     for( my $iter = 0;  $iter < $n_iters;  $iter += $iter_inc ) {
       print "echo Step ${size}: $iter / $n_iters    $sw\n";
 
       my $ni = $n_iters - $iter;
       if( $ni > $iter_inc )  { $ni = $iter_inc; }
-
+    
       my $command = "surface_fit -mode two -surface $white $white " .
                     " -stretch $sw $white_model -.9 0 0 0 " .
                     " $b2 $self2 -step $si_step " .
@@ -263,6 +387,129 @@ sub run_asp {
     }
   }
   unlink( $white_model );
+}
+
+# Run ASP on the resampled white surface to move the surface to
+# the maximum gm-wm gradient.
+
+sub calibrate_white {
+
+  my $t1 = shift;
+  my $cls = shift;
+  my $white_matter_mask = shift;
+  my $white = shift;
+  my $white_surf_mask = shift;
+  my $white_model = shift;
+  my $refine = shift;
+  my $tmpdir = shift;
+
+  my $self_dist2 = 0.01;
+  my $n_selfs = 9;
+
+  my $stop_threshold = 1e-3;
+  my $stop_iters = 1000;
+
+  my $n_per = 5;
+  my $tolerance = 1.0e-03;
+  my $f_tolerance = 1.0e-06;
+  my $oo_scale = 0.5;
+
+  my @schedule = (
+  #  size   blur   sw  n_itr  inc  gdist  ginc  gwgt over   si   sw   self
+  #  -----  ----  ---- -----  ---- -----  ----  ---- ----   --  ----  ----
+    81920,  2.0,  100,  150,   50,  5.0,  0.1,  0.1,  1,   1.0,  1e0,  .25,
+    81920,  2.0,  100,   50,   50,  5.0,  0.1,  1.0,  1,   1.0,  1e0,  .25,
+    81920,  0.0,   20,   50,   50,  4.0,  0.1,  1.0,  1,   0.5,  1e0,  .25,
+    81920,  0.0,    5,   50,   50,  4.0,  0.1,  1.0,  1,   0.5,  1e0,  .25,
+    81920,  0.0,    2,   50,   50,  3.0, 0.05,  1.0,  1,   0.5,  1e0,  .25,
+    81920,  0.0,    1,   50,   50,  3.0, 0.05,  1.0,  1,   0.5,  1e0,  .25,
+   327680,  0.0,  5e4,   50,   50,  3.0, 0.05,  1.0,  1,   0.25, 1e0, .125,
+   327680,  0.0,  2e4,   50,   50,  3.0, 0.05,  1.0,  1,   0.25, 1e0, .125,
+   327680,  0.0,  1e4,   50,   50,  3.0, 0.05,  1.0,  1,   0.25, 1e0, .125,
+   327680,  0.0,  5e3,   50,   50,  3.0, 0.05,  1.0,  1,   0.25, 1e0, .125,
+   327680,  0.0,  2e3,   50,   50,  3.0, 0.05,  1.0,  1,   0.25, 1e0, .125,
+   327680,  0.0,  1e3,   50,   50,  3.0, 0.05,  1.0,  1,   0.25, 1e0, .125,
+  );
+
+  my $sched_size =  12;
+  my $num_steps = @schedule / $sched_size;
+
+  ##
+  ## TO DO: clean-up t1 image to remove local min/max
+  ##
+
+  # Combine white matter mask into classified image for WM.
+  my $cls_rsl = "${tmpdir}/cls_rsl.mnc";
+  my $cls_mc = "${tmpdir}/cls_rsl_mc.mnc";
+  &run( 'mincresample', '-clobber', '-quiet', '-like', $white_matter_mask,
+        $cls, $cls_rsl );
+  &run( 'minccalc', '-clobber', '-quiet', '-expression',
+        "if(A[1]>0.5){out=3}else{out=A[0]}", $cls_rsl,
+        $white_matter_mask, $cls_mc );
+  unlink( $cls_rsl );
+
+  # Create surface mask for medial plane and brainstem.
+  my $white_surf_mask_mc = "${tmpdir}/white_surf_mask_mc.txt";
+  &run( 'vertstats_math', '-old_style_file', '-const2', -0.5, 0.5, '-seg',
+        $white_surf_mask, $white_surf_mask_mc );
+
+  &run( 'cp', '-f', $white_model, "${tmpdir}/white_model_tmp.obj" );
+  $white_model = "${tmpdir}/white_model_tmp.obj";
+  subdivide_mesh( $white_model, 81920, $white_model );
+
+  for( my $i = 0;  $i < @schedule;  $i += $sched_size ) {
+    my ( $size, $blur, $sw, $n_iters, $iter_inc, $grad_dist, $grad_inc, 
+         $grad_wgt, $oversample, $si_step, $self_weight, $self_dist ) = 
+       @schedule[$i..$i+$sched_size-1];
+    if( !( $refine ) ) {
+      last if( $size == 327680 );
+    }
+
+    my $t1_blur = $t1;
+    if( $blur > 0.0 ) {
+      $t1_blur = &basename( $t1, ".mnc" );
+      $t1_blur = "${tmpdir}/${t1_blur}";   # need prefix only
+      &run( 'mincblur', '-quiet', '-clobber', '-fwhm', $blur, '-no_apodize',
+            $t1, $t1_blur );
+      $t1_blur .= "_blur.mnc";
+    }
+
+    my $prev_size = `print_n_polygons $white`;
+    chomp( $prev_size );
+    if( $prev_size != $size ) {
+      my @objsuffix = ( ".obj", "_320", "_1280", "_5120", "_20480",
+                        "_81920", "_327680" );
+      my $white_dir = dirname( $white );
+      my $white_prefix = basename( $white, @objsuffix ) ;
+      $white_prefix = "${white_dir}/${white_prefix}";
+      subdivide_mesh( $white, $size, "${white_prefix}_$size.obj" );
+      $white = "${white_prefix}_$size.obj";
+      subdivide_mesh( $white_model, $size, $white_model );
+    }
+
+    my $self2 = get_self_intersect( $self_weight, $n_selfs, $self_dist,
+                                    $self_dist2 );
+
+    for( my $iter = 0;  $iter < $n_iters;  $iter += $iter_inc ) {
+      print "echo Step ${size}: $iter / $n_iters    $sw\n";
+
+      my $ni = $n_iters - $iter;
+      if( $ni > $iter_inc )  { $ni = $iter_inc; }
+
+      my $command = "surface_fit -mode two -surface $white $white " .
+                    " -stretch $sw $white_model -.9 0 0 0 " .
+                    " $self2 -step $si_step " .
+                    " -gw_gradient $grad_wgt $oversample $grad_dist $grad_inc $t1_blur " .
+                    " $cls_mc $white_surf_mask_mc " .
+                    " -fitting $ni $n_per $tolerance " .
+                    " -ftol $f_tolerance " .
+                    " -stop $stop_threshold $stop_iters ";
+      system( $command ) == 0 or die "Command $command failed with status: $?";
+    }
+  }
+  unlink( $white_model );
+  unlink( $white_surf_mask_mc );
+  unlink( $cls_mc );
 }
 
 # from surface-extraction/deform_utils.pl
@@ -289,6 +536,62 @@ sub get_self_intersect( $$$$ ) {
     $self;
 }
 
+# Check if the input surface has the same side orientation (left)
+# as the default template model.
+
+sub CheckFlipOrientation {
+
+  my $obj = shift;
+
+  my $npoly = `print_n_polygons $obj`;
+  chomp( $npoly );
+
+  my $ret = `tail -5 $obj`;
+  my @verts = split( ' ', $ret );
+  my @last3 = ( $verts[$#verts-2], $verts[$#verts-1], $verts[$#verts] );
+
+  my $dummy_sphere = "${tmpdir}/dummy_sphere.obj";
+  &run('create_tetra',$dummy_sphere,0,0,0,1,1,1,$npoly);
+  $ret = `tail -5 $dummy_sphere`;
+  unlink( $dummy_sphere );
+  @verts = split( ' ', $ret );
+  my @sphere3 = ( $verts[$#verts-2], $verts[$#verts-1], $verts[$#verts] );
+  if( $last3[0] == $verts[$#verts-2] &&
+      $last3[1] == $verts[$#verts-1] &&
+      $last3[2] == $verts[$#verts-0] ) {
+    return 0;
+  } else {
+    return 1;
+  }
+}
+
+# subdivide a surface taking into account if it's a left or right hemisphere.
+
+sub subdivide_mesh {
+
+  my $input = shift;
+  my $npoly = shift;
+  my $output = shift;
+
+  my $npoly_input = `print_n_polygons $input`;
+  chomp( $npoly_input );
+  my $flip = CheckFlipOrientation( $input );
+  if( $npoly <= $npoly_input || !$flip ) {
+    &run( "subdivide_polygons", $input, $output, $npoly );
+  } if( $flip ) {
+    # flip right as left first before subdividing, then flip back.
+    &run( "param2xfm", '-clobber', '-scales', -1, 1, 1,
+          "${tmpdir}/flip.xfm" );
+    my $input_flipped = "${tmpdir}/right_flipped.obj";
+    &run( "transform_objects", $input,
+          "${tmpdir}/flip.xfm", $input_flipped );
+    &run( "subdivide_polygons", $input_flipped, $output, $npoly );
+    &run( "transform_objects", $output,
+          "${tmpdir}/flip.xfm", $output );  # flip.xfm is its own inverse
+    unlink( $input_flipped );
+    unlink( "${tmpdir}/flip.xfm" );
+  }
+}
 
 # Execute a system call.
 

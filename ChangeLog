@@ -1,10 +1,20 @@
-2011-05-31  Claude Lepage      <claude@bic.mni.mcgill.ca>
+2013-11-13  Claude Lepage      <claude@bic.mni.mcgill.ca>
         * improved stretch constraint
         * corrected Laplacian constraint
         * new marching-cubes algorithm and tools for white surface extraction
+        * improved adapt_object_mesh.c to better account for surface curvature
+        * gray-white gradient for white surface calibration
         * upgraded scripts for surfaces based on new constraints
         * cortical_thickness now uses depth_potential for blurring
         * clean-up some erroneous self-intersection cases
+
+2013-07-10  Claude Lepage      <claude@bic.mni.mcgill.ca>
+        * optimized schedule for hi-res white and gray surface
+          extraction
+        * new white_model_320.obj, made narrower for single hemisphere
+
+2013-02-06  Claude Lepage      <claude@bic.mni.mcgill.ca>
+        * use depth_potential in cortical_thickness for smoothing
 
 2009-07-27  Claude Lepage      <claude@bic.mni.mcgill.ca>
 	* new license Copyright Alan C. Evans

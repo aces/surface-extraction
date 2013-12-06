@@ -89,6 +89,18 @@ public  void  find_boundary_points(
     int                         **cross_parms[],
     Real                        **cross_terms[] );
 
+public void adjust_gm_wm_gradient( 
+    Volume                      t1, 
+    Volume                      classified,
+    Real                        search_dist, 
+    Real                        search_inc,
+    int                         start_point, 
+    int                         end_point,
+    int                         n_ngh[], 
+    int                       * ngh[],
+    Real                      * coords,
+    Real                      * t1grad );
+
 public  void  print_fit_info(
     fit_eval_struct  *f );
 

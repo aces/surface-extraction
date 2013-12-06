@@ -1198,6 +1198,68 @@ private  Real   evaluate_gradient_fit(
     return fit1*image_weight + fit2;
 }
 
+private Real evaluate_gw_gradient_fit( Volume t1,
+                                       Real weight,
+                                       int oversample,
+                                       int * mask,
+                                       int start_point,
+                                       int end_point,
+                                       int   n_ngh[],
+                                       int * ngh[],
+                                       Real * coords,
+                                       Real * t1grad ) {
+
+  int          n, point;
+  Real         fit = 0.0f;
+
+  if( weight > 0 && t1grad ) {
+    Real value;
+    for( point = start_point; point < end_point; point++ ) {
+      if( !mask[point-start_point] ) {
+        evaluate_volume_in_world( t1, coords[3*point+0],
+                                  coords[3*point+1], coords[3*point+2],
+                                  EVAL_LINEAR, FALSE,
+                                  0.0, &value,
+                                  NULL, NULL, NULL,
+                                  NULL, NULL, NULL, NULL, NULL, NULL );
+        fit += ( value / t1grad[point-start_point] - 1.0 ) *
+               ( value / t1grad[point-start_point] - 1.0 );
+      }
+    }
+
+    // Do oversampling. There is only one level of oversampling on edges.
+
+    if( oversample ) {
+
+      for( point = start_point; point < end_point; point++ ) {
+        if( mask[point-start_point] ) continue;
+
+        for_less( n, 0, n_ngh[point] ) {
+          int neigh1 = ngh[point][n];
+          if( point > neigh1 ) continue;
+
+          Real xmid = 0.5 * ( coords[3*point] + coords[3*neigh1] );
+          Real ymid = 0.5 * ( coords[3*point+1] + coords[3*neigh1+1] );
+          Real zmid = 0.5 * ( coords[3*point+2] + coords[3*neigh1+2] );
+          Real t1mid = 0.5 * ( t1grad[point-start_point] + t1grad[neigh1-start_point] );
+
+          evaluate_volume_in_world( t1, xmid, ymid, zmid,
+                                    EVAL_LINEAR, FALSE,
+                                    0.0, &value,
+                                    NULL, NULL, NULL,
+                                    NULL, NULL, NULL, NULL, NULL, NULL );
+          fit += ( value / t1mid - 1.0 ) * ( value / t1mid - 1.0 );
+        }
+      }
+      weight *= 0.25;   // this is very very close to the correct factor N/(4*N-6).
+    }
+
+    fit *= 0.5 * weight;
+  }
+  return( fit );
+}
+
+
 private  Real   evaluate_image_value_fit(
     Volume               volume,
     voxel_coef_struct    *lookup,
@@ -1635,6 +1697,132 @@ private  void   evaluate_gradient_fit_deriv(
     }
 }
 
+
+private void evaluate_gw_gradient_fit_deriv( Volume t1,
+                                             Real weight,
+                                             int oversample,
+                                             int * mask,
+                                             int start_point,
+                                             int end_point,
+                                             int   n_ngh[],
+                                             int * ngh[],
+                                             Real * coords,
+                                             Real * t1grad,
+                                             Real deriv[] ) {
+
+  int          n, point;
+
+  if( weight > 0 && t1grad ) {
+    if( oversample ) {
+      weight *= 0.25;   // this is very very close to the correct factor N/(4*N-6).
+    }
+
+    int max_neighbours = 0;
+    for( point = start_point; point < end_point; point++ ) {
+      if( n_ngh[point] > max_neighbours ) max_neighbours = n_ngh[point];
+    }
+    Point * neigh_points = (Point *)malloc( max_neighbours * sizeof( Point ) );
+
+    for( point = start_point; point < end_point; point++ ) {
+      if( !mask[point-start_point] ) {
+        Real value, dx, dy, dz;
+        evaluate_volume_in_world( t1, coords[3*point+0],
+                                  coords[3*point+1], coords[3*point+2],
+                                  EVAL_LINEAR, FALSE,
+                                  0.0, &value, &dx, &dy, &dz,
+                                  NULL, NULL, NULL, NULL, NULL, NULL );
+
+        if( value < t1grad[point-start_point] ) {
+
+          for( n = 0; n < n_ngh[point]; n++ ) {
+            int neigh = ngh[point][n];
+            fill_Point( neigh_points[n], coords[3*neigh+0],
+                        coords[3*neigh+1], coords[3*neigh+2] );
+          }
+          Vector  normal;
+          find_polygon_normal( n_ngh[point], neigh_points, &normal );
+
+          Real nx = normal.coords[0];
+          Real ny = normal.coords[1];
+          Real nz = normal.coords[2];
+          if( nx * dx + ny * dy + nz * dz > 0.0 ) {
+            dx = 0.0;
+            dy = 0.0;
+            dz = 0.0;
+          }
+        }
+          
+        Real factor = weight * ( value / t1grad[point-start_point] - 1.0 ) / 
+                      t1grad[point-start_point];
+        deriv[3*point+0] += factor * dx;
+        deriv[3*point+1] += factor * dy;
+        deriv[3*point+2] += factor * dz;
+      }
+
+    }
+
+    if( oversample ) {
+
+      for( point = start_point; point < end_point; point++ ) {
+        if( mask[point-start_point] ) continue;
+
+        for_less( n, 0, n_ngh[point] ) {
+          int neigh1 = ngh[point][n];
+          if( point > neigh1 ) continue;
+
+          Real xmid = 0.5 * ( coords[3*point] + coords[3*neigh1] );
+          Real ymid = 0.5 * ( coords[3*point+1] + coords[3*neigh1+1] );
+          Real zmid = 0.5 * ( coords[3*point+2] + coords[3*neigh1+2] );
+          Real t1mid = 0.5 * ( t1grad[point-start_point] + t1grad[neigh1-start_point] );
+
+          Real value, dx, dy, dz;
+          evaluate_volume_in_world( t1, xmid, ymid, zmid,
+                                    EVAL_LINEAR, FALSE,
+                                    0.0, &value, &dx, &dy, &dz,
+                                    NULL, NULL, NULL, NULL, NULL, NULL );
+
+          if( value < t1mid ) {
+
+            // This is an approximate vector based on the triangular face.
+            // Should consider triangles on each side of edge, not only one side.
+            int neigh2 = ngh[point][(n+1)%n_ngh[point]];
+            fill_Point( neigh_points[0], coords[3*point+0],
+                        coords[3*point+1], coords[3*point+2] );
+            fill_Point( neigh_points[1], coords[3*neigh1+0],
+                        coords[3*neigh1+1], coords[3*neigh1+2] );
+            fill_Point( neigh_points[2], coords[3*neigh2+0],
+                        coords[3*neigh2+1], coords[3*neigh2+2] );
+
+            Vector  normal;
+            find_polygon_normal( 3, neigh_points, &normal );
+
+            Real nx = normal.coords[0];
+            Real ny = normal.coords[1];
+            Real nz = normal.coords[2];
+            if( nx * dx + ny * dy + nz * dz > 0.0 ) {
+              dx = 0.0;
+              dy = 0.0;
+              dz = 0.0;
+            }
+          }
+
+          // half to each vertex of the edge
+          Real factor = 0.5 * weight * ( value / t1mid - 1.0 ) / t1mid;
+          deriv[3*point+0] += factor * dx;
+          deriv[3*point+1] += factor * dy;
+          deriv[3*point+2] += factor * dz;
+          deriv[3*neigh1+0] += factor * dx;
+          deriv[3*neigh1+1] += factor * dy;
+          deriv[3*neigh1+2] += factor * dz;
+
+        }
+      }
+    }
+    free( neigh_points );
+  }
+}
+
+
 private  void   evaluate_image_value_fit_deriv(
     Volume               volume,
     voxel_coef_struct    *lookup,
@@ -1989,7 +2177,7 @@ private  Real   evaluate_stretch_fit(
                         ( parameters[ind0+2] - parameters[ind2+2] ) );
         Real s = 0.5 * ( elen[0] + elen[1] + elen[2] );
         Real local_area = sqrt( fabs( s * ( s - elen[0] ) * ( s - elen[1] ) * ( s - elen[2] ) ) +
-                                1.0e-10 );
+                                1.0e-20 );
         areas[point] += local_area;
         areas[n1] += local_area;
         areas[n2] += local_area;
@@ -2025,6 +2213,7 @@ private  Real   evaluate_stretch_fit(
         n_neighs = n_neighbours[point];
 
         Real sum_areas = 0.0;
+        dx = 0.0; dy = 0.0; dz = 0.0;
         for_less( n, 0, n_neighs ) {
             neigh = neigh_ptr[n];
             ind1 = IJ(neigh,0,3);
@@ -2039,7 +2228,6 @@ private  Real   evaluate_stretch_fit(
         dz = dz / sum_areas - z1;
         fit1 += dx * dx + dy * dy + dz * dz;
     }
-
     FREE( areas );
 
 #if NEW_CURVATURE
@@ -2100,7 +2288,7 @@ private  void   evaluate_stretch_fit_deriv(
                         ( parameters[ind0+2] - parameters[ind2+2] ) );
         Real s = 0.5 * ( elen[0] + elen[1] + elen[2] );
         Real local_area = sqrt( fabs( s * ( s - elen[0] ) * ( s - elen[1] ) * ( s - elen[2] ) ) +
-                                1.0e-10 );
+                                1.0e-20 );
         areas[point] += local_area;
         areas[n1] += local_area;
         areas[n2] += local_area;
@@ -5192,6 +5380,7 @@ private  int   private_evaluate_fit(
     curvature_struct       *curvature;
     bend_struct            *bend;
     gradient_struct        *gradient;
+    gw_gradient_struct     *gw_gradient;
     surface_value_struct   *value;
     inter_surface_struct   *inter;
     self_intersect_struct  *self;
@@ -5477,9 +5666,8 @@ private  int   private_evaluate_fit(
                            ( bound->oversample * ( bound->oversample - 1 ) ) / 2 *
                            deform->surfaces[surface].surface.n_polygons;
 
-                    //eval->surf_surf_fit += fv;
-                    eval->boundary_fit += f * 1;
-                    *fit += f * 1;
+                    eval->boundary_fit += f;
+                    *fit += f;
 
                     if( which == -2 && max_value > 0.0 && *fit > max_value )
                         return( 0 );
@@ -5488,12 +5676,10 @@ private  int   private_evaluate_fit(
             }
         }
 
-        for_less( i, 0, deform->surfaces[surface].n_gradient )
-        {
+        for_less( i, 0, deform->surfaces[surface].n_gradient ) {
             gradient = &deform->surfaces[surface].gradient[i];
 
-            if( which == -2 || which == count )
-            {
+            if( which == -2 || which == count ) {
                 f = evaluate_gradient_fit( gradient->volume,
                                           gradient->voxel_lookup,
                                           gradient->continuity,
@@ -5508,6 +5694,28 @@ private  int   private_evaluate_fit(
                    this_parms, this_active);
 
                 eval->gradient_fit += f;
+                *fit += f;
+
+                if( which == -2 && max_value > 0.0 && *fit > max_value )
+                    return( 0 );
+            }
+            ++count;
+        }
+
+        for_less( i, 0, deform->surfaces[surface].n_gw_gradient ) {
+            gw_gradient = &deform->surfaces[surface].gw_gradient[i];
+
+            if( which == -2 || which == count ) {
+                f = evaluate_gw_gradient_fit( gw_gradient->t1,
+                                 gw_gradient->image_weight, 
+                                 gw_gradient->oversample,
+                                 gw_gradient->mask, 0,
+                                 deform->surfaces[surface].surface.n_points,
+                                 deform->surfaces[surface].surface.n_neighbours,
+                                 deform->surfaces[surface].surface.neighbours,
+                                 this_parms, gw_gradient->t1grad );
+
+                eval->gw_gradient_fit += f;
                 *fit += f;
 
                 if( which == -2 && max_value > 0.0 && *fit > max_value )
@@ -5636,6 +5844,7 @@ public  Real   evaluate_fit(
 
     eval.boundary_fit = 0.0;
     eval.gradient_fit = 0.0;
+    eval.gw_gradient_fit = 0.0;
     eval.value_fit = 0.0;
     eval.stretch_fit = 0.0;
     eval.curvature_fit = 0.0;
@@ -5742,6 +5951,7 @@ public  void   evaluate_fit_deriv(
     bend_struct            *bend;
     surface_bound_struct   *bound;
     gradient_struct        *gradient;
+    gw_gradient_struct     *gw_gradient;
     surface_value_struct   *value;
     inter_surface_struct   *inter;
     self_intersect_struct  *self;
@@ -5756,6 +5966,7 @@ public  void   evaluate_fit_deriv(
 
     eval.boundary_fit = 0.0;
     eval.gradient_fit = 0.0;
+    eval.gw_gradient_fit = 0.0;
     eval.value_fit = 0.0;
     eval.stretch_fit = 0.0;
     eval.curvature_fit = 0.0;
@@ -5800,6 +6011,65 @@ public  void   evaluate_fit_deriv(
     if( deriv_modified ) {
       deriv_modified = FALSE;
       eval.gradient_fit = compute_deriv_mag( n_parameters, derivative );
+      for_less( p, 0, n_parameters ) {
+        full_deriv[p] += derivative[p];
+        derivative[p] = 0.0;
+      }
+    }
+
+    for_less( surface, 0, deform->n_surfaces ) {
+        this_parms = &parameters[start_parameter[surface]];
+        this_deriv = &derivative[start_parameter[surface]];
+
+        for_less( i, 0, deform->surfaces[surface].n_gw_gradient ) {
+            deriv_modified = TRUE;
+            gw_gradient = &deform->surfaces[surface].gw_gradient[i];
+            if( gw_gradient->t1grad == NULL ) {
+              // must free this memory at the end!!!! TODO CLAUDE
+              gw_gradient->t1grad = 
+                (Real*)malloc( deform->surfaces[surface].surface.n_points *
+                               sizeof( Real ) );
+            }
+            if( gw_gradient->mask == NULL ) {
+              // must free this memory at the end!!!! TODO CLAUDE
+              gw_gradient->mask = 
+                (int*)malloc( deform->surfaces[surface].surface.n_points *
+                               sizeof( int ) );
+              FILE * fp = fopen( gw_gradient->mask_filename, "r+t" );
+              int point;
+              for( point = 0; point < deform->surfaces[surface].surface.n_points; point++ ) {
+                fscanf( fp, "%d", &gw_gradient->mask[point] );
+              }
+              fclose( fp );
+	    }
+
+            if( gw_gradient->update == 0 ) {
+              adjust_gm_wm_gradient( gw_gradient->t1, gw_gradient->cls, 
+                                     gw_gradient->search_distance, 
+                                     gw_gradient->search_increment,
+                                     0,
+                                     deform->surfaces[surface].surface.n_points,
+                                     deform->surfaces[surface].surface.n_neighbours,
+                                     deform->surfaces[surface].surface.neighbours,
+                                     this_parms,
+                                     gw_gradient->t1grad );
+            }
+            gw_gradient->update = ( gw_gradient->update + 1 ) % 2;
+            evaluate_gw_gradient_fit_deriv( gw_gradient->t1,
+                                   gw_gradient->image_weight,
+                                   gw_gradient->oversample,
+                                   gw_gradient->mask, 0,
+                                   deform->surfaces[surface].surface.n_points,
+                                   deform->surfaces[surface].surface.n_neighbours,
+                                   deform->surfaces[surface].surface.neighbours,
+                                   this_parms, gw_gradient->t1grad,
+                                   this_deriv );
+        }
+    }
+
+    if( deriv_modified ) {
+      deriv_modified = FALSE;
+      eval.gw_gradient_fit = compute_deriv_mag( n_parameters, derivative );
       for_less( p, 0, n_parameters ) {
         full_deriv[p] += derivative[p];
         derivative[p] = 0.0;
@@ -7544,6 +7814,8 @@ public  void  print_fit_info(
         print( " B:%.4g", f->boundary_fit );
     if( f->gradient_fit != 0.0 )
         print( " G:%.4g", f->gradient_fit );
+    if( f->gw_gradient_fit != 0.0 )
+        print( " GW-G:%.4g", f->gw_gradient_fit );
     if( f->value_fit != 0.0 )
         print( " V:%.4g", f->value_fit );
     if( f->stretch_fit != 0.0 )
@@ -7588,6 +7860,8 @@ public  void  print_fit_deriv_info(
         print( " B:%.2g", f->boundary_fit );
     if( f->gradient_fit != 0.0 )
         print( " G:%.2g", f->gradient_fit );
+    if( f->gw_gradient_fit != 0.0 )
+        print( " GW-G:%.2g", f->gw_gradient_fit );
     if( f->value_fit != 0.0 )
         print( " V:%.2g", f->value_fit );
     if( f->stretch_fit != 0.0 )

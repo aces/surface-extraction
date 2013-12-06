@@ -520,25 +520,13 @@ int main( int argc, char * argv[] ) {
         // Coarsen if surface is flat enough and edgelen < threshold.
         if( !coarsen ) {
           if( edgelen[i] <= thresholdlen ) {
-            Real  ax, ay, az, bx, by, bz, mag, n1x, n1y, n1z, n2x, n2y, n2z;
-            ax = ( coords[v2].coords[0] - coords[v1].coords[0] );
-            ay = ( coords[v2].coords[1] - coords[v1].coords[1] );
-            az = ( coords[v2].coords[2] - coords[v1].coords[2] );
-            bx = ( coords[opp1].coords[0] - coords[v1].coords[0] );
-            by = ( coords[opp1].coords[1] - coords[v1].coords[1] );
-            bz = ( coords[opp1].coords[2] - coords[v1].coords[2] );
-            n1x = ay * bz - az * by;
-            n1y = az * bx - ax * bz;
-            n1z = ax * by - ay * bx;
-            mag = n1x * n1x + n1y * n1y + n1z * n1z;
-            bx = ( coords[opp2].coords[0] - coords[v1].coords[0] );
-            by = ( coords[opp2].coords[1] - coords[v1].coords[1] );
-            bz = ( coords[opp2].coords[2] - coords[v1].coords[2] );
-            n2x = ay * bz - az * by;
-            n2y = az * bx - ax * bz;
-            n2z = ax * by - ay * bx;
-            mag *= ( n2x * n2x + n2y * n2y + n2z * n2z );
-            mag = -( n1x * n2x + n1y * n2y + n1z * n2z ) / sqrt( mag );
+            Real n1x = normals[v1].coords[0];
+            Real n1y = normals[v1].coords[1];
+            Real n1z = normals[v1].coords[2];
+            Real n2x = normals[v2].coords[0];
+            Real n2y = normals[v2].coords[1];
+            Real n2z = normals[v2].coords[2];
+            Real mag = n1x * n2x + n1y * n2y + n1z * n2z;
             if( mag > 0.99 ) {   // cosine(angle)
               coarsen = 1;
             }
@@ -841,7 +829,13 @@ int main( int argc, char * argv[] ) {
     max_num_iters--;
     if( max_num_iters <= 0 ) break;
 
-  } while( ( n_points > target_nodes ) || ( n_points <= target_nodes && changed ) ); }
+    if( (float)changed / (float)target_nodes < 0.05 ) {
+      if( n_points > target_nodes ) {
+        factor *= ( 1.0 + 0.05 * (float)( n_points - target_nodes ) / target_nodes );
+      }
+    }
+
+  } while( ( n_points > target_nodes ) /* || ( n_points <= target_nodes && changed ) */ ); }
 
   // Do a little bit of smoothing on the coordinates (simple averaging).
   Real   relax = 0.75;

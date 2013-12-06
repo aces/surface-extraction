@@ -155,6 +155,7 @@ int  main(
     surface_struct       surface;
     surface_bound_struct bound;
     gradient_struct      gradient;
+    gw_gradient_struct   gw_gradient;
     surface_value_struct value;
     stretch_struct       stretch;
     bend_struct          bend;
@@ -300,6 +301,7 @@ int  main(
             surf.n_laplacian = 0;
             surf.n_volume = 0;
             surf.n_gradient = 0;
+            surf.n_gw_gradient = 0;
             surf.n_value = 0;
             surf.n_stretch = 0;
             surf.n_curvature = 0;
@@ -335,6 +337,7 @@ int  main(
               surf.n_laplacian = 0;
               surf.n_volume = 0;
               surf.n_gradient = 0;
+              surf.n_gw_gradient = 0;
               surf.n_value = 0;
               surf.n_stretch = 0;
               surf.n_curvature = 0;
@@ -577,9 +580,7 @@ int  main(
             deform.surfaces[deform.n_surfaces-1].
                         bound[deform.surfaces[deform.n_surfaces-1].n_bound-1].
                                 check_direction_flag = TRUE;
-        }
-        else if( equal_strings( arg, "-gradient" ) )
-        {
+        } else if( equal_strings( arg, "-gradient" ) ) {
             if( !get_real_argument( 0.0, &gradient.image_weight ) ||
                 !get_string_argument( NULL, &volume_filename ) ||
                 !get_int_argument( 0, &gradient.continuity ) ||
@@ -588,21 +589,19 @@ int  main(
                 !get_real_argument( 0.0, &gradient.max_diff ) ||
                 !get_real_argument( 0.0, &factor ) ||
                 !get_real_argument( 0.0, &value_differential_offset ) ||
-                !get_real_argument( 0.0, &value_differential_ratio ) )
-            {
+                !get_real_argument( 0.0, &value_differential_ratio ) ) {
                 print_error( "Error in -gradient arguments.\n" );
                 usage( argv[0] );
                 return( 1 );
             }
 
-            if( gradient.image_weight > 0.0 )
+            if( gradient.image_weight > 0.0 ) {
                 gradient.max_diff_weight = factor * gradient.image_weight;
-            else
+            } else {
                 gradient.max_diff_weight = factor;
-
+            }
             if( lookup_volume( volume_filename, &gradient.volume,
-                               &gradient.voxel_lookup ) != OK )
-            {
+                               &gradient.voxel_lookup ) != OK ) {
                 return( 1 );
             }
 
@@ -612,9 +611,41 @@ int  main(
             ADD_ELEMENT_TO_ARRAY(
                 deform.surfaces[deform.n_surfaces-1].gradient,
                 deform.surfaces[deform.n_surfaces-1].n_gradient, gradient, 1 );
-        }
-        else if( equal_strings( arg, "-value_differential" ) )
-        {
+
+        } else if( equal_strings( arg, "-gw_gradient" ) ) {
+
+            STRING t1_volume_filename, cls_volume_filename;
+
+            if( !get_real_argument( 0.0, &gw_gradient.image_weight ) ||
+                !get_int_argument( 0, &gw_gradient.oversample ) ||
+                !get_real_argument( 0.0, &gw_gradient.search_distance ) ||
+                !get_real_argument( 0.0, &gw_gradient.search_increment ) ||
+                !get_string_argument( NULL, &t1_volume_filename ) ||
+                !get_string_argument( NULL, &cls_volume_filename ) ||
+                !get_string_argument( NULL, &gw_gradient.mask_filename ) ) {
+                print_error( "Error in -gw_gradient arguments.\n" );
+                usage( argv[0] );
+                return( 1 );
+            }
+            gw_gradient.update = 0;
+            gw_gradient.t1grad = NULL;
+            gw_gradient.mask = NULL;
+            if( lookup_volume( t1_volume_filename, 
+                               &gw_gradient.t1, NULL ) != OK ) {
+                return( 1 );
+            }
+
+            if( lookup_volume( cls_volume_filename, 
+                               &gw_gradient.cls, NULL) != OK ) {
+                return( 1 );
+            }
+
+            ADD_ELEMENT_TO_ARRAY(
+                deform.surfaces[deform.n_surfaces-1].gw_gradient,
+                deform.surfaces[deform.n_surfaces-1].n_gw_gradient, gw_gradient, 1 );
+
+        } else if( equal_strings( arg, "-value_differential" ) ) {
+
             if( !get_real_argument( 0.0, &value_differential_offset ) ||
                 !get_real_argument( 0.0, &value_differential_ratio ) )
             {
@@ -1612,6 +1643,16 @@ int  main(
 
         if( deform.surfaces[s].n_curvature > 0 )
             FREE( deform.surfaces[s].curvature );
+
+        if( deform.surfaces[s].n_gw_gradient > 0 ) {
+            if( deform.surfaces[s].gw_gradient->t1grad ) {
+                FREE( deform.surfaces[s].gw_gradient->t1grad );
+            }
+            if( deform.surfaces[s].gw_gradient->mask ) {
+                FREE( deform.surfaces[s].gw_gradient->mask );
+            }
+            FREE( deform.surfaces[s].gw_gradient );
+        }
 
         for_less( i, 0, deform.surfaces[s].n_bend )
         {

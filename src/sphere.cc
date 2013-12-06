@@ -20,6 +20,8 @@ extern "C" {
 #include <time_stamp.h> 
 }
 
+#define DEBUG 0
+
 #define CENTER 0x00000000
 
 #define NODE0  0x00000001
@@ -189,7 +191,7 @@ int check_voxel( int flag ) {
 //
 int make_sphere( int sizes[MAX_DIMENSIONS], short * val ) {
 
-    int     i, j, k, ii, jj;
+    int     i, j, k, ii, jj, iii;
     int     changed;
     int     di, dj, dk;
 
@@ -221,7 +223,7 @@ int make_sphere( int sizes[MAX_DIMENSIONS], short * val ) {
         if( levels[ii] == nlevel ) {
           i = ii / ( sizes[1] * sizes[2] );
           j = ( ii - i * sizes[1] * sizes[2] ) / sizes[2];
-          k = ii - i * sizes[1] * sizes[2] - j * sizes[2];
+          k = ii - ( i * sizes[1] + j ) * sizes[2];
           for( di = -1; di <= 1; di++ ) {
             for( dj = -1; dj <= 1; dj++ ) {
               for( dk = -1; dk <= 1; dk++ ) {
@@ -229,8 +231,8 @@ int make_sphere( int sizes[MAX_DIMENSIONS], short * val ) {
                   if( i+di >= 0 && i+di < sizes[0] &&
                       j+dj >= 0 && j+dj < sizes[1] &&
                       k+dk >= 0 && k+dk < sizes[2] ) {
-                    jj = (i+di) * sizes[1] * sizes[2] + (j+dj) * sizes[2] + k+dk;
-                    if( levels[jj] == -1 ) {
+                    jj = ( (i+di) * sizes[1] + (j+dj) ) * sizes[2] + k+dk;
+                    if( levels[jj] == -1 && val[jj] == 1 ) {
                       levels[jj] = nlevel+1;
                       changed++;
                     }
@@ -242,17 +244,7 @@ int make_sphere( int sizes[MAX_DIMENSIONS], short * val ) {
         }
       }
       nlevel++;
-      printf( "Outer level %d with %d voxels\n", nlevel, changed );
-
-      // Check if we are done. All white and inside sphere included.
-      changed = 0;
-      for( ii = 0; ii < n_voxels; ii++ ) {
-        if( val[ii] >= 1 && levels[ii] == -1 ) {
-          changed = 1;
-          break;
-        }
-      }
-
+      if( changed > 0 ) printf( "Outer level %d with %d voxels\n", nlevel, changed );
     } while( changed > 0 );
 
     // At this point, the outer surface of the labelled voxels
@@ -281,7 +273,7 @@ int make_sphere( int sizes[MAX_DIMENSIONS], short * val ) {
       // make border outside
       i = ii / ( sizes[1] * sizes[2] );
       j = ( ii - i * sizes[1] * sizes[2] ) / sizes[2];
-      k = ii - i * sizes[1] * sizes[2] - j * sizes[2];
+      k = ii - ( i * sizes[1] + j ) * sizes[2];
       if( i == 0 || i == sizes[0]-1 ||
           j == 0 || j == sizes[1]-1 ||
           k == 0 || k == sizes[2]-1 ) {
@@ -297,7 +289,7 @@ int make_sphere( int sizes[MAX_DIMENSIONS], short * val ) {
         if( levels2[ii] == nlevel2 ) {
           i = ii / ( sizes[1] * sizes[2] );
           j = ( ii - i * sizes[1] * sizes[2] ) / sizes[2];
-          k = ii - i * sizes[1] * sizes[2] - j * sizes[2];
+          k = ii - ( i * sizes[1] + j ) * sizes[2];
           for( di = -1; di <= 1; di++ ) {
             for( dj = -1; dj <= 1; dj++ ) {
               for( dk = -1; dk <= 1; dk++ ) {
@@ -305,7 +297,7 @@ int make_sphere( int sizes[MAX_DIMENSIONS], short * val ) {
                   if( i+di >= 0 && i+di < sizes[0] &&
                       j+dj >= 0 && j+dj < sizes[1] &&
                       k+dk >= 0 && k+dk < sizes[2] ) {
-                    jj = (i+di) * sizes[1] * sizes[2] + (j+dj) * sizes[2] + k+dk;
+                    jj = ( (i+di) * sizes[1] + (j+dj) ) * sizes[2] + k+dk;
                     if( levels2[jj] == -1 && val[jj] == 1 ) {
                       levels2[jj] = nlevel2+1;
                       changed++;
@@ -318,7 +310,7 @@ int make_sphere( int sizes[MAX_DIMENSIONS], short * val ) {
         }
       }
       nlevel2++;
-      printf( "Inner level %d with %d voxels\n", nlevel2, changed );
+      if( changed > 0 ) printf( "Inner level %d with %d voxels\n", nlevel2, changed );
     } while( changed > 0 );
 
     // Blend levels and levels2 to make a better iteration pattern
@@ -331,7 +323,13 @@ int make_sphere( int sizes[MAX_DIMENSIONS], short * val ) {
       levels[ii] = W1 * levels[ii] + W2 * levels2[ii];
     }
     nlevel = W1 * nlevel + W2 * nlevel2;
-    
+
+#if DEBUG
+    for( ii = 0; ii < n_voxels; ii++ ) {
+      val[ii] = levels[ii];
+    }
+    return OK;
+#endif
     // Initialize voxels we can eliminate on this iteration. Proceed
     // by levels.
 
@@ -349,24 +347,23 @@ int make_sphere( int sizes[MAX_DIMENSIONS], short * val ) {
         changed = 0;
       
         for( ii = 0; ii < n_voxels; ii++ ) {
+
           if( levels[ii] == nlevel && val[ii] == 1 ) {
             int flag = 0;
             i = ii / ( sizes[1] * sizes[2] );
             j = ( ii - i * sizes[1] * sizes[2] ) / sizes[2];
-            k = ii - i * sizes[1] * sizes[2] - j * sizes[2];
+            k = ii - ( i * sizes[1] + j ) * sizes[2];
   
             short idx = 0;
   
             for( di = -1; di <= 1; di++ ) {
               for( dj = -1; dj <= 1; dj++ ) {
                 for( dk = -1; dk <= 1; dk++ ) {
-
                   if( ABS(di) + ABS(dj) + ABS(dk) <= stencil ) {
                     if( i+di >= 0 && i+di < sizes[0] &&
                         j+dj >= 0 && j+dj < sizes[1] &&
                         k+dk >= 0 && k+dk < sizes[2] ) {
-                      jj = (i+di) * sizes[1] * sizes[2] + (j+dj) * sizes[2] + k+dk;
-                      // if( val[jj] != 1 ) {
+                      jj = ( (i+di) * sizes[1] + (j+dj) ) * sizes[2] + k+dk;
                       if( val[jj] == 0 ) {
                         flag |= neighbour[idx];
                       }
@@ -382,15 +379,19 @@ int make_sphere( int sizes[MAX_DIMENSIONS], short * val ) {
             }
           }
         }
-        printf( " %d", changed );
+        if( changed > 0 ) printf( " %d", changed );
         level_changed += changed;
       } while( changed );
-      printf( "\n" );
 
       // All unassigned voxels at this level will go to the next level.
+      int unassigned = 0;
       for( ii = 0; ii < n_voxels; ii++ ) {
-        if( levels[ii] == nlevel && val[ii] == 1 ) levels[ii] = nlevel-1;
+        if( levels[ii] == nlevel && val[ii] == 1 ) {
+          unassigned++;
+          levels[ii] = nlevel-1;
+        }
       }
+      printf( " (%d)\n", unassigned );
       nlevel--;
 
     } while( level_changed || nlevel >= W1 + W2 );
@@ -1000,6 +1001,20 @@ int surface( int sizes[MAX_DIMENSIONS], Real dh[MAX_DIMENSIONS],
     int ret = OK;
     ret = make_sphere( sizes, val );
 
+#if DEBUG
+    set_volume_real_range(mask, 0, 1024.0 );
+    count = 0;
+    for( int i = 0;  i < sizes[0];  ++i ) {
+      for( int j = 0;  j < sizes[1];  ++j ) {
+        for( int k = 0;  k < sizes[2];  ++k ) {
+          set_volume_real_value( mask, i, j, k, 0, 0, (float)val[count] );
+          count++;
+        }
+      }
+    }
+    return OK;
+#endif
+
     // Save surface
 
     save_voxel_surface( sizes, dh, val, mask, obj_file, subsample );
@@ -1050,6 +1065,13 @@ int  main( int ac, char* av[] ) {
     get_volume_separations( in_volume, dh );
 
     int ret = surface( sizes, dh, in_volume, av[2], subsample );
+
+#if DEBUG
+    (void)output_modified_volume( "levels.mnc", NC_SHORT,  // MI_ORIGINAL_TYPE,
+                                  0, 0, 0, in_volume, av[1],
+                                  NULL, NULL );
+#endif
+
     delete_volume( in_volume );
 
     return ( ret != OK );

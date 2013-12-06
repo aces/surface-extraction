@@ -225,6 +225,7 @@ int main( int argc, char * argv[] ) {
     surf.n_laplacian = 0;
     surf.n_volume = 0;
     surf.n_gradient = 0;
+    surf.n_gw_gradient = 0;
     surf.n_value = 0;
     surf.n_stretch = 0;
     surf.n_curvature = 0;

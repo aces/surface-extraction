@@ -10,7 +10,8 @@ surface_fit_SOURCES = 	evaluate_fit_3d.c \
 			self_intersect.c \
 			clip_search.c \
 			line_movement.c \
-			surface_fit.c
+			surface_fit.c \
+			gw_gradient.c
 
 adapt_object_mesh_SOURCES = adapt_object_mesh.c
 

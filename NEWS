@@ -1,3 +1,9 @@
+New in Release 3.0.1
+--------------------
+        * gray-white gradient for white surface calibration
+        * improved adapt_object_mesh.c to better account for surface curvature
+        * finalized marching-cubes
+
 New in Release 3.0.0
 --------------------
         * improved stretch constraint
@@ -6,6 +12,18 @@ New in Release 3.0.0
         * upgraded scripts for surfaces based on new constraints
         * cortical_thickness now uses depth_potential for blurring
         * clean-up some erroneous self-intersection cases
+
+New in Release 2.4.2
+--------------------
+        * optimized schedule for hi-res white and gray surface
+          extraction
+        * new white_model_320.obj, made narrower for single hemisphere
+        * Note: this is a temporary version until version 3.0 (not in CVS)
+
+New in Release 2.4.1
+--------------------
+        * use depth_potential in cortical_thickness for smoothing
+        * Note: this is a temporary version until version 3.0 (not in CVS)
 
 New in Release 2.4.0
 --------------------

@@ -122,6 +122,20 @@ typedef  struct
 
 typedef  struct
 {
+    Volume                  t1;
+    Volume                  cls;
+    Real                    search_distance;
+    Real                    search_increment;
+    Real                    image_weight;
+    int                     oversample;
+    Real *                  t1grad;
+    int                     update;
+    int *                   mask;
+    STRING                  mask_filename;
+} gw_gradient_struct;
+
+typedef  struct
+{
     Volume                  volume;
     voxel_coef_struct       *voxel_lookup;
     int                     continuity;
@@ -303,6 +317,8 @@ typedef  struct
     surface_bound_struct   *bound;
     int                    n_gradient;
     gradient_struct        *gradient;
+    int                    n_gw_gradient;
+    gw_gradient_struct     *gw_gradient;
     int                    n_value;
     surface_value_struct   *value;
     int                    n_stretch;
@@ -340,6 +356,7 @@ typedef struct
 {
     Real      boundary_fit;
     Real      gradient_fit;
+    Real      gw_gradient_fit;
     Real      value_fit;
     Real      stretch_fit;
     Real      curvature_fit;

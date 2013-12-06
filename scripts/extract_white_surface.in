@@ -42,9 +42,13 @@ use File::Basename;
 
 MNI::Spawn::RegisterPrograms
   ( [qw/  rm
+     cp
+     param2xfm
+     transform_objects
      subdivide_polygons
      surface_fit
-     set_object_colour/ ] )
+     set_object_colour
+     autocrop/ ] )
   or exit 1;
 
 # --- set the help & usage strings ---
@@ -56,10 +60,13 @@ Required parameters:
   model.obj    : model file (initial white surface)
 Optional parameters:
   [-refine]    : to generate the white surface with 327680 triangles
+                 starting from scratch
+  [-hiresonly] : to generate the white surface with 327680 triangles only
+                 starting from white 81920
   [-log]       : log file for stdout
-  [-start]     : first step in schedule (for restart)
-  [-end]       : last step in schedule (for restart)
   [-schedule]  : print the schedule to see the steps
+  [-left]      : extract a left surface
+  [-right]     : extract a right surface
 HELP
 
 my $license = <<LICENSE;
@@ -72,6 +79,7 @@ LICENSE
 my $usage = <<USAGE;
 Usage: $ProgramName cls_mask.mnc white.obj isovalue [model.obj]
        [-refine] [-log log_file] [-start s] [-end e] [-schedule]
+       [-left] [-right] [-clean]
        $ProgramName -help to list options
 
 $license
@@ -79,21 +87,25 @@ USAGE
 
 Getopt::Tabular::SetHelp( $help, $usage );
 
+my $side = undef;
 my $refine = 0;
-my $start_n = -1;
-my $end_n = 9999;
+my $hiresonly = 0;
 my $print_schedule = 0;
 my $logfile;
+my $Clean = 0;
 
 # --- process options ---
 my @options =
   ( @DefaultArgs,     # from MNI::Startup
   ['-refine', 'boolean', 0, \$refine,
-   "Create a high-resolution surface at 327680 polygons"],
-  ['-start', 'string', 1, \$start_n, "First step in schedule"],
-  ['-end', 'string', 1, \$end_n, "Last step in schedule"],
+   "Create a high-resolution surface at 327680 polygons starting from scratch"],
+  ['-hiresonly', 'boolean', 0, \$hiresonly, 
+   "Create white surface with 327680 triangles only starting from white 81920"],
   ['-log', 'string', 1, \$logfile, "Log file" ],
   ['-schedule', 'boolean', 0, \$print_schedule, "Print schedule"],
+  ['-left', 'const', "Left", \$side, "Extract left surface"],
+  ['-right', 'const', "Right", \$side, "Extract right surface"],
+  ['-clean', 'boolean', 0, \$Clean, "Remove intermediate surfaces"],
   );
 
 GetOptions( \@options, \@ARGV )
@@ -101,7 +113,7 @@ GetOptions( \@options, \@ARGV )
 die "$usage\n" unless @ARGV >= 3;
 
     my ($i, $step);
-    my ($size, $sw, $cw, $n_iters, $iter_inc, $offo, $offi, $si_step);
+    my ($size, $iso, $sw, $n_iters, $iter_inc, $n_per, $offo, $offi, $si_step);
     my ($in_dist, $out_dist, $oversample, $self_weight, $self_dist );
 
     my $volume = shift;
@@ -114,12 +126,16 @@ die "$usage\n" unless @ARGV >= 3;
       $log = " -log $logfile";
     }
 
+    check_output_dirs($TmpDir);
+
     my $wo = 100;   # weight for outside points
 
+# iso  = voxel resolution of white matter mask (based on xstep)
 # sw   = weight for mesh stretching (bigger means less stretch)
-# cw   = ???
 # n_iter = number of iterations at this step
 # inc  = do iterations by blocks of inc
+# n_per = number of iterations between updates of self-intersection cases
+# offo = weight for outside direction (the larger the better)
 # offo = weight for outside direction (the larger the better)
 # offi = weight for inside direction (the smaller the better)
 # si   = max step increment (large is faster, but risk of intersection)
@@ -129,30 +145,43 @@ die "$usage\n" unless @ARGV >= 3;
 # sw   = weight for surface self-intersection
 # self = min distance to check for surface self-intersection
 #
-#size    sw    cw  n_itr  inc   offo  offi  si  in  out  over  sw   self
-#-----  ----  ---- -----  ----  ----  ----  --  --  ---  ---- ----  ----
+#size    sw   n_itr  inc   offo  offi  si  in  out  over  sw   self
+#-----  ----  -----  ----  ----  ----  --  --  ---  ---- ----  ----
     my @schedule;
     @schedule = (
 
-#  size   sw    cw  n_itr  inc    offo   offi  si  in  out  over   sw   self
-#  ----- ----  ---- -----  ----   ----   ----  --  --  ---  ----  ----  ----
-    320, 1e3,   0,   1000,  50,   $wo,    1,   2,  50,  3,   40,  1e0,  1,
-   1280, 1e3,   0,   1000,  50,   $wo,    1,   2,  50,  3,   20,  1e0,  1,
-   1280, 1e2,   0,   2000,  50,   $wo,    1,   1,  50,  3,   20,  1e0,  5,
-   5120, 1e2,   0,   2000,  50,   $wo,    1, 1.5,  50,  3,   10,  1e0,  3,
-   5120, 1e1,   0,   2000,  50,   $wo,    1, 1.5,  50,  3,   10,  1e0,  3,
-  20480, 1e1,   0,   5000,  50,   $wo,    1,   1,  40,  3,    5,  1e0,  1.5,
-  81920, 2,     0,   1000,  50, 0.5*$wo,  1,   1,  30,  3,    2,  1e0,  .75,
- 327680, 2,     0,   1000,  50, 0.5*$wo,  1,   1,  20,  3,    1,  1e0,  .25,
+#  size  iso  sw   n_itr inc n_per   offo   offi  si  in  out  over   sw   self
+#  ----- --- ----  ----- ---------   ----   ----  --  --  ---  ----  ----  ----
+    320, 2.0, 1e3,  1000, 100,  10,   $wo,    1,   2,  50,  3,   40,  1e0,  1,
+   1280, 2.0, 1e3,  1000, 100,  10,   $wo,    1,   2,  50,  3,   20,  1e0,  1,
+   1280, 1.0, 1e2,  2000, 100,  10,   $wo,    1,   1,  50,  3,   20,  1e0,  5,
+   5120, 1.0, 1e2,  2000, 100,  10,   $wo,    1, 1.5,  50,  3,   10,  1e0,  3,
+   5120, 1.0, 1e1,  2000, 100,   5,   $wo,    1, 1.5,  50,  3,   10,  1e0,  3,
+  20480, 1.0, 1e2,   500,  50,   5,   $wo,    1, 1.0,  40,  3,    5,  1e0,  1.5,
+  20480, 1.0, 6e1,   750,  50,   5,   $wo,    1,   1,  40,  3,    5,  1e0,  1.5,
+  20480, 1.0, 4e1,   750,  50,   5,   $wo,    1,   1,  30,  3,    5,  1e0,  1.5,
+  20480, 1.0, 2e1,  1000,  50,   5,   $wo,    1,   1,  30,  3,    5,  1e0,  1.5,
+  20480, 1.0, 1e1,  1000,  50,   5,   $wo,    1,   1,  30,  3,    5,  1e0,  1.5,
+  81920, 1.0, 2e1,   100,  50,   5, 0.5*$wo,  1,   1,  30,  3,    2,  1e0,  .75,
+  81920, 1.0, 1e1,   150,  50,   5, 0.5*$wo,  1,   1,  30,  3,    2,  1e0,  .75,
+  81920, 0.5, 5,     200,  50,   5, 0.5*$wo,  1,   1,  30,  3,    2,  1e0,  .75,
+  81920, 0.5, 2,     250,  50,   5, 0.5*$wo,  1,   1,  20,  3,    2,  1e0,  .75,
+  81920, 0.5, 1,     300,  50,   5, 0.5*$wo,  1,   1,  15,  3,    2,  1e0,  .75,
+ 327680, 0.5, 2,     200,  50,   5, 0.5*$wo,  1,  0.5, 15,  2,    1,  1e0,  .25,
+ 327680, 0.5, 1,     250,  50,   5, 0.5*$wo,  1,  0.5, 15,  2,    1,  1e0,  .25,
+ 327680, 0.5, 0.5,   300,  50,   5, 0.5*$wo,  1,  0.5, 10,  2,    1,  1e0,  .25,
+ 327680, 0.5, 0.25,  350,  50,   5, 0.5*$wo,  1, 0.25,  5,  2,    1,  1e0,  .25,
   );
 
-    my $sched_size =  13;
+    my $sched_size =  14;
     my $num_steps = @schedule / $sched_size;
+    my $start_n = 0;
+    my $end_n = $num_steps - 1;
 
     if( $print_schedule ) {
         for( $i = 0;  $i < @schedule;  $i += $sched_size ) {
             $step = $i / $sched_size;
-            ( $size, $sw, $cw, $n_iters, $iter_inc, $offo, $offi,
+            ( $size, $iso, $sw, $n_iters, $iter_inc, $n_per, $offo, $offi,
               $si_step, $in_dist, $out_dist, $oversample, 
               $self_weight, $self_dist ) =
                          @schedule[$i..$i+$sched_size-1];
@@ -161,24 +190,23 @@ die "$usage\n" unless @ARGV >= 3;
         die "\n";
     }
 
-    if( $start_n < 0 ) {
-      $start_n = 0;
-    }
-    if( $end_n >= $num_steps ) {
-      $end_n = @schedule / $sched_size - 1;
-    }
-    if( $end_n < $start_n ) {
-      die "Nothing to do, all steps are done.\n";
-    }
-
-    # ignore last few steps if no hi-res surface is desired.
-    if( !( $refine ) ) {
+    # ignore initial steps at 81920 if hiresonly.
+    if( $hiresonly ) {
       for( $i = 0;  $i < @schedule;  $i += $sched_size ) {
         $step = $i / $sched_size;
         if( $schedule[$i] == 327680 ) {
-          if( $step - 1 < $end_n ) {
-            $end_n = $step - 1;
-          }
+          $start_n = $step;
+          last;
+        }
+      }
+    }
+
+    # ignore last few steps if no hi-res surface is desired.
+    if( !( $refine || $hiresonly ) ) {
+      for( $i = 0;  $i < @schedule;  $i += $sched_size ) {
+        $step = $i / $sched_size;
+        if( $schedule[$i] == 327680 ) {
+          $end_n = $step - 1;
           last;
         }
       }
@@ -186,7 +214,7 @@ die "$usage\n" unless @ARGV >= 3;
 
     system( "echo Step $start_n to $end_n" );
 
-    if( ! defined($volume) ) {
+    if( !( defined($volume) && ( -e $volume ) ) ) {
       die "$usage\n";
     }
     if( ! defined($output_file2) ) {
@@ -198,17 +226,45 @@ die "$usage\n" unless @ARGV >= 3;
 
     #--- remove whatever suffix name may have
 
-    my @objsuffix = ( ".obj", "_320", "_1280", "_5120", "_20480", "_81920", "_327680" );
+    my @objsuffix = ( ".obj", "_320", "_1280", "_5120", "_20480", 
+                      "_81920", "_327680" );
     my $white_dir = dirname( $output_file2 );
     my $white_prefix = basename( $output_file2, @objsuffix ) ;
     $white_prefix = "${white_dir}/${white_prefix}";
 
     if( !defined( $initial_model ) ) {
+      # This default model is for a centered (x=0) left surface.
       my $model_data_dir = "$FindBin::Bin/../share/surface-extraction/";
-      #my $model_data_dir = MNI::DataDir::dir('surface-extraction');
       MNI::DataDir::check_data($model_data_dir, [qw(white_model_320.obj)]);
-      $initial_model = "${model_data_dir}/white_model_320.obj";
+      $initial_model = "${TmpDir}/white_model_320.obj";
+      Spawn( ["cp", "-f", "${model_data_dir}/white_model_320.obj",
+              $initial_model] );
+      if( defined $side ) {
+        if( $side eq "Left" ) {
+          Spawn( ["param2xfm", "-translation", -25, 0, 0,
+                  "${TmpDir}/slide_left.xfm"] );
+          Spawn( ["transform_objects", $initial_model,
+                  "${TmpDir}/slide_left.xfm", $initial_model] );
+          unlink( "${TmpDir}/slide_left.xfm" );
+        }
+        if( $side eq "Right" ) {
+          Spawn( ["param2xfm", "-scales", -1, 1, 1,
+                  "${TmpDir}/flip.xfm"] );
+          Spawn( ["transform_objects", $initial_model,
+                  "${TmpDir}/flip.xfm", $initial_model] );
+          unlink( "${TmpDir}/flip.xfm" );
+          Spawn( ["param2xfm", "-translation", 25, 0, 0,
+                  "${TmpDir}/slide_right.xfm"] );
+          Spawn( ["transform_objects", $initial_model,
+                  "${TmpDir}/slide_right.xfm", $initial_model] );
+          unlink( "${TmpDir}/slide_right.xfm" );
+        }
+      }
     }
+
+    # Obtain voxel resolution of white matter mask (assume xstep=
+    # ystep=zstep).
+    my $dx = `mincinfo -attvalue xspace:step $volume`; chomp($dx); $dx+=0;
 
     my $fit = "surface_fit ";
 
@@ -219,8 +275,6 @@ die "$usage\n" unless @ARGV >= 3;
     my $stop_threshold = 3e-2;
     my $stop_iters = 10;
 
-    my $filter = 0;
-    my $n_per = 5;
     my $tolerance = 1.0e-03;
     my $f_tolerance = 1.0e-06;
 
@@ -230,7 +284,6 @@ die "$usage\n" unless @ARGV >= 3;
     my $iters_override = 0;
 
     my $stretch_scale = 1;
-    my $curvature_scale = 0;
 
     my $prev_n;
     my $white_surface;
@@ -262,8 +315,8 @@ die "$usage\n" unless @ARGV >= 3;
         # subdivide previous white surface to new size
         $white_surface = "${white_prefix}_${size}.obj";
         if( ! ( -e $white_surface ) ) {
-          Spawn( ["subdivide_polygons", "${white_prefix}_${prev_n}.obj",
-                  $white_surface, $size] );
+          subdivide_mesh( "${white_prefix}_${prev_n}.obj", $size,
+                          $white_surface, $side );
         }
 
         $prev_n = $size;
@@ -280,7 +333,7 @@ die "$usage\n" unless @ARGV >= 3;
 
         #--- get the components of the deformation schedule entry
 
-        ( $size, $sw, $cw, $n_iters, $iter_inc, $offo, $offi,
+        ( $size, $iso, $sw, $n_iters, $iter_inc, $n_per, $offo, $offi,
           $si_step, $in_dist, $out_dist, $oversample, $self_weight, $self_dist ) =
                      @schedule[$i..$i+$sched_size-1];
 
@@ -294,7 +347,6 @@ die "$usage\n" unless @ARGV >= 3;
         }
 
         $sw *= $stretch_scale;
-        $cw *= $curvature_scale;
         $oversample *= $oo_scale;
 
         if( $iters_override > 0 ) {
@@ -316,31 +368,42 @@ die "$usage\n" unless @ARGV >= 3;
           #--- subdivide white surface
 
           $white_surface = "${white_prefix}_${size}.obj";
-          Spawn( ["subdivide_polygons", "${white_prefix}_${prev_n}.obj",
-                  $white_surface, $size] );
+          subdivide_mesh( "${white_prefix}_${prev_n}.obj", $size,
+                          $white_surface, $side );
+          unlink( "${white_prefix}_${prev_n}.obj" ) if( $Clean );
 
           #--- subdivide model white surface
 
           if( ! ( -e "${white_prefix}_m_${size}.obj" ) ) {
             if( -e "${white_prefix}_m_${prev_n}.obj" ) {
-              Spawn( ["subdivide_polygons", "${white_prefix}_m_${prev_n}.obj",
-                      "${white_prefix}_m_${size}.obj", $size] );
+              subdivide_mesh( "${white_prefix}_m_${prev_n}.obj", $size,
+                              "${white_prefix}_m_${size}.obj", $side );
               system_call( "rm -f ${white_prefix}_m_${prev_n}.obj" );
             } else {
-              Spawn( ["subdivide_polygons", $initial_model,
-                      "${white_prefix}_m_${size}.obj", $size] );
+              subdivide_mesh( $initial_model, $size,
+                              "${white_prefix}_m_${size}.obj", $side );
 	      system_call( "set_object_colour ${white_prefix}_m_${size}.obj " .
                            " ${white_prefix}_m_${size}.obj white" );
             }
           }
-
         }
 
         $prev_n = $size;
 
         system( "echo Fitting polygons, max $n_iters iters." );
 
-        my $b2 = " -boundary $offo $offi $volume " .
+        # use a coarser resolution for the volume for speed. Note
+        # that autocrop is correct when going from fine to coarse
+        # (for the start coordinates).
+        my $volume_tmp = "${TmpDir}/volume_tmp_${iso}.obj";
+        if( $dx < $iso ) {
+          Spawn( ["autocrop", "-quiet", "-clobber", "-isostep", $iso,
+                  $volume, $volume_tmp] );
+        } else {
+          $volume_tmp = $volume;
+        }
+
+        my $b2 = " -boundary $offo $offi $volume_tmp " .
                  " $isovalue2 - $out_dist $in_dist 0 0 $oversample ";
 
         $iter_inc *= $break_scale;
@@ -350,7 +413,7 @@ die "$usage\n" unless @ARGV >= 3;
         my $iter;
 
         for( $iter = 0;  $iter < $n_iters;  $iter += $iter_inc ) {
-            system( "echo Step ${size}: $iter / $n_iters    $sw $cw" );
+            system( "echo Step ${size}: $iter / $n_iters    $sw" );
 
             my $ni = $n_iters - $iter;
             if( $ni > $iter_inc )  { $ni = $iter_inc; }
@@ -362,7 +425,6 @@ die "$usage\n" unless @ARGV >= 3;
 
             my $command = "$fit -mode two ".
                           " $surf2_info ".
-                          " -print_deriv " .
                           " -step $si_step " .
                           " -fitting $ni $n_per $tolerance " .
                           " -ftol $f_tolerance " .
@@ -382,6 +444,7 @@ die "$usage\n" unless @ARGV >= 3;
                 $n_failures = 0;
             }
         }
+        unlink( $volume_tmp ) if( $dx < $iso );
     }
 
     system( "echo Surface extraction finished." );
@@ -392,3 +455,31 @@ die "$usage\n" unless @ARGV >= 3;
     }
 
     clean_up();
+
+
+sub subdivide_mesh {
+
+  my $input = shift;
+  my $npoly = shift;
+  my $output = shift;
+  my $side = shift;
+
+  my $npoly_input = `print_n_polygons $input`;
+  chomp( $npoly_input );
+  if( $npoly <= $npoly_input || $side eq "Left" ) {
+    Spawn( ["subdivide_polygons", $input, $output, $npoly] );
+  } if( $side eq "Right" ) {
+    # flip right as left first before subdividing, then flip back.
+    Spawn( ["param2xfm", '-clobber', '-scales', -1, 1, 1,
+            "${TmpDir}/flip.xfm"] );
+    my $input_flipped = "${TmpDir}/right_flipped.obj";
+    Spawn( ["transform_objects", $input,
+            "${TmpDir}/flip.xfm", $input_flipped] );
+    Spawn( ["subdivide_polygons", $input_flipped, $output, $npoly] );
+    Spawn( ["transform_objects", $output,
+            "${TmpDir}/flip.xfm", $output] );  # flip.xfm is its own inverse
+    unlink( $input_flipped );
+    unlink( "${TmpDir}/flip.xfm" );
+  }
+
+}

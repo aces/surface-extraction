@@ -523,6 +523,13 @@ sum_dist = 0.0;
     if( *closest_distance > 0.0 )
         *closest_distance = sqrt( *closest_distance );
 
+#if 0
+
+    // Note by Claude: I have no clue why I once added this
+    // piece of code below, since it ignores nearby points 
+    // and leads to self-intersections in CLASP. Maybe the
+    // code below can give a better count??? Can't remember.
+
     // Ignore cases for which the vertices involved are 
     // directly connected via another vertex.
 
@@ -580,6 +587,7 @@ sum_dist = 0.0;
       }
     }
     *n_pairs_ptr = new_n_pairs_ptr;
+#endif
 
     FREE( poly_info );
 
