@@ -1,3 +1,8 @@
+New in Release 3.0.2
+--------------------
+        * improve surface registration of white surface to avoid
+          self-intersection of initial marching-cubes surfaces
+
 New in Release 3.0.1
 --------------------
         * gray-white gradient for white surface calibration

@@ -315,31 +315,83 @@ int main( int argc, char * argv[] ) {
         }
       }   
       // Dilate one connectivity layer.
-      for( s = 0; s < deform.surfaces[0].surface.n_polygons; s++ ) {
-        if( node_flags[triangles[3*s]] == 1 ||
-            node_flags[triangles[3*s+1]] == 1 ||
-            node_flags[triangles[3*s+2]] == 1 ) {
-          if( node_flags[triangles[3*s]] == 0 ) node_flags[triangles[3*s]] = 2;
-          if( node_flags[triangles[3*s+1]] == 0 ) node_flags[triangles[3*s+1]] = 2;
-          if( node_flags[triangles[3*s+2]] == 0 ) node_flags[triangles[3*s+2]] = 2;
+      int layer;
+      for( layer = 1; layer <= 2; layer++ ) {
+        for( s = 0; s < deform.surfaces[0].surface.n_polygons; s++ ) {
+          if( node_flags[triangles[3*s]] == 1 ||
+              node_flags[triangles[3*s+1]] == 1 ||
+              node_flags[triangles[3*s+2]] == 1 ) {
+            if( node_flags[triangles[3*s]] == 0 ) node_flags[triangles[3*s]] = 2;
+            if( node_flags[triangles[3*s+1]] == 0 ) node_flags[triangles[3*s+1]] = 2;
+            if( node_flags[triangles[3*s+2]] == 0 ) node_flags[triangles[3*s+2]] = 2;
+          }
+        }
+        for( s = 0; s < deform.surfaces[0].surface.n_points; s++ ) {
+          if( node_flags[s] == 2 ) node_flags[s] = 1;
         }
       }
 
       Real alpha = 0.4;
-      int iter, i;
-      for( iter = 50; iter > 0; iter-- ) {
+      int iter, i, j;
+      for( iter = 1; iter > 0; iter-- ) {
         for( s = 0; s < deform.surfaces[0].surface.n_points; s++ ) {
           if( !node_flags[s] ) continue;
           Real xc = 0.0, yc = 0.0, zc = 0.0;
+#if 0
           for( i = 0; i < deform.surfaces[0].surface.n_neighbours[s]; i++ ) {
-            int j = deform.surfaces[0].surface.neighbours[s][i];
+            j = deform.surfaces[0].surface.neighbours[s][i];
             xc += deform.surfaces[0].surface.points[j].coords[0];
             yc += deform.surfaces[0].surface.points[j].coords[1];
             zc += deform.surfaces[0].surface.points[j].coords[2];
           }
-          xc /= (Real)deform.surfaces[0].surface.n_neighbours[s];
-          yc /= (Real)deform.surfaces[0].surface.n_neighbours[s];
-          zc /= (Real)deform.surfaces[0].surface.n_neighbours[s];
+          Real weight = (Real)deform.surfaces[0].surface.n_neighbours[s];
+#else
+          Real weight = 0.0;
+          for( i = 0; i < deform.surfaces[0].surface.n_neighbours[s]; i++ ) {
+            int ii = deform.surfaces[0].surface.neighbours[s][i];
+            Real area = 0.0;
+            Real dx, dy, dz;
+            for( j = 0; j < deform.surfaces[0].surface.n_neighbours[ii]; j++ ) {
+              int j1 = deform.surfaces[0].surface.neighbours[ii][j];
+              int jj = ( j + 1 ) % deform.surfaces[0].surface.n_neighbours[ii];
+              int j2 = deform.surfaces[0].surface.neighbours[ii][jj];
+
+              dx = deform.surfaces[0].surface.points[ii].coords[0] -
+                   deform.surfaces[0].surface.points[j1].coords[0];
+              dy = deform.surfaces[0].surface.points[ii].coords[1] -
+                   deform.surfaces[0].surface.points[j1].coords[1];
+              dz = deform.surfaces[0].surface.points[ii].coords[2] -
+                   deform.surfaces[0].surface.points[j1].coords[2];
+              Real e0 = sqrt( dx * dx + dy * dy + dz * dz );
+
+              dx = deform.surfaces[0].surface.points[j2].coords[0] -
+                   deform.surfaces[0].surface.points[j1].coords[0];
+              dy = deform.surfaces[0].surface.points[j2].coords[1] -
+                   deform.surfaces[0].surface.points[j1].coords[1];
+              dz = deform.surfaces[0].surface.points[j2].coords[2] -
+                   deform.surfaces[0].surface.points[j1].coords[2];
+              Real e1 = sqrt( dx * dx + dy * dy + dz * dz );
+
+              dx = deform.surfaces[0].surface.points[ii].coords[0] -
+                   deform.surfaces[0].surface.points[j2].coords[0];
+              dy = deform.surfaces[0].surface.points[ii].coords[1] -
+                   deform.surfaces[0].surface.points[j2].coords[1];
+              dz = deform.surfaces[0].surface.points[ii].coords[2] -
+                   deform.surfaces[0].surface.points[j2].coords[2];
+              Real e2 = sqrt( dx * dx + dy * dy + dz * dz );
+
+              Real s = 0.5 * ( e0 + e1 + e2 );
+              area += sqrt( fabs( s * ( s - e0 ) * ( s - e1 ) * ( s - e2 ) ) + 1.0e-10 );
+            }
+            weight += area;
+            xc += area * deform.surfaces[0].surface.points[ii].coords[0];
+            yc += area * deform.surfaces[0].surface.points[ii].coords[1];
+            zc += area * deform.surfaces[0].surface.points[ii].coords[2];
+          }
+#endif
+          xc /= weight;
+          yc /= weight;
+          zc /= weight;
           new_points[3*s+0] = alpha * xc + ( 1.0 - alpha ) *
                               deform.surfaces[0].surface.points[s].coords[0];
           new_points[3*s+1] = alpha * yc + ( 1.0 - alpha ) *

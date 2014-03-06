@@ -102,7 +102,8 @@ if( !( -e $surfreg_model ) ) {
   die "You must specify a model for surface registration.\n";
 }
 
-my $surfreg = "geom_surfreg.pl";
+#my $surfreg = "geom_surfreg.pl";
+my $surfreg = "bestsurfreg.pl";
 
 my $tmpdir = &tempdir( "mcubes-XXXXXX", TMPDIR => 1, CLEANUP => 1 );
 
@@ -240,18 +241,63 @@ if( $side eq "Right" ) {
 # better isotropic mesh.
 
 &run( $surfreg, '-clobber', '-min_control_mesh', 320, '-max_control_mesh',
-      20480, '-blur_coef', '1.25', '-neighbourhood_radius', '1.8', 
+      20480, '-blur_coef', '1.25', '-neighbourhood_radius', '2.8', 
       '-target_spacing', '1.9', $surfreg_model, $white_surface, 
       "${tmpdir}/white.sm" );
 
-# Resample the unit sphere. Could do some smoothing if it helps prevent
-# self-intersections.
+# Resample the unit sphere.
 
 my $unit_sphere_rsl = "${tmpdir}/unit_sphere_rsl.obj";
 &run( 'sphere_resample_obj', '-clobber', $unit_sphere, "${tmpdir}/white.sm",
       $unit_sphere_rsl );
 unlink( "${tmpdir}/white.sm" );
 unlink( $unit_sphere );
+
+# Remove self-intersections in unit_sphere_rsl. Yes, there can be some due
+# to surface registration itself. I know, there shouldn't be. First, scale
+# the unit sphere to radius 100 because the hard-coded parameters in 
+# check_self_intersect are based on the size of a human head. 
+
+my $big_sphere_rsl = "${tmpdir}/big_sphere_rsl.obj";
+&run( 'param2xfm', '-scales', 100, 100, 100, "${tmpdir}/scale100.xfm" );
+&run( 'transform_objects', $unit_sphere_rsl, "${tmpdir}/scale100.xfm",
+      $big_sphere_rsl );
+my @ret = `check_self_intersect $big_sphere_rsl -fix $big_sphere_rsl`;
+$ret[1] =~ /Number of self-intersecting triangles = (\d+)/;
+my $num_inter = $1;
+if( $num_inter > 0 ) {
+  my $prev_num_inter = $num_inter;
+  my $increasing = 0;
+  for( my $i = 1; $i <= 500; $i++ ) {
+    my @ret = `check_self_intersect $big_sphere_rsl -fix $big_sphere_rsl`;
+    $ret[1] =~ /Number of self-intersecting triangles = (\d+)/;
+    $num_inter = $1;
+    printf "Iter = $i  Self-Intersections = $num_inter\n";
+    last if( $num_inter == 0 );
+    if( $num_inter >= $prev_num_inter ) {
+      if( $increasing >= 0 ) {
+        $increasing++;
+      } else {
+        $increasing = 1;
+      }
+    } else {
+      $increasing = 0;
+    }
+    $prev_num_inter = $num_inter;
+    last if( $increasing >= 5 );
+  }
+  if( $num_inter > 0 ) {
+    print "Warning: There are still $num_inter self-intersections in resampled sphere.\n";
+  }
+  &run( 'flatten_to_sphere', $big_sphere_rsl, $unit_sphere_rsl );
+
+  # no need to normalize sphere to unit radius. It's done in interpolate_sphere.
+  # &run( 'xfminvert', "${tmpdir}/scale100.xfm", "${tmpdir}/scale100.xfm" );
+  # &run( 'transform_objects', $big_sphere_rsl, "${tmpdir}/scale100.xfm",
+  #       $unit_sphere_rsl );
+}
+unlink( $big_sphere_rsl );
+unlink( "${tmpdir}/scale100.xfm" );
 
 # New interpolation of surface based on points on the resampled sphere.
 # Note: no self-inter in unit_sphere_rsl. Can have self-inter in white_sphere_sm
@@ -266,12 +312,26 @@ unlink( $white_sphere_sm );
 
 # Check for self-intersections in the marching-cubes surface.
 
-&run( 'check_self_intersect', $white_surface, '-fix', $white_surface );
-&run( 'check_self_intersect', $white_surface, '-fix', $white_surface );
-&run( 'check_self_intersect', $white_surface, '-fix', $white_surface );
-my @ret = `check_self_intersect $white_surface`;
-$ret[1] =~ /Number of self-intersecting triangles = (\d+)/;
-my $num_inter = $1;
+my $prev_num_inter = 999999;
+my $increasing = 0;
+for( my $i = 1; $i <= 500; $i++ ) {
+  my @ret = `check_self_intersect $white_surface -fix $white_surface`;
+  $ret[1] =~ /Number of self-intersecting triangles = (\d+)/;
+  my $num_inter = $1;
+  printf "Iter = $i  Self-Intersections = $num_inter\n";
+  last if( $num_inter == 0 );
+  if( $num_inter >= $prev_num_inter ) {
+    if( $increasing >= 0 ) {
+      $increasing++;
+    } else {
+      $increasing = 1;
+    }
+  } else {
+    $increasing = 0;
+  }
+  $prev_num_inter = $num_inter;
+  last if( $increasing >= 5 );
+}
 if( $num_inter > 0 ) {
   die "Failed interpolation of marching-cubes surface with $num_inter self-intersections.\n";
 }
@@ -417,8 +477,7 @@ sub calibrate_white {
   my @schedule = (
   #  size   blur   sw  n_itr  inc  gdist  ginc  gwgt over   si   sw   self
   #  -----  ----  ---- -----  ---- -----  ----  ---- ----   --  ----  ----
-    81920,  2.0,  100,  150,   50,  5.0,  0.1,  0.1,  1,   1.0,  1e0,  .25,
-    81920,  2.0,  100,   50,   50,  5.0,  0.1,  1.0,  1,   1.0,  1e0,  .25,
+    81920,  2.0,  100,  150,   50,  5.0,  0.1,  1.0,  1,   1.0,  1e0,  .25,
     81920,  0.0,   20,   50,   50,  4.0,  0.1,  1.0,  1,   0.5,  1e0,  .25,
     81920,  0.0,    5,   50,   50,  4.0,  0.1,  1.0,  1,   0.5,  1e0,  .25,
     81920,  0.0,    2,   50,   50,  3.0, 0.05,  1.0,  1,   0.5,  1e0,  .25,

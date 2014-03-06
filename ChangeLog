@@ -1,3 +1,7 @@
+2014-02-01  Claude Lepage      <claude@bic.mni.mcgill.ca>
+        * improve surface registration of white surface to avoid
+          self-intersection of initial marching-cubes surfaces
+
 2013-11-13  Claude Lepage      <claude@bic.mni.mcgill.ca>
         * improved stretch constraint
         * corrected Laplacian constraint

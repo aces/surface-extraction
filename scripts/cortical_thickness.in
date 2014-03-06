@@ -40,19 +40,17 @@ USAGE
 Getopt::Tabular::SetHelp( $help, $usage );
 
 my $fwhm = 0;
-my $tlink = 0;
-my $tnear = 0;
-my $tnormal = 0;
-my $tlaplace = 0;
+my $method = "tlink";
 my $transform_xfm = undef;
 
 my @options =
   ( @DefaultArgs,     # from MNI::Startup
     ['-fwhm', 'string', 1, \$fwhm, 'blurring kernel in mm'],
-    ['-tlink', 'boolean', 0, \$tlink, 'use t-link method for thickness'],
-    ['-tnear', 'boolean', 0, \$tnear, 'use t-near method for thickness'],
-    ['-tnormal', 'boolean', 0, \$tnormal, 'use t-normal method for thickness'],
-    ['-tlaplace', 'boolean', 0, \$tlaplace, 'use t-Laplace method for thickness'],
+    ['-tlink', 'const', "tlink", \$method, 'use t-link method for thickness'],
+    ['-tnear', 'const', "tnear", \$method, 'use t-near method for thickness'],
+    ['-tfs', 'const', "tfs", \$method, 'use symmetric t-near method for thickness (like FreeSurfer)'],
+    ['-tnormal', 'const', "tnormal", \$method, 'use t-normal method for thickness (do not use)'],
+    ['-tlaplace', 'const', "tlaplace", \$method, 'use t-Laplace method for thickness'],
     ['-transform', 'string', 1, \$transform_xfm, 
      'transformation from native to stereotaxic (if surfaces in stx space)'],
   );
@@ -69,18 +67,6 @@ my $output = shift;
 MNI::FileUtilities::check_output_dirs("${TmpDir}")
   or exit 1;
 
-# Make sure there is only one way to compute the thickness.
-
-my $found = 0;
-if( $tlink ) { $found++; }
-if( $tnear ) { $found++; }
-if( $tnormal ) { $found++; }
-if( $tlaplace ) { $found++; }
-
-if( $found != 1 ) {
-  die "$usage\nMust specify exactly one method to compute thickness.\n\n";
-}
-
 if( defined $transform_xfm ) {
   my $white_trans = "${TmpDir}/white_trans.obj";
   my $gray_trans = "${TmpDir}/gray_trans.obj";
@@ -95,20 +81,31 @@ if( defined $transform_xfm ) {
 my $midSurface = "${TmpDir}/midSurface.obj";
 &run( "average_surfaces", $midSurface, "none", "none", 1, $white, $gray );
 
-if( $tlink ) {
+if( $method eq "tlink" ) {
   # also: &run( "diff_surfaces", $white, $gray, "link", $output );
   &run( "dump_rms", $white, $gray, $output );
 }
 
-if( $tnear ) {
+if( $method eq "tnear" ) {
   &run( "diff_surfaces", $white, $gray, "near", $output );
 }
 
-if( $tnormal ) {
+if( $method eq "tfs" ) {
+  my $output1 = "${TmpDir}/tfs_white_to_gray.txt";
+  my $output2 = "${TmpDir}/tfs_gray_to_white.txt";
+  &run( "diff_surfaces", $white, $gray, "near", $output1 );
+  &run( "diff_surfaces", $gray, $white, "near", $output2 );
+  &run( "vertstats_math", '-old_style_file', '-add', $output1,
+        $output2, $output );
+  &run( "vertstats_math", '-old_style_file', '-mult', '-const', 0.5,
+        $output, $output );
+}
+
+if( $method eq "tnormal" ) {
   &run( "diff_surfaces", $white, $gray, "normal", $output );
 }
 
-if( $tlaplace ) {
+if( $method eq "tlaplace" ) {
   if( defined $transform_xfm ) {
     # when transformation is given, transform both surfaces (done above) and
     # icbm model to native space (ugly!)
