@@ -198,6 +198,7 @@ int make_sphere( int sizes[MAX_DIMENSIONS], short * val ) {
     int     n_voxels = sizes[0] * sizes[1] * sizes[2];
 
     int stencil = 1;
+    int level_count = 0;
 
     // Create connectivity levels around the white surface until
     // all of the inside of the sphere (val>=1) has been labelled.
@@ -208,69 +209,26 @@ int make_sphere( int sizes[MAX_DIMENSIONS], short * val ) {
       exit( 1 );
     }
 
-    for( ii = 0; ii < n_voxels; ii++ ) {
-      if( val[ii] > 1 ) {
-        levels[ii] = 0;    // white
-      } else {
-        levels[ii] = -1;   // outside white
-      }
-    }
-
-    int nlevel = 0;
-    do {
-      changed = 0;
-      for( ii = 0; ii < n_voxels; ii++ ) {
-        if( levels[ii] == nlevel ) {
-          i = ii / ( sizes[1] * sizes[2] );
-          j = ( ii - i * sizes[1] * sizes[2] ) / sizes[2];
-          k = ii - ( i * sizes[1] + j ) * sizes[2];
-          for( di = -1; di <= 1; di++ ) {
-            for( dj = -1; dj <= 1; dj++ ) {
-              for( dk = -1; dk <= 1; dk++ ) {
-                if( ABS(di) + ABS(dj) + ABS(dk) <= stencil ) {
-                  if( i+di >= 0 && i+di < sizes[0] &&
-                      j+dj >= 0 && j+dj < sizes[1] &&
-                      k+dk >= 0 && k+dk < sizes[2] ) {
-                    jj = ( (i+di) * sizes[1] + (j+dj) ) * sizes[2] + k+dk;
-                    if( levels[jj] == -1 && val[jj] == 1 ) {
-                      levels[jj] = nlevel+1;
-                      changed++;
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-      nlevel++;
-      if( changed > 0 ) printf( "Outer level %d with %d voxels\n", nlevel, changed );
-    } while( changed > 0 );
-
-    // At this point, the outer surface of the labelled voxels
-    // should be topologically equivalent to a sphere, after
-    // propagation from white to outside.
-    // Now propagate nlevel from outside to inside.
-
-    short nlevel2 = 0;
     short * levels2 = new short[n_voxels];
     if( !levels2 ) {
       printf( "Error allocating memory for levels2.\n" );
       exit( 1 );
     }
 
-    stencil = 1;
+    int * level_ptr = new int[n_voxels];
+    if( !level_ptr ) {
+      printf( "Error allocating memory for level_ptr.\n" );
+      exit( 1 );
+    }
+    int * level_ptr_tmp = new int[n_voxels/4];  // should fit
+    if( !level_ptr_tmp ) {
+      printf( "Error allocating memory for level_ptr_tmp.\n" );
+      exit( 1 );
+    }
+
+    level_count = 0;
     for( ii = 0; ii < n_voxels; ii++ ) {
-      if( levels[ii] > 0 ) {
-        val[ii] = 1;
-      }
-      // flip inside/outside
-      if( levels[ii] == -1 ) {
-        levels2[ii] = 0;
-      } else {
-        levels2[ii] = -1;
-      }
-      // make border outside
+      // ensure that border layer of voxels is outside
       i = ii / ( sizes[1] * sizes[2] );
       j = ( ii - i * sizes[1] * sizes[2] ) / sizes[2];
       k = ii - ( i * sizes[1] + j ) * sizes[2];
@@ -278,30 +236,89 @@ int make_sphere( int sizes[MAX_DIMENSIONS], short * val ) {
           j == 0 || j == sizes[1]-1 ||
           k == 0 || k == sizes[2]-1 ) {
         val[ii] = 0;
-        levels[ii] = 0;
-        levels2[ii] = 0;
+      }
+      if( val[ii] > 1 ) {
+        levels[ii] = 0;    // white
+        level_ptr[level_count] = ii;
+        level_count++;
+      } else {
+        levels[ii] = -1;   // outside white (and outside sphere)
       }
     }
 
+    int nlevel = 0;
     do {
       changed = 0;
-      for( ii = 0; ii < n_voxels; ii++ ) {
-        if( levels2[ii] == nlevel2 ) {
-          i = ii / ( sizes[1] * sizes[2] );
-          j = ( ii - i * sizes[1] * sizes[2] ) / sizes[2];
-          k = ii - ( i * sizes[1] + j ) * sizes[2];
-          for( di = -1; di <= 1; di++ ) {
-            for( dj = -1; dj <= 1; dj++ ) {
-              for( dk = -1; dk <= 1; dk++ ) {
-                if( ABS(di) + ABS(dj) + ABS(dk) <= stencil ) {
-                  if( i+di >= 0 && i+di < sizes[0] &&
-                      j+dj >= 0 && j+dj < sizes[1] &&
-                      k+dk >= 0 && k+dk < sizes[2] ) {
-                    jj = ( (i+di) * sizes[1] + (j+dj) ) * sizes[2] + k+dk;
-                    if( levels2[jj] == -1 && val[jj] == 1 ) {
-                      levels2[jj] = nlevel2+1;
-                      changed++;
-                    }
+      for( iii = 0; iii < level_count; iii++ ) {
+        ii = level_ptr[iii];
+        i = ii / ( sizes[1] * sizes[2] );
+        j = ( ii - i * sizes[1] * sizes[2] ) / sizes[2];
+        k = ii - ( i * sizes[1] + j ) * sizes[2];
+        for( di = -1; di <= 1; di++ ) {
+          for( dj = -1; dj <= 1; dj++ ) {
+            for( dk = -1; dk <= 1; dk++ ) {
+              if( ABS(di) + ABS(dj) + ABS(dk) <= stencil ) {
+                jj = ( (i+di) * sizes[1] + (j+dj) ) * sizes[2] + k+dk;
+                if( levels[jj] == -1 && val[jj] == 1 ) {
+                  levels[jj] = nlevel+1;
+                  level_ptr_tmp[changed] = jj;
+                  changed++;
+                }
+              }
+            }
+          }
+        }
+      }
+      nlevel++;
+      level_count = changed;
+      for( iii = 0; iii < level_count; iii++ ) {
+        level_ptr[iii] = level_ptr_tmp[iii];
+      }
+
+      if( changed > 0 ) printf( "Outer level %d with %d voxels\n", 
+                                nlevel, changed );
+    } while( changed > 0 );
+
+    // At this point, the outer surface of the labelled voxels
+    // should be topologically equivalent to a sphere, after
+    // propagation from white to outside.
+    // Now propagate nlevel from outside to inside.
+
+    level_count = 0;
+    for( ii = 0; ii < n_voxels; ii++ ) {
+      if( val[ii] == 0 ) {
+        // These are all the voxels outside the sphere, so some
+        // of them will touch the volume border. So in the loop
+        // below, check for borders to avoid seg fault.
+        levels2[ii] = 0;    // outside sphere
+        level_ptr[level_count] = ii;
+        level_count++;
+      } else {
+        levels2[ii] = -1;   // inside sphere (and inside white)
+      }
+    }
+
+    stencil = 1;
+    short nlevel2 = 0;
+    do {
+      changed = 0;
+      for( iii = 0; iii < level_count; iii++ ) {
+        ii = level_ptr[iii];
+        i = ii / ( sizes[1] * sizes[2] );
+        j = ( ii - i * sizes[1] * sizes[2] ) / sizes[2];
+        k = ii - ( i * sizes[1] + j ) * sizes[2];
+        for( di = -1; di <= 1; di++ ) {
+          for( dj = -1; dj <= 1; dj++ ) {
+            for( dk = -1; dk <= 1; dk++ ) {
+              if( ABS(di) + ABS(dj) + ABS(dk) <= stencil ) {
+                if( i+di >= 0 && i+di < sizes[0] &&
+                    j+dj >= 0 && j+dj < sizes[1] &&
+                    k+dk >= 0 && k+dk < sizes[2] ) {
+                  jj = ( (i+di) * sizes[1] + (j+dj) ) * sizes[2] + k+dk;
+                  if( levels2[jj] == -1 && val[jj] == 1 ) {
+                    levels2[jj] = nlevel2+1;
+                    level_ptr_tmp[changed] = jj;
+                    changed++;
                   }
                 }
               }
@@ -309,8 +326,15 @@ int make_sphere( int sizes[MAX_DIMENSIONS], short * val ) {
           }
         }
       }
+
       nlevel2++;
-      if( changed > 0 ) printf( "Inner level %d with %d voxels\n", nlevel2, changed );
+      level_count = changed;
+      for( iii = 0; iii < level_count; iii++ ) {
+        level_ptr[iii] = level_ptr_tmp[iii];
+      }
+
+      if( changed > 0 ) printf( "Inner level %d with %d voxels\n", 
+                                nlevel2, changed );
     } while( changed > 0 );
 
     // Blend levels and levels2 to make a better iteration pattern
@@ -319,10 +343,46 @@ int make_sphere( int sizes[MAX_DIMENSIONS], short * val ) {
     short W1 = 3;
     short W2 = 1;
     for( ii = 0; ii < n_voxels; ii++ ) {
-      levels2[ii] = nlevel2 - levels2[ii] + 1;
-      levels[ii] = W1 * levels[ii] + W2 * levels2[ii];
+      levels[ii] = W1 * levels[ii] + W2 * (  nlevel2 - levels2[ii] + 1 );
     }
     nlevel = W1 * nlevel + W2 * nlevel2;
+
+    // Do a bit of blurring on the levels. This helps to prevent bridges.
+
+    stencil = 1;
+    for( iii = 0; iii < 10; iii++ ) {
+      printf( "blurring iteration %d\n", iii );
+      for( ii = 0; ii < n_voxels; ii++ ) {
+        levels2[ii] = levels[ii];
+        if( val[ii] == 1 ) {  // ignore borders
+          i = ii / ( sizes[1] * sizes[2] );
+          j = ( ii - i * sizes[1] * sizes[2] ) / sizes[2];
+          k = ii - ( i * sizes[1] + j ) * sizes[2];
+          int count = 0;
+          int sum = 0;
+          for( di = -1; di <= 1; di++ ) {
+            for( dj = -1; dj <= 1; dj++ ) {
+              for( dk = -1; dk <= 1; dk++ ) {
+                if( ABS(di) + ABS(dj) + ABS(dk) <= stencil ) {
+                  jj = ( (i+di) * sizes[1] + (j+dj) ) * sizes[2] + k+dk;
+                  if( val[jj] == 1 ) {
+                    sum += levels[jj];
+                    count++;
+                  }
+                }
+              }
+	    }
+	  }
+          if( count ) {
+            levels2[ii] = rint( (float)sum / count );
+          }   
+        }
+      }
+      for( ii = 0; ii < n_voxels; ii++ ) {
+        levels[ii] = levels2[ii];
+      }
+    }
+    delete [] levels2;
 
 #if DEBUG
     for( ii = 0; ii < n_voxels; ii++ ) {
@@ -336,19 +396,29 @@ int make_sphere( int sizes[MAX_DIMENSIONS], short * val ) {
     int level_changed;
     stencil = 3;
 
+    level_count = 0;
+    for( ii = 0; ii < n_voxels; ii++ ) {
+      if( levels[ii] == nlevel && val[ii] == 1 ) {
+        levels2[level_count] = ii;
+        level_count++;
+      }
+    }
+
     do {
       // Find current level around outer boundary.
 
       level_changed = 0;
 
-      printf( "Processing level %d:", nlevel );
+      printf( "Processing level %d (%d):", nlevel, level_count );
 
       do {
         changed = 0;
       
-        for( ii = 0; ii < n_voxels; ii++ ) {
+        for( iii = 0; iii < level_count; iii++ ) {
 
-          if( levels[ii] == nlevel && val[ii] == 1 ) {
+          ii = level_ptr[iii];
+
+          if( val[ii] == 1 ) {
             int flag = 0;
             i = ii / ( sizes[1] * sizes[2] );
             j = ( ii - i * sizes[1] * sizes[2] ) / sizes[2];
@@ -360,13 +430,9 @@ int make_sphere( int sizes[MAX_DIMENSIONS], short * val ) {
               for( dj = -1; dj <= 1; dj++ ) {
                 for( dk = -1; dk <= 1; dk++ ) {
                   if( ABS(di) + ABS(dj) + ABS(dk) <= stencil ) {
-                    if( i+di >= 0 && i+di < sizes[0] &&
-                        j+dj >= 0 && j+dj < sizes[1] &&
-                        k+dk >= 0 && k+dk < sizes[2] ) {
-                      jj = ( (i+di) * sizes[1] + (j+dj) ) * sizes[2] + k+dk;
-                      if( val[jj] == 0 ) {
-                        flag |= neighbour[idx];
-                      }
+                    jj = ( (i+di) * sizes[1] + (j+dj) ) * sizes[2] + k+dk;
+                    if( val[jj] == 0 ) {
+                      flag |= neighbour[idx];
                     }
                   }
                   idx++;
@@ -385,16 +451,25 @@ int make_sphere( int sizes[MAX_DIMENSIONS], short * val ) {
 
       // All unassigned voxels at this level will go to the next level.
       int unassigned = 0;
-      for( ii = 0; ii < n_voxels; ii++ ) {
-        if( levels[ii] == nlevel && val[ii] == 1 ) {
+      for( iii = 0; iii < level_count; iii++ ) {
+        ii = level_ptr[iii];
+        if( val[ii] == 1 ) {
           unassigned++;
           levels[ii] = nlevel-1;
         }
       }
       printf( " (%d)\n", unassigned );
       nlevel--;
+      level_count = 0;
+      for( ii = 0; ii < n_voxels; ii++ ) {
+        if( levels[ii] == nlevel && val[ii] == 1 ) {
+          level_ptr[level_count] = ii;
+          level_count++;
+        }
+      }
 
-    } while( level_changed || nlevel >= W1 + W2 );
+    // } while( level_changed || nlevel >= W1 + W2 );
+    } while( level_changed || nlevel >= 1 );
 
     changed = 0;
     for( ii = 0; ii < n_voxels; ii++ ) {
@@ -403,7 +478,8 @@ int make_sphere( int sizes[MAX_DIMENSIONS], short * val ) {
     printf( "%d non-white voxels inside surface\n", changed );
 
     delete [] levels;
-    delete [] levels2;
+    delete [] level_ptr;
+    delete [] level_ptr_tmp;
 
     return( OK );
 }

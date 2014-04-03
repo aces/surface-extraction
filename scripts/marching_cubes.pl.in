@@ -97,7 +97,7 @@ if( !( -e $white_matter_mask ) ) {
   print "$usage\n";
   die "White matter mask must exist.\n";
 }
-if( !( -e $surfreg_model ) ) {
+if( $surfreg_model ne "none" && !( -e $surfreg_model ) ) {
   print "$usage\n";
   die "You must specify a model for surface registration.\n";
 }
@@ -202,11 +202,17 @@ unlink( "${tmpdir}/s1.mnc" );
 my $dx = `mincinfo -attvalue xspace:step $white_matter_mask`; chomp($dx);
 $subsample = 0 if( $dx < 0.90 );
 
+# Crop volume to smallest extents to speed up marching-cubes.
+my @crop = split( ' ', `mincbbox ${tmpdir}/s0.mnc -mincreshape` );
+&run( 'mincreshape', '-quiet', '-clobber', @crop, "${tmpdir}/s0.mnc",
+      "${tmpdir}/s1.mnc" );
+unlink( "${tmpdir}/s0.mnc" );
+
 # Run the marching-cubes algorithm on the mask.
 
-&run( 'sphere_mesh', "${tmpdir}/s0.mnc", $white_surface, 
+&run( 'sphere_mesh', "${tmpdir}/s1.mnc", $white_surface, 
       ( $subsample ) ? "-subsample" : "" );
-unlink( "${tmpdir}/s0.mnc" );
+unlink( "${tmpdir}/s1.mnc" );
 
 # Coarsen and smooth the original marching-cubes surface.
 
@@ -232,83 +238,87 @@ if( $side eq "Right" ) {
   unlink( "${tmpdir}/flip.xfm" );
 }
 
-&run( 'interpolate_sphere', $white_surface_sm, $white_sphere_sm, $unit_sphere,
-      $white_surface );
+# Evaluate the white surface from the marching-cubes surface.
 
-# Do surface registration on to the ICBM by geometrically blurring 
-# the surfaces to keep only the primary structures, for more robust
-# registration. This will be a first alignment that will ensure 
-# better isotropic mesh.
+&resample_white_surface( $white_surface_sm, $white_sphere_sm,
+                         $unit_sphere, $white_surface );
 
-&run( $surfreg, '-clobber', '-min_control_mesh', 320, '-max_control_mesh',
-      20480, '-blur_coef', '1.25', '-neighbourhood_radius', '2.8', 
-      '-target_spacing', '1.9', $surfreg_model, $white_surface, 
-      "${tmpdir}/white.sm" );
+# Do surface registration on to the average white population model.
+# This will be a first alignment that will ensure better isotropic mesh.
 
-# Resample the unit sphere.
+if( $surfreg_model ne "none" ) {
 
-my $unit_sphere_rsl = "${tmpdir}/unit_sphere_rsl.obj";
-&run( 'sphere_resample_obj', '-clobber', $unit_sphere, "${tmpdir}/white.sm",
-      $unit_sphere_rsl );
-unlink( "${tmpdir}/white.sm" );
-unlink( $unit_sphere );
+  &run( $surfreg, '-clobber', '-min_control_mesh', 320, '-max_control_mesh',
+        20480, '-blur_coef', '1.25', '-neighbourhood_radius', '2.8', 
+        '-target_spacing', '1.9', $surfreg_model, $white_surface, 
+        "${tmpdir}/white.sm" );
 
-# Remove self-intersections in unit_sphere_rsl. Yes, there can be some due
-# to surface registration itself. I know, there shouldn't be. First, scale
-# the unit sphere to radius 100 because the hard-coded parameters in 
-# check_self_intersect are based on the size of a human head. 
+  # Resample the unit sphere.
 
-my $big_sphere_rsl = "${tmpdir}/big_sphere_rsl.obj";
-&run( 'param2xfm', '-scales', 100, 100, 100, "${tmpdir}/scale100.xfm" );
-&run( 'transform_objects', $unit_sphere_rsl, "${tmpdir}/scale100.xfm",
-      $big_sphere_rsl );
-my @ret = `check_self_intersect $big_sphere_rsl -fix $big_sphere_rsl`;
-$ret[1] =~ /Number of self-intersecting triangles = (\d+)/;
-my $num_inter = $1;
-if( $num_inter > 0 ) {
-  my $prev_num_inter = $num_inter;
-  my $increasing = 0;
-  for( my $i = 1; $i <= 500; $i++ ) {
-    my @ret = `check_self_intersect $big_sphere_rsl -fix $big_sphere_rsl`;
-    $ret[1] =~ /Number of self-intersecting triangles = (\d+)/;
-    $num_inter = $1;
-    printf "Iter = $i  Self-Intersections = $num_inter\n";
-    last if( $num_inter == 0 );
-    if( $num_inter >= $prev_num_inter ) {
-      if( $increasing >= 0 ) {
-        $increasing++;
-      } else {
-        $increasing = 1;
-      }
-    } else {
-      $increasing = 0;
-    }
-    $prev_num_inter = $num_inter;
-    last if( $increasing >= 5 );
-  }
+  my $unit_sphere_rsl = "${tmpdir}/unit_sphere_rsl.obj";
+  &run( 'sphere_resample_obj', '-clobber', $unit_sphere, "${tmpdir}/white.sm",
+        $unit_sphere_rsl );
+  unlink( "${tmpdir}/white.sm" );
+
+  # Remove self-intersections in unit_sphere_rsl. Yes, there can be some due
+  # to surface registration itself. I know, there shouldn't be. First, scale
+  # the unit sphere to radius 100 because the hard-coded parameters in 
+  # check_self_intersect are based on the size of a human head. 
+
+  my $big_sphere_rsl = "${tmpdir}/big_sphere_rsl.obj";
+  &run( 'param2xfm', '-scales', 100, 100, 100, "${tmpdir}/scale100.xfm" );
+  &run( 'transform_objects', $unit_sphere_rsl, "${tmpdir}/scale100.xfm",
+        $big_sphere_rsl );
+  my @ret = `check_self_intersect $big_sphere_rsl -fix $big_sphere_rsl`;
+  $ret[1] =~ /Number of self-intersecting triangles = (\d+)/;
+  my $num_inter = $1;
   if( $num_inter > 0 ) {
-    print "Warning: There are still $num_inter self-intersections in resampled sphere.\n";
+    my $prev_num_inter = $num_inter;
+    my $increasing = 0;
+    for( my $i = 1; $i <= 500; $i++ ) {
+      my @ret = `check_self_intersect $big_sphere_rsl -fix $big_sphere_rsl`;
+      $ret[1] =~ /Number of self-intersecting triangles = (\d+)/;
+      $num_inter = $1;
+      printf "Iter = $i  Self-Intersections = $num_inter\n";
+      last if( $num_inter == 0 );
+      if( $num_inter >= $prev_num_inter ) {
+        if( $increasing >= 0 ) {
+          $increasing++;
+        } else {
+          $increasing = 1;
+        }
+      } else {
+        $increasing = 0;
+      }
+      $prev_num_inter = $num_inter;
+      last if( $increasing >= 5 );
+    }
+    if( $num_inter > 0 ) {
+      print "Warning: There are still $num_inter self-intersections in resampled sphere.\n";
+    }
+    &run( 'flatten_to_sphere', $big_sphere_rsl, $unit_sphere_rsl );
+  
+    # no need to normalize sphere to unit radius. It's done in interpolate_sphere.
+    # &run( 'xfminvert', "${tmpdir}/scale100.xfm", "${tmpdir}/scale100.xfm" );
+    # &run( 'transform_objects', $big_sphere_rsl, "${tmpdir}/scale100.xfm",
+    #       $unit_sphere_rsl );
   }
-  &run( 'flatten_to_sphere', $big_sphere_rsl, $unit_sphere_rsl );
+  unlink( $big_sphere_rsl );
+  unlink( "${tmpdir}/scale100.xfm" );
 
-  # no need to normalize sphere to unit radius. It's done in interpolate_sphere.
-  # &run( 'xfminvert', "${tmpdir}/scale100.xfm", "${tmpdir}/scale100.xfm" );
-  # &run( 'transform_objects', $big_sphere_rsl, "${tmpdir}/scale100.xfm",
-  #       $unit_sphere_rsl );
+  # New interpolation of surface based on points on the resampled sphere.
+  # Note: no self-inter in unit_sphere_rsl. Can have self-inter in white_sphere_sm
+  #       if inflation to sphere is difficult.
+  
+  &run( 'interpolate_sphere', $white_surface_sm, $white_sphere_sm, $unit_sphere_rsl,
+        $white_surface );
+
+  unlink( $unit_sphere_rsl );
+  unlink( $white_surface_sm );
+  unlink( $white_sphere_sm );
+
 }
-unlink( $big_sphere_rsl );
-unlink( "${tmpdir}/scale100.xfm" );
-
-# New interpolation of surface based on points on the resampled sphere.
-# Note: no self-inter in unit_sphere_rsl. Can have self-inter in white_sphere_sm
-#       if inflation to sphere is difficult.
-
-&run( 'interpolate_sphere', $white_surface_sm, $white_sphere_sm, $unit_sphere_rsl,
-      $white_surface );
-
-unlink( $unit_sphere_rsl );
-unlink( $white_surface_sm );
-unlink( $white_sphere_sm );
+unlink( $unit_sphere );
 
 # Check for self-intersections in the marching-cubes surface.
 
@@ -319,7 +329,10 @@ for( my $i = 1; $i <= 500; $i++ ) {
   $ret[1] =~ /Number of self-intersecting triangles = (\d+)/;
   my $num_inter = $1;
   printf "Iter = $i  Self-Intersections = $num_inter\n";
-  last if( $num_inter == 0 );
+  if( $num_inter == 0 ) {
+    $prev_num_inter = 0;
+    last;
+  }
   if( $num_inter >= $prev_num_inter ) {
     if( $increasing >= 0 ) {
       $increasing++;
@@ -332,8 +345,9 @@ for( my $i = 1; $i <= 500; $i++ ) {
   $prev_num_inter = $num_inter;
   last if( $increasing >= 5 );
 }
-if( $num_inter > 0 ) {
-  die "Failed interpolation of marching-cubes surface with $num_inter self-intersections.\n";
+if( $prev_num_inter > 0 ) {
+  unlink( $white_surface );   ## is this desirable???
+  die "Failed interpolation of marching-cubes surface with $prev_num_inter self-intersections.\n";
 }
 
 # Run ASP on the resampled white surface to converge it fully
@@ -353,7 +367,103 @@ if( $calibrate ) {
                     $tmpdir );
 }
 
+# Resample the white surface from a standard sphere from the 
+# hi-res marching-cubes white surface. The distribution of
+# vertices on the sphere is adapted such as to produce an
+# interpolated surface with triangles of nearly the same size.
 
+sub resample_white_surface {
+
+  my $white_mc = shift;     # hi-res raw marching-cubes surface
+  my $sphere_mc = shift;    # sphere corresponding to white_mc
+  my $unit_sphere = shift;  # standard sphere
+  my $output = shift;       # output white surface with uniform triangles
+
+  my @conf = ( { 'size' => 320,     # most of the motion occurs early
+                 'fwhm' => 20.0,
+                 'niter' => 500 },
+               { 'size' => 1280,
+                 'fwhm' => 10.0,
+                 'niter' => 500 },
+               { 'size' => 5120,
+                 'fwhm' => 5.0,
+                 'niter' => 300 },
+               { 'size' => 20480,
+                 'fwhm' => 2.0,
+                 'niter' => 150 } );
+
+  my $start = 320;
+  my $end = 20480;
+
+  my $npolys = `print_n_polygons $unit_sphere`;
+  chomp( $npolys );
+
+  my $current_sphere = "${tmpdir}/current_sphere.obj";
+  &run( 'cp', '-f', $unit_sphere, $current_sphere );
+
+  # obtain initial white surface
+
+  &run( 'interpolate_sphere', $white_mc, $sphere_mc,
+        $current_sphere, $output );
+
+  # Multi-resolution approach from coarse to fine mesh.
+
+  for( my $idx = 0; $idx <= $#conf; $idx++ ) {
+
+    my $size = $conf[$idx]{size};
+
+    next if( $size < $start );
+    last if( $size > $end );
+
+    print "Sphere adaptation at $size vertices...\n";
+
+    # Obtain the triangle areas from current white surface to
+    # the current sphere at size npolys.
+
+    my $white_area = "${tmpdir}/white_area.txt";
+    my $sphere_area = "${tmpdir}/sphere_area.txt";
+    &run( 'depth_potential', '-area_simple', $output, $white_area );
+    &run( 'depth_potential', '-area_simple', $current_sphere, $sphere_area );
+    &run( 'vertstats_math', '-old_style_file', '-div', $white_area,
+          $sphere_area, $white_area );
+    unlink( $sphere_area );
+    if( $conf[$idx]{fwhm} > 0 ) {
+      &run( 'depth_potential', '-smooth', $conf[$idx]{fwhm},
+            $white_area, $output, $white_area );
+    }
+
+    # adapt the current_sphere at this size based on the areas.
+  
+    &subdivide_mesh( $current_sphere, $size, $current_sphere );
+    &run( 'adapt_metric', $current_sphere, $white_area,
+          $current_sphere, $conf[$idx]{niter} );
+    unlink( $white_area );
+
+    # interpolate relative to the original white surface at npolys.
+
+    &subdivide_mesh( $current_sphere, $npolys, $current_sphere );
+    &run( 'interpolate_sphere', $white_mc, $sphere_mc,
+          $current_sphere, $output );
+
+  }
+
+  # Create a new hi-res background mesh with uniform triangles.
+  # This new background mesh will be used for interpolating the
+  # resampled white surface after surface registration. This way,
+  # we can associate the standard sphere to this new bg mesh 
+  # since the standard sphere is used during surface registration.
+
+  $npolys *= 4;
+  &subdivide_mesh( $current_sphere, $npolys, $current_sphere );
+
+  &run( 'interpolate_sphere', $white_mc, $sphere_mc,
+        $current_sphere, $white_mc );
+
+  &subdivide_mesh( $unit_sphere, $npolys, $sphere_mc );
+
+  unlink( $current_sphere );
+
+}
 
 # Run ASP on the resampled white surface to converge it fully
 # to the white matter mask. This is a simplified version of 
@@ -634,10 +744,9 @@ sub subdivide_mesh {
 
   my $npoly_input = `print_n_polygons $input`;
   chomp( $npoly_input );
-  my $flip = CheckFlipOrientation( $input );
-  if( $npoly <= $npoly_input || !$flip ) {
+  if( !CheckFlipOrientation( $input ) ) {
     &run( "subdivide_polygons", $input, $output, $npoly );
-  } if( $flip ) {
+  } else {
     # flip right as left first before subdividing, then flip back.
     &run( "param2xfm", '-clobber', '-scales', -1, 1, 1,
           "${tmpdir}/flip.xfm" );

@@ -1,0 +1,173 @@
+#! @PERL@
+#
+# Surface-based geometric smoothing of a surface to obtain
+# equal-area triangles, as much as possible.
+#
+# Claude Lepage - claude@bic.mni.mcgill.ca
+#
+# Copyright Alan C. Evans
+# Professor of Neurology
+# McGill University
+#
+
+
+#######################################################################
+
+use strict;
+use warnings "all";
+use File::Basename;
+use File::Temp qw/ tempdir /;
+
+my $verbose = 1;
+
+# make tmpdir
+my $tmpdir = &tempdir( "equidistribute_object-XXXXXX", 
+                       TMPDIR => 1, CLEANUP => 1 );
+
+my $input = shift;      # current surface to equidistribute triangles
+my $output = shift;     # the output surface
+
+my @conf = ( { 'size' => 320,     # most of the motion occurs early
+               'fwhm' => 20.0,
+               'niter' => 50 },
+             { 'size' => 1280,
+               'fwhm' => 10.0,
+               'niter' => 500 },
+             { 'size' => 5120,
+               'fwhm' => 5.0,
+               'niter' => 300 },
+             { 'size' => 20480,
+               'fwhm' => 2.0,
+               'niter' => 150 } );
+
+my $start = 320;
+my $end = 20480;
+
+my $npolys = `print_n_polygons $input`;
+chomp( $npolys );
+
+my $current_sphere = "${tmpdir}/current_sphere.obj";
+&run( 'create_tetra', $current_sphere, 0, 0, 0, 1, 1, 1, $npolys );
+if( CheckFlipOrientation( $input ) ) {
+  &run( "param2xfm", "-scales", -1, 1, 1, "${tmpdir}/flip.xfm" );
+  &run( "transform_objects", $current_sphere,
+        "${tmpdir}/flip.xfm", $current_sphere );
+  unlink( "${tmpdir}/flip.xfm" );
+}
+
+my $input_hires = "${tmpdir}/input_hires.obj";
+my $sphere_hires = "${tmpdir}/sphere_hires.obj";
+&subdivide_mesh( $current_sphere, 4*$npolys, $sphere_hires );
+&subdivide_mesh( $input, 4*$npolys, $input_hires );
+
+my $tmpobj = "${tmpdir}/tmp.obj";
+
+&run( 'cp', '-f', $input, $tmpobj );   # also works if input==output
+&run( 'mv', '-f', $tmpobj, $output );  # but can't cp input output.
+
+# Multi-resolution approach from coarse to fine mesh.
+
+for( my $idx = 0; $idx <= $#conf; $idx++ ) {
+
+  my $size = $conf[$idx]{size};
+
+  next if( $size < $start );
+  last if( $size > $end );
+
+  print "Sphere adaptation at $size vertices...\n";
+
+  # Obtain the triangle areas from current white surface to
+  # the current sphere at size npolys.
+
+  my $white_area = "${tmpdir}/white_area.txt";
+  my $sphere_area = "${tmpdir}/sphere_area.txt";
+  &run( 'depth_potential', '-area_simple', $output, $white_area );
+  &run( 'depth_potential', '-area_simple', $current_sphere, $sphere_area );
+  &run( 'vertstats_math', '-old_style_file', '-div', $white_area,
+        $sphere_area, $white_area );
+  unlink( $sphere_area );
+  if( $conf[$idx]{fwhm} > 0 ) {
+    &run( 'depth_potential', '-smooth', $conf[$idx]{fwhm},
+          $white_area, $output, $white_area );
+  }
+
+  # adapt the current_sphere at this size based on the areas.
+
+  &subdivide_mesh( $current_sphere, $size, $current_sphere );
+  &run( 'adapt_metric', $current_sphere, $white_area,
+        $current_sphere, $conf[$idx]{niter} );
+  unlink( $white_area );
+
+  # interpolate relative to the original white surface at npolys.
+  &subdivide_mesh( $current_sphere, $npolys, $current_sphere );
+  &run( 'interpolate_sphere', $input_hires, $sphere_hires,
+        $current_sphere, $output );
+
+}
+
+unlink( $input_hires );
+unlink( $sphere_hires );
+unlink( $current_sphere );
+
+
+# Check if the input surface has the same side orientation (left)
+# as the default template model.
+
+sub CheckFlipOrientation {
+
+  my $obj = shift;
+
+  my $npoly = `print_n_polygons $obj`;
+  chomp( $npoly );
+
+  my $ret = `tail -5 $obj`;
+  my @verts = split( ' ', $ret );
+  my @last3 = ( $verts[$#verts-2], $verts[$#verts-1], $verts[$#verts] );
+
+  my $dummy_sphere = "${tmpdir}/dummy_sphere.obj";
+  &run('create_tetra',$dummy_sphere,0,0,0,1,1,1,$npoly);
+  $ret = `tail -5 $dummy_sphere`;
+  unlink( $dummy_sphere );
+  @verts = split( ' ', $ret );
+  my @sphere3 = ( $verts[$#verts-2], $verts[$#verts-1], $verts[$#verts] );
+  if( $last3[0] == $verts[$#verts-2] &&
+      $last3[1] == $verts[$#verts-1] &&
+      $last3[2] == $verts[$#verts-0] ) {
+    return 0;
+  } else {
+    return 1;
+  }
+}
+
+# subdivide a surface taking into account if it's a left or right hemisphere.
+
+sub subdivide_mesh {
+
+  my $input = shift;
+  my $npoly = shift;
+  my $output = shift;
+
+  my $npoly_input = `print_n_polygons $input`;
+  chomp( $npoly_input );
+  if( !CheckFlipOrientation( $input ) ) {
+    &run( "subdivide_polygons", $input, $output, $npoly );
+  } else {
+    # flip right as left first before subdividing, then flip back.
+    &run( "param2xfm", '-clobber', '-scales', -1, 1, 1,
+          "${tmpdir}/flip.xfm" );
+    my $input_flipped = "${tmpdir}/right_flipped.obj";
+    &run( "transform_objects", $input,
+          "${tmpdir}/flip.xfm", $input_flipped );
+    &run( "subdivide_polygons", $input_flipped, $output, $npoly );
+    &run( "transform_objects", $output,
+          "${tmpdir}/flip.xfm", $output );  # flip.xfm is its own inverse
+    unlink( $input_flipped );
+    unlink( "${tmpdir}/flip.xfm" );
+  }
+}
+
+sub run {
+  print STDOUT "@_\n" if ${verbose};
+  system(@_) == 0 or die;
+}
+

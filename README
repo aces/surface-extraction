@@ -22,4 +22,8 @@ many improvements for the expansion of the gray surface.
 CVS Tag "clasp_2-3" - the software as Claude Lepage optimized it for
 speed
 
+CVS Tag "clasp_2-4-0" - the last stable ASP version before marching-cubes
+
+CVS Tag "clasp_3-X-Y" - the marching-cubes version for extraction of
+the white surface
 

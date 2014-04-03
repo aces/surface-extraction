@@ -14,6 +14,7 @@ bin_SCRIPTS = \
    scripts/clasp \
    scripts/classify_correct \
    scripts/cortical_thickness \
+   scripts/equidistribute_object.pl \
    scripts/expand_from_white \
    scripts/extract_white_surface \
    scripts/make_asp_grid \
@@ -60,6 +61,7 @@ EXTRA_DIST = \
    scripts/clasp.in \
    scripts/classify_correct.in \
    scripts/cortical_thickness.in \
+   scripts/equidistribute_object.pl.in \
    scripts/expand_from_white.in \
    scripts/extract_white_surface.in \
    scripts/make_asp_grid.in \

@@ -466,9 +466,10 @@ sub subdivide_mesh {
 
   my $npoly_input = `print_n_polygons $input`;
   chomp( $npoly_input );
-  if( $npoly <= $npoly_input || $side eq "Left" ) {
+  if( $side eq "Left" ) {
     Spawn( ["subdivide_polygons", $input, $output, $npoly] );
-  } if( $side eq "Right" ) {
+  } 
+  if( $side eq "Right" ) {
     # flip right as left first before subdividing, then flip back.
     Spawn( ["param2xfm", '-clobber', '-scales', -1, 1, 1,
             "${TmpDir}/flip.xfm"] );

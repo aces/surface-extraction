@@ -1,3 +1,15 @@
+2014-04-03  Claude Lepage      <claude@bic.mni.mcgill.ca>
+        * add src/adapt_sphere_metric.c for mesh adaptation on the sphere
+        * add scripts/equidistribute_object.pl for making triangles of
+          uniform area on a cortical surface
+        * make triangles of uniform area inside marching_cubes.pl
+        * add tfs option to cortical_thickness script (tfs = symmetric
+          tnear as in FreeSurfer)
+        * fix bug in sub subdivide_mesh in scripts extract_white_surface,
+          expand_from_white and marching_cubes
+        * crop white matter mask to speed up surface extraction
+        * optimize sphere_mesh for speed (from 17min down to 3min or less)
+
 2014-02-01  Claude Lepage      <claude@bic.mni.mcgill.ca>
         * improve surface registration of white surface to avoid
           self-intersection of initial marching-cubes surfaces

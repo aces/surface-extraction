@@ -34,6 +34,7 @@ scripts/check_surf_surf_intersect
 scripts/clasp
 scripts/classify_correct
 scripts/cortical_thickness
+scripts/equidistribute_object.pl
 scripts/expand_from_white
 scripts/extract_white_surface
 scripts/make_asp_grid
