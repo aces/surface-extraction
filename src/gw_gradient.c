@@ -115,6 +115,8 @@ public void adjust_gm_wm_gradient( Volume t1, Volume classified,
                                 0.0, &tmp, NULL, NULL, NULL,
                                 NULL, NULL, NULL, NULL, NULL, NULL );
       cls[j] = rint( tmp );
+      // ignore possible labelled WM that could be CSF after filling the ventricles
+      if( cls[j] == WM && vals[j] < avg_gm ) cls[j] = CSF;
       d += search_inc;
     }
     t1grad[i-start_point] = vals[(ndist-1)/2];

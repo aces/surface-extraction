@@ -65,9 +65,9 @@ my @options = (
    "Subsample white matter mask at half voxel size"],
   ['-calibrate', 'boolean', 0, \$calibrate,
    "Calibrate white surface to gray-white gradient"],
-  ['-mask', 'string', 0, \$mask,
+  ['-mask', 'string', 1, \$mask,
    "Surface mask where to ignore gray-white gradient correction"],
-  ['-mask-label', 'string', 0, \$mask_label,
+  ['-mask-label', 'string', 1, \$mask_label,
    "Surface mask label where to ignore gray-white gradient correction"],
   );
 
@@ -158,15 +158,17 @@ my $new_wm_mask = "${tmpdir}/new_wm_mask.mnc";
 my $ret = `mincstats -sum $old_wm_mask`; chomp( $ret );
 print "Connectivity iteration 0: $ret\n";
 
-for( my $iter = 1; $iter <= 10; $iter++ ) {
+my $lower = 1.5;
+for( my $iter = 1; $iter <= 5; $iter++ ) {
   &run( 'mincmorph', '-clobber', '-unsigned', '-byte', '-convolve', '-kernel', 
         "${tmpdir}/ngh_count.kernel", $old_wm_mask, $ngh_count );
   &run( 'minccalc', '-clob', '-quiet', '-expr', 
-        'if(A[1]<2.5){0}else{if(A[1]>4.5){1}else{A[0]}}',
+        "if(A[1]<$lower){0}else{if(A[1]>4.5){1}else{A[0]}}",
         $old_wm_mask, $ngh_count, $new_wm_mask );
   &run( 'mv', '-f', $new_wm_mask, $old_wm_mask );
   my $ret = `mincstats -sum $old_wm_mask`; chomp( $ret );
   print "Connectivity iteration $iter: $ret\n";
+  $lower = 0.5;
 }
 
 unlink( $ngh_count );
@@ -248,10 +250,11 @@ if( $side eq "Right" ) {
 
 if( $surfreg_model ne "none" ) {
 
+  &run( 'adapt_object_mesh', $white_surface, $white_surface, 9999999, 10 );
+
   &run( $surfreg, '-clobber', '-min_control_mesh', 320, '-max_control_mesh',
-        20480, '-blur_coef', '1.25', '-neighbourhood_radius', '2.8', 
-        '-target_spacing', '1.9', $surfreg_model, $white_surface, 
-        "${tmpdir}/white.sm" );
+        20480, '-blur_coef', '1.0', '-neighbourhood_radius', '2.8', 
+        '-mode', 'stiff', $surfreg_model, $white_surface, "${tmpdir}/white.sm" );
 
   # Resample the unit sphere.
 
@@ -291,7 +294,7 @@ if( $surfreg_model ne "none" ) {
         $increasing = 0;
       }
       $prev_num_inter = $num_inter;
-      last if( $increasing >= 5 );
+      last if( $increasing >= 5 && $i > 50 );
     }
     if( $num_inter > 0 ) {
       print "Warning: There are still $num_inter self-intersections in resampled sphere.\n";
@@ -343,7 +346,7 @@ for( my $i = 1; $i <= 500; $i++ ) {
     $increasing = 0;
   }
   $prev_num_inter = $num_inter;
-  last if( $increasing >= 5 );
+  last if( $increasing >= 5 && $i > 50 );
 }
 if( $prev_num_inter > 0 ) {
   unlink( $white_surface );   ## is this desirable???
