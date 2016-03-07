@@ -1,3 +1,14 @@
+2016-03-07  Claude Lepage      <claude@bic.mni.mcgill.ca>
+        * extend search radius for gray-white gradient correction
+        * fix weights for self-intersections
+        * normalize oversampling weight by local area for find_image_boundaries
+          for improved convergence rate on non-uniform meshes
+        * extension of gray-white gradient for histology (BigBrain)
+        * support for fitting of white surface using chamfer map for Laplacian field
+        * improved mesh adaptation (convergence, swapping, shrinkage-free
+          Taubin smoothing)
+        * add surf_surf_interpolate.c and surface_angles.c
+
 2014-04-03  Claude Lepage      <claude@bic.mni.mcgill.ca>
         * add src/adapt_sphere_metric.c for mesh adaptation on the sphere
         * add scripts/equidistribute_object.pl for making triangles of

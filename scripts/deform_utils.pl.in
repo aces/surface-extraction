@@ -1,33 +1,31 @@
-#! @PERL@
+#! /usr/bin/perl
 #
 # Copyright Alan C. Evans
 # Professor of Neurology
 # McGill University
 #
 
-sub  get_self_intersect( $$$$ )
+sub  get_self_intersect( $$$$$ )
 {
-    my( $self_weight, $n_selfs, $self_dist, $self_dist2 ) = @_;
-    my( $self, $weight, $s, $dist );
+    my( $self_weight, $self_weight2, $n_selfs, $self_dist, $self_dist2 ) = @_;
+    my( $self, $weight, $weight_factor, $s, $dist );
 
-    if( $self_weight > 0.0 )
-    {
+    if( $self_weight > 0.0 ) {
         $self = "";
         $weight = $self_weight;
+        $weight_factor = ( $self_weight2 / $self_weight ) ** 
+                         ( 1.0 / $n_selfs );
 
-        for( $s = 0;  $s < $n_selfs;  ++$s )
-        {
+        for( $s = 0;  $s < $n_selfs;  ++$s ) {
             $dist = $self_dist + ($self_dist2 - $self_dist) *
                     $s / $n_selfs;
-
             $self = $self . " -self_intersect $weight $dist ";
-            $weight *= 10.0;
+            $weight *= $weight_factor;
         }
-        $self = $self . " -self_intersect 1e8 $self_dist2 ";
+        $self = $self . " -self_intersect $self_weight2 $self_dist2 ";
+    } else { 
+        $self = ""; 
     }
-    else
-        { $self = ""; }
-
     $self;
 }
 

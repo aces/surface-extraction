@@ -7,7 +7,6 @@
 #include <time.h>
 #include <fit_3d.h>
 
-#define NEW_CURVATURE 0
 #define ADAPTIVE_RATIO 1
 #define NO_ANCHOR 0
 #define BOUNDARY_DECREASE 1
@@ -156,6 +155,7 @@ private  Real   evaluate_laplacian_fit(
     Real         weight,
     Volume       laplacian_map,
     Real         to,
+    int          type,
     int          n_neighbours[],
     int        * neighbours[],
     Real         sampling,
@@ -163,23 +163,57 @@ private  Real   evaluate_laplacian_fit(
     int          start_point,
     int          end_point)
 {
-  int         point, p_index;
+  int         point, p_index, n;
   Real        fit=0.0f;
   Real        value;
+  Real        dxyz[3];
+  Point      *neigh_points;
+  Vector      normal;
 
   if( weight > 0 ) {
+    int max_neighbours = 0;
+    for_less( n, start_point, end_point ){
+      max_neighbours = MAX( max_neighbours, n_neighbours[n] );
+    }
+    ALLOC( neigh_points, max_neighbours);
+
     for_less( point, start_point, end_point ) {
 
       p_index = IJ( point, 0, 3 );
+
+      // NOTE: It's probably ok to evaluate dxyz with EVAL_LINEAR
+      //       since we are using the derivative only to establish
+      //       the in/out direction with the surface normal. CL.
       evaluate_volume_in_world( laplacian_map,
                                 parameter[p_index+0],
                                 parameter[p_index+1],
                                 parameter[p_index+2],
                                 EVAL_LINEAR, FALSE,
                                 0.0, &value,
-                                NULL, NULL, NULL,
+                                dxyz, dxyz+1, dxyz+2,
                                 NULL, NULL, NULL, NULL, NULL, NULL );
+
+      // Make sure the normal direction is consistent with
+      // the image value and gradient direction.
+
+      if( type == 0 && value < to ) {
+        for_less( n, 0, n_neighbours[point] ){
+          int neigh = neighbours[point][n];
+          fill_Point( neigh_points[n],
+                      parameter[IJ(neigh,0,3)],
+                      parameter[IJ(neigh,1,3)],
+                      parameter[IJ(neigh,2,3)] );
+        }
+        find_polygon_normal( n_neighbours[point], neigh_points, &normal);
+        Real dot = dxyz[0] * normal.coords[0] +
+                   dxyz[1] * normal.coords[1] +
+                   dxyz[2] * normal.coords[2];
+
+        // this will negate the "reverse" contribution
+        if( dot < 0.0 ) value = to;   
+      }
       fit += (value-to)*(value-to);
+
     }
 
     // Do oversampling. This is useful, but slows down the code.
@@ -192,6 +226,24 @@ private  Real   evaluate_laplacian_fit(
       weight /= ((sampling+1.0)*(sampling+1.0));
 
       for( point = start_point; point < end_point; point++ ) {
+
+        // WARNING: This is wrong in deep narrow sulci with "thin"
+        //          surface since the normal vector changes rapidly.
+        //          We must use the exact normal vector at each 
+        //          sampling point, otherwise the direction of
+        //          attraction at the sampling point will be wrong.
+        //          CL.
+
+        // Find the normal vector at this point. It's approximate only.
+
+        for_less( n, 0, n_neighbours[point] ){
+          int neigh = neighbours[point][n];
+          fill_Point( neigh_points[n],
+                      parameter[IJ(neigh,0,3)],
+                      parameter[IJ(neigh,1,3)],
+                      parameter[IJ(neigh,2,3)] );
+        }
+        find_polygon_normal( n_neighbours[point], neigh_points, &normal);
 
         for_less( n, 0, n_neighbours[point] ) {
           neigh1 = neighbours[point][n];
@@ -221,10 +273,23 @@ private  Real   evaluate_laplacian_fit(
               yp = N0 * parameter[p0+1] + N1 * parameter[p1+1] + N2 * parameter[p2+1];
               zp = N0 * parameter[p0+2] + N1 * parameter[p1+2] + N2 * parameter[p2+2];
 
+              // NOTE: It's probably ok to evaluate dxyz with EVAL_LINEAR
+              //       since we are using the derivative only to establish
+              //       the in/out direction with the surface normal. CL.
+
               evaluate_volume_in_world( laplacian_map, xp, yp, zp,
                                         EVAL_LINEAR, FALSE, 0.0, &value,
-                                        NULL, NULL, NULL,
+                                        dxyz, dxyz+1, dxyz+2,
                                         NULL, NULL, NULL, NULL, NULL, NULL );
+
+              // this will negate the "reverse" contribution if we
+              // are moving in the wrong direction
+              if( type == 0 && value < to ) {
+                Real dot = dxyz[0] * normal.coords[0] +
+                           dxyz[1] * normal.coords[1] +
+                           dxyz[2] * normal.coords[2];
+                if( dot < 0.0 ) value = to;   
+              }
 
               fit += (value-to)*(value-to);
             }
@@ -234,6 +299,7 @@ private  Real   evaluate_laplacian_fit(
     }
 
     fit *= 0.5 * weight;
+    FREE( neigh_points );
   }
 
   return fit;
@@ -260,6 +326,7 @@ private  Real   evaluate_laplacian_fit_deriv(
     Volume       volume,
     Real         from,
     Real         to,
+    int          type,
     Real         parameter[],
     int          start_point,
     int          end_point,
@@ -270,8 +337,10 @@ private  Real   evaluate_laplacian_fit_deriv(
 
     Real         value1, volume_value;
     Real         dxyz[3];
-    int          point, p_index;
+    int          point, p_index, n;
     Real         factor = 1e0;
+    Point        *neigh_points;
+    Vector       normal, normal_p1, normal_p2, normal_p3;
 
     int          count_res = 0;
     Real         phi_res = 0.0;
@@ -279,6 +348,13 @@ private  Real   evaluate_laplacian_fit_deriv(
     Real         phi_max = MIN( to, from );
 
     if( weight > 0 ) {
+
+      int max_neighbours = 0;
+      for_less( n, start_point, end_point ){
+        max_neighbours = MAX( max_neighbours, n_neighbours[n] );
+      }
+      ALLOC( neigh_points, max_neighbours);
+
       if( sampling > 0 ) {
         weight /= (Real)((sampling+1)*(sampling+1));
       }
@@ -286,13 +362,30 @@ private  Real   evaluate_laplacian_fit_deriv(
       for_less( point, start_point, end_point ) {
         p_index = IJ( point, 0, 3 );
 
+        /* IMPORTANT: use CUBIC for derivatives since a symmetric
+           stencil is used, whereas an upwind stencil is used for
+           LINEAR, thus causing a bias in the derivatives. CL. */
+
+        evaluate_volume_in_world( laplacian_map,
+                                  parameter[p_index+0],
+                                  parameter[p_index+1],
+                                  parameter[p_index+2],
+                                  EVAL_CUBIC, FALSE,
+                                  0.0, &value1,
+                                  dxyz, dxyz+1, dxyz+2,
+                                  NULL, NULL, NULL, NULL, NULL, NULL );
+
+        /* IMPORTANT: use LINEAR for the function values since CUBIC
+           can cause over/undershoots and lead to missing the correct
+           boundary of "to". CL. */
+
         evaluate_volume_in_world( laplacian_map,
                                   parameter[p_index+0],
                                   parameter[p_index+1],
                                   parameter[p_index+2],
                                   EVAL_LINEAR, FALSE,
                                   0.0, &value1,
-                                  dxyz, dxyz+1, dxyz+2,
+                                  NULL, NULL, NULL,
                                   NULL, NULL, NULL, NULL, NULL, NULL );
 
         phi_res += ABS( to - value1 );
@@ -300,6 +393,25 @@ private  Real   evaluate_laplacian_fit_deriv(
         if( value1 > phi_max ) phi_max = value1;
 
         factor = weight * (value1 - to);
+
+        // Make sure the normal direction is consistent with
+        // the image value and gradient direction.
+
+        if( type == 0 && value1 < to ) {
+          for_less( n, 0, n_neighbours[point] ){
+            int neigh = neighbours[point][n];
+            fill_Point( neigh_points[n],
+                        parameter[IJ(neigh,0,3)],
+                        parameter[IJ(neigh,1,3)],
+                        parameter[IJ(neigh,2,3)] );
+          }
+          find_polygon_normal( n_neighbours[point], neigh_points, &normal);
+          Real dot = dxyz[0] * normal.coords[0] +
+                     dxyz[1] * normal.coords[1] +
+                     dxyz[2] * normal.coords[2];
+          // if( dot < 0.0 ) factor = -factor;
+          if( dot < 0.0 ) factor = 0.0;
+        }
         deriv[p_index+0] += dxyz[0]*factor;
         deriv[p_index+1] += dxyz[1]*factor;
         deriv[p_index+2] += dxyz[2]*factor;
@@ -309,7 +421,7 @@ private  Real   evaluate_laplacian_fit_deriv(
 
       if( sampling > 0 ) {
 
-        int  n, neigh1, neigh2, p0, p1, p2, w1, w2;
+        int  n, nn, neigh1, neigh2, p0, p1, p2, w1, w2;
         Real dx0, dy0, dz0, dx1, dy1, dz1, nx, ny, nz, mag;
         Real alpha1, alpha2, N0, N1, N2, xp, yp, zp;
 
@@ -343,9 +455,22 @@ private  Real   evaluate_laplacian_fit_deriv(
                 yp = N0 * parameter[p0+1] + N1 * parameter[p1+1] + N2 * parameter[p2+1];
                 zp = N0 * parameter[p0+2] + N1 * parameter[p1+2] + N2 * parameter[p2+2];
 
+                /* IMPORTANT: use CUBIC for derivatives since a symmetric
+                   stencil is used, whereas an upwind stencil is used for
+                   LINEAR, thus causing a bias in the derivatives. CL. */
+
+                evaluate_volume_in_world( laplacian_map, xp, yp, zp,
+                                          EVAL_CUBIC, FALSE, 0.0, &value1,
+                                          dxyz, dxyz+1, dxyz+2,
+                                          NULL, NULL, NULL, NULL, NULL, NULL );
+
+                /* IMPORTANT: use LINEAR for the function values since CUBIC
+                   can cause over/undershoots and lead to missing the correct
+                   boundary of "to". CL. */
+
                 evaluate_volume_in_world( laplacian_map, xp, yp, zp,
                                           EVAL_LINEAR, FALSE, 0.0, &value1,
-                                          dxyz, dxyz+1, dxyz+2,
+                                          NULL, NULL, NULL,
                                           NULL, NULL, NULL, NULL, NULL, NULL );
 
                 count_res++;
@@ -354,6 +479,53 @@ private  Real   evaluate_laplacian_fit_deriv(
                 if( value1 > phi_max ) phi_max = value1;
 
                 factor = weight * (value1 - to);
+
+                // Make sure the normal direction is consistent with
+                // the image value and gradient direction.
+
+                if( type == 0 && value1 < to ) {
+
+                  for_less( nn, 0, n_neighbours[point] ){
+                    int neigh = neighbours[point][nn];
+                    fill_Point( neigh_points[nn],
+                                parameter[IJ(neigh,0,3)],
+                                parameter[IJ(neigh,1,3)],
+                                parameter[IJ(neigh,2,3)] );
+                  }
+                  find_polygon_normal( n_neighbours[point], neigh_points, 
+                                       &normal_p1);
+
+                  for_less( nn, 0, n_neighbours[neigh1] ){
+                    int neigh = neighbours[neigh1][nn];
+                    fill_Point( neigh_points[nn],
+                                parameter[IJ(neigh,0,3)],
+                                parameter[IJ(neigh,1,3)],
+                                parameter[IJ(neigh,2,3)] );
+                  }
+                  find_polygon_normal( n_neighbours[neigh1], neigh_points, 
+                                       &normal_p2);
+
+                  for_less( nn, 0, n_neighbours[neigh2] ){
+                    int neigh = neighbours[neigh2][nn];
+                    fill_Point( neigh_points[nn],
+                                parameter[IJ(neigh,0,3)],
+                                parameter[IJ(neigh,1,3)],
+                                parameter[IJ(neigh,2,3)] );
+                  }
+                  find_polygon_normal( n_neighbours[neigh2], neigh_points, 
+                                       &normal_p3);
+
+                  for( nn = 0; nn < 3; nn++ ) {
+                    normal.coords[nn] = N0 * normal_p1.coords[nn] + 
+                                        N1 * normal_p2.coords[nn] + 
+                                        N2 * normal_p3.coords[nn];
+                  }
+                  Real dot = dxyz[0] * normal.coords[0] +
+                             dxyz[1] * normal.coords[1] +
+                             dxyz[2] * normal.coords[2];
+                  // if( dot < 0.0 ) factor = -factor;
+                  if( dot < 0.0 ) factor = 0.0;
+                }
 
                 deriv[p0+0] += dxyz[0]*factor*N0;
                 deriv[p0+1] += dxyz[1]*factor*N0;
@@ -370,6 +542,7 @@ private  Real   evaluate_laplacian_fit_deriv(
         }
       }
 
+      FREE( neigh_points );
       printf( "phi_res(%d) = %g  min = %g  max = %g\n", (end_point-start_point),
               phi_res/(float)(count_res), phi_min, phi_max );
     }
@@ -1701,6 +1874,7 @@ private  void   evaluate_gradient_fit_deriv(
 private void evaluate_gw_gradient_fit_deriv( Volume t1,
                                              Real weight,
                                              int oversample,
+                                             int image_type,
                                              int * mask,
                                              int start_point,
                                              int end_point,
@@ -1709,6 +1883,8 @@ private void evaluate_gw_gradient_fit_deriv( Volume t1,
                                              Real * coords,
                                              Real * t1grad,
                                              Real deriv[] ) {
+
+  enum { UNKNOWN, T1, HISTO, T2 };
 
   int          n, point;
 
@@ -1732,26 +1908,39 @@ private void evaluate_gw_gradient_fit_deriv( Volume t1,
                                   0.0, &value, &dx, &dy, &dz,
                                   NULL, NULL, NULL, NULL, NULL, NULL );
 
-        if( value < t1grad[point-start_point] ) {
+        // Make sure that the expected direction of the t1-gradient
+        // is in a coherent direction with the outward normal vector.
+        // For example, on in-vivo MRI, with CSF < GM < WM, the
+        // t1 gradient points inwards whereas the normal points
+        // outwards. The converse is true for histology. In case
+        // there appears to be some incompatibility, do nothing.
 
-          for( n = 0; n < n_ngh[point]; n++ ) {
-            int neigh = ngh[point][n];
-            fill_Point( neigh_points[n], coords[3*neigh+0],
-                        coords[3*neigh+1], coords[3*neigh+2] );
+        for( n = 0; n < n_ngh[point]; n++ ) {
+          int neigh = ngh[point][n];
+          fill_Point( neigh_points[n], coords[3*neigh+0],
+                      coords[3*neigh+1], coords[3*neigh+2] );
+        }
+        Vector  normal;
+        find_polygon_normal( n_ngh[point], neigh_points, &normal );
+
+        Real nx = normal.coords[0];
+        Real ny = normal.coords[1];
+        Real nz = normal.coords[2];
+
+        if( image_type == T1 ) {
+          if( nx*dx + ny*dy + nz*dz > 0.0 ) {
+            dx = 0.0;
+            dy = 0.0;
+            dz = 0.0;
           }
-          Vector  normal;
-          find_polygon_normal( n_ngh[point], neigh_points, &normal );
-
-          Real nx = normal.coords[0];
-          Real ny = normal.coords[1];
-          Real nz = normal.coords[2];
-          if( nx * dx + ny * dy + nz * dz > 0.0 ) {
+        } else if( image_type == HISTO ) {
+          if( nx*dx + ny*dy + nz*dz < 0.0 ) {
             dx = 0.0;
             dy = 0.0;
             dz = 0.0;
           }
         }
-          
+
         Real factor = weight * ( value / t1grad[point-start_point] - 1.0 ) / 
                       t1grad[point-start_point];
         deriv[3*point+0] += factor * dx;
@@ -1781,25 +1970,31 @@ private void evaluate_gw_gradient_fit_deriv( Volume t1,
                                     0.0, &value, &dx, &dy, &dz,
                                     NULL, NULL, NULL, NULL, NULL, NULL );
 
-          if( value < t1mid ) {
+          // This is an approximate vector based on the triangular face.
+          // Should consider triangles on each side of edge, not only one side.
+          int neigh2 = ngh[point][(n+1)%n_ngh[point]];
+          fill_Point( neigh_points[0], coords[3*point+0],
+                      coords[3*point+1], coords[3*point+2] );
+          fill_Point( neigh_points[1], coords[3*neigh1+0],
+                      coords[3*neigh1+1], coords[3*neigh1+2] );
+          fill_Point( neigh_points[2], coords[3*neigh2+0],
+                      coords[3*neigh2+1], coords[3*neigh2+2] );
 
-            // This is an approximate vector based on the triangular face.
-            // Should consider triangles on each side of edge, not only one side.
-            int neigh2 = ngh[point][(n+1)%n_ngh[point]];
-            fill_Point( neigh_points[0], coords[3*point+0],
-                        coords[3*point+1], coords[3*point+2] );
-            fill_Point( neigh_points[1], coords[3*neigh1+0],
-                        coords[3*neigh1+1], coords[3*neigh1+2] );
-            fill_Point( neigh_points[2], coords[3*neigh2+0],
-                        coords[3*neigh2+1], coords[3*neigh2+2] );
+          Vector  normal;
+          find_polygon_normal( 3, neigh_points, &normal );
 
-            Vector  normal;
-            find_polygon_normal( 3, neigh_points, &normal );
+          Real nx = normal.coords[0];
+          Real ny = normal.coords[1];
+          Real nz = normal.coords[2];
 
-            Real nx = normal.coords[0];
-            Real ny = normal.coords[1];
-            Real nz = normal.coords[2];
-            if( nx * dx + ny * dy + nz * dz > 0.0 ) {
+          if( image_type == T1 ) {
+            if( nx*dx + ny*dy + nz*dz > 0.0 ) {
+              dx = 0.0;
+              dy = 0.0;
+              dz = 0.0;
+            }
+          } else if( image_type == HISTO ) {
+            if( nx*dx + ny*dy + nz*dz < 0.0 ) {
               dx = 0.0;
               dy = 0.0;
               dz = 0.0;
@@ -2182,22 +2377,6 @@ private  Real   evaluate_stretch_fit(
         areas[n1] += local_area;
         areas[n2] += local_area;
       }
-#if NEW_CURVATURE
-      // some regularization on curvature
-      for_less( n, 0, n_neighbours[point] ) {
-        int n1 = neighbours[point][n];
-        if( !( point < n1 ) ) continue;
-        int n2 = neighbours[point][(n+1)%n_neighbours[point]];
-        int n3 = neighbours[point][(n+n_neighbours[point]-1)%n_neighbours[point]];
-        ind1 = IJ(n1,0,3);
-        ind2 = IJ(n2,0,3);
-        ind3 = IJ(n3,0,3);
-        dx = parameters[ind0+0] + parameters[ind1+0] - parameters[ind2+0] - parameters[ind3+0];
-        dy = parameters[ind0+1] + parameters[ind1+1] - parameters[ind2+1] - parameters[ind3+1];
-        dz = parameters[ind0+2] + parameters[ind1+2] - parameters[ind2+2] - parameters[ind3+2];
-        fit2 += dx * dx + dy * dy + dz  * dz;
-      }
-#endif
     }
 
     // Starting edge
@@ -2230,11 +2409,7 @@ private  Real   evaluate_stretch_fit(
     }
     FREE( areas );
 
-#if NEW_CURVATURE
-    return( 0.5 * ( fit1 + 10.0 * fit2 ) * stretch_weight );
-#else
     return( 0.5 * fit1 * stretch_weight );
-#endif
 }
 
 private  void   evaluate_stretch_fit_deriv(
@@ -2318,7 +2493,6 @@ private  void   evaluate_stretch_fit_deriv(
       }
     }
     FREE( areas );
-
     for_less( point, 0, n_points ) {
         ind0 = IJ(point,0,3);
 
@@ -2332,35 +2506,6 @@ private  void   evaluate_stretch_fit_deriv(
             deriv[ind0+1] += stretch_weight * delta[ind1+1] * norm_areas[neigh];
             deriv[ind0+2] += stretch_weight * delta[ind1+2] * norm_areas[neigh];
         }
-
-#if NEW_CURVATURE
-        // some regularization on curvature
-        for_less( n, 0, n_neighbours[point] ) {
-          int n1 = neighbours[point][n];
-          if( !( point < n1 ) ) continue;
-          int n2 = neighbours[point][(n+1)%n_neighbours[point]];
-          int n3 = neighbours[point][(n+n_neighbours[point]-1)%n_neighbours[point]];
-          ind1 = IJ(n1,0,3);
-          ind2 = IJ(n2,0,3);
-          ind3 = IJ(n3,0,3);
-          dx = parameters[ind0+0] + parameters[ind1+0] - parameters[ind2+0] - parameters[ind3+0];
-          dy = parameters[ind0+1] + parameters[ind1+1] - parameters[ind2+1] - parameters[ind3+1];
-          dz = parameters[ind0+2] + parameters[ind1+2] - parameters[ind2+2] - parameters[ind3+2];
-          Real alpha = 10.0;
-          deriv[ind0+0] += alpha * stretch_weight * dx;
-          deriv[ind0+1] += alpha * stretch_weight * dy;
-          deriv[ind0+2] += alpha * stretch_weight * dz;
-          deriv[ind1+0] += alpha * stretch_weight * dx;
-          deriv[ind1+1] += alpha * stretch_weight * dy;
-          deriv[ind1+2] += alpha * stretch_weight * dz;
-          deriv[ind2+0] -= alpha * stretch_weight * dx;
-          deriv[ind2+1] -= alpha * stretch_weight * dy;
-          deriv[ind2+2] -= alpha * stretch_weight * dz;
-          deriv[ind3+0] -= alpha * stretch_weight * dx;
-          deriv[ind3+1] -= alpha * stretch_weight * dy;
-          deriv[ind3+2] -= alpha * stretch_weight * dz;
-        }
-#endif
     }
 
     FREE( delta );
@@ -5535,6 +5680,7 @@ private  int   private_evaluate_fit(
                            deform->surfaces[surface].laplacian->weight,
                            deform->surfaces[surface].laplacian->volume,
                            deform->surfaces[surface].laplacian->to_value,
+                           deform->surfaces[surface].laplacian->type,
                            deform->surfaces[surface].surface.n_neighbours,
                            deform->surfaces[surface].surface.neighbours,
                            deform->surfaces[surface].laplacian->oversample,
@@ -6025,13 +6171,11 @@ public  void   evaluate_fit_deriv(
             deriv_modified = TRUE;
             gw_gradient = &deform->surfaces[surface].gw_gradient[i];
             if( gw_gradient->t1grad == NULL ) {
-              // must free this memory at the end!!!! TODO CLAUDE
               gw_gradient->t1grad = 
                 (Real*)malloc( deform->surfaces[surface].surface.n_points *
                                sizeof( Real ) );
             }
             if( gw_gradient->mask == NULL ) {
-              // must free this memory at the end!!!! TODO CLAUDE
               gw_gradient->mask = 
                 (int*)malloc( deform->surfaces[surface].surface.n_points *
                                sizeof( int ) );
@@ -6052,12 +6196,15 @@ public  void   evaluate_fit_deriv(
                                      deform->surfaces[surface].surface.n_neighbours,
                                      deform->surfaces[surface].surface.neighbours,
                                      this_parms,
-                                     gw_gradient->t1grad );
+                                     gw_gradient->mask,
+                                     gw_gradient->t1grad,
+                                     &gw_gradient->image_type );
             }
             gw_gradient->update = ( gw_gradient->update + 1 ) % 2;
             evaluate_gw_gradient_fit_deriv( gw_gradient->t1,
                                    gw_gradient->image_weight,
                                    gw_gradient->oversample,
+                                   gw_gradient->image_type,
                                    gw_gradient->mask, 0,
                                    deform->surfaces[surface].surface.n_points,
                                    deform->surfaces[surface].surface.n_neighbours,
@@ -6251,6 +6398,7 @@ public  void   evaluate_fit_deriv(
                            deform->surfaces[surface].bound->volume,
                            deform->surfaces[surface].laplacian->from_value,
                            deform->surfaces[surface].laplacian->to_value,
+                           deform->surfaces[surface].laplacian->type,
                            this_parms, 0,
                            deform->surfaces[surface].surface.n_points,
                            deform->surfaces[surface].surface.n_neighbours,
@@ -6939,8 +7087,61 @@ private  void  find_image_boundaries(
     initialize_progress_report( &progress, FALSE, n_nodes,
                                 "Finding Image Boundaries" );
 
+    // weights have been normalized for oversampling rate in surface_fit.c.
     max_diff = MAX( image_weight_out * max_outward * max_outward,
                     image_weight_in * max_inward * max_inward );
+
+    // Normalize weight by local area around each vertex.
+    // This means that mesh will move towards the boundary at
+    // the same rate if size of triangles are different locally.
+
+    Real * areas;
+    ALLOC( areas, n_nodes );
+    for_less( node, 0, n_nodes ) areas[node] = 0.0;
+
+    for_less( node, 0, n_nodes ) {
+      int ind0 = IJ(node,0,3);
+      for_less( n, 0, n_neighbours[node] ) {
+        int n1 = neighbours[node][n];
+        int n2 = neighbours[node][(n+1)%n_neighbours[node]];
+        if( !( node < n1 && node < n2 ) ) continue;
+        int ind1 = IJ(n1,0,3);
+        int ind2 = IJ(n2,0,3);
+        Real e0 = sqrt( ( parameters[ind0+0] - parameters[ind1+0] ) *
+                        ( parameters[ind0+0] - parameters[ind1+0] ) +
+                        ( parameters[ind0+1] - parameters[ind1+1] ) *
+                        ( parameters[ind0+1] - parameters[ind1+1] ) +
+                        ( parameters[ind0+2] - parameters[ind1+2] ) *
+                        ( parameters[ind0+2] - parameters[ind1+2] ) );
+        Real e1 = sqrt( ( parameters[ind2+0] - parameters[ind1+0] ) *
+                        ( parameters[ind2+0] - parameters[ind1+0] ) +
+                        ( parameters[ind2+1] - parameters[ind1+1] ) *
+                        ( parameters[ind2+1] - parameters[ind1+1] ) +
+                        ( parameters[ind2+2] - parameters[ind1+2] ) *
+                        ( parameters[ind2+2] - parameters[ind1+2] ) );
+        Real e2 = sqrt( ( parameters[ind0+0] - parameters[ind2+0] ) *
+                        ( parameters[ind0+0] - parameters[ind2+0] ) +
+                        ( parameters[ind0+1] - parameters[ind2+1] ) *
+                        ( parameters[ind0+1] - parameters[ind2+1] ) +
+                        ( parameters[ind0+2] - parameters[ind2+2] ) *
+                        ( parameters[ind0+2] - parameters[ind2+2] ) );
+        Real s = 0.5 * ( e0 + e1 + e2 );
+        Real local_area = sqrt( fabs( s * ( s - e0 ) * ( s - e1 ) * ( s - e2 ) ) +
+                                1.0e-20 );
+        areas[node] += local_area;
+        areas[n1] += local_area;
+        areas[n2] += local_area;
+      }
+    }
+
+    Real area_avg = 0.0;
+    for_less( node, 0, n_nodes ) {
+      area_avg += areas[node];
+    }
+    area_avg /= (Real)n_nodes;
+    for_less( node, 0, n_nodes ) {
+      areas[node] /= area_avg;
+    }
 
     max_neighbours = 0;
     for_less( node, 0, n_nodes )
@@ -6993,6 +7194,7 @@ private  void  find_image_boundaries(
 
             if( ( normal_direction == TOWARDS_LOWER && value < isovalue ) ||
                 ( normal_direction == TOWARDS_HIGHER && value > isovalue ) ) {
+// Claude: 0.1 is for 1mm voxel size. Maybe make this 10% of voxel size.
                 outward_search = 0.1;
             } else if( ( normal_direction == TOWARDS_HIGHER && value < isovalue ) ||
                        ( normal_direction == TOWARDS_LOWER && value > isovalue ) ) {
@@ -7024,6 +7226,7 @@ private  void  find_image_boundaries(
             } else {
                 image_weight = image_weight_in;
             }
+            image_weight *= areas[node];
 
             if( boundary_points != NULL ) {
                 boundary_points[node] = bound;
@@ -7276,10 +7479,11 @@ private  void  find_image_boundaries(
                         alpha2 = (Real) w2 / (Real) (oversample-w1+1);
 
                         if( found_flags[pos] != BOUNDARY_NOT_FOUND ) {
-                            if( found_flags[pos] == BOUNDARY_IS_OUTSIDE )
+                            if( found_flags[pos] == BOUNDARY_IS_OUTSIDE ) {
                                 image_weight = image_weight_out;
-                            else
+                            } else {
                                 image_weight = image_weight_in;
+                            }
 
                             bx = RPoint_x(boundaries[pos]);
                             by = RPoint_y(boundaries[pos]);
@@ -7288,6 +7492,10 @@ private  void  find_image_boundaries(
                             weight1 = (1.0 - alpha1) * (1.0 - alpha2);
                             weight2 = alpha1;
                             weight3 = (1.0 - alpha1) * alpha2;
+
+                            image_weight *= ( weight1 * areas[node] +
+                                              weight2 * areas[neigh1] +
+                                              weight3 * areas[neigh2] );
 
                             Real image_w1_weight = image_weight * weight1;
                             Real image_w2_weight = image_weight * weight2;
@@ -7419,7 +7627,7 @@ private  void  find_image_boundaries(
                                 lx1x2 += weight1 * image_w2_weight;
                                 lx1x3 += weight1 * image_w3_weight;
                                 lx2x3 += weight2 * image_w3_weight;
-                            }
+                             }
                         } else {
                             cons += max_diff;
                         }
@@ -7734,6 +7942,7 @@ private  void  find_image_boundaries(
     }
 
     FREE( neigh_points );
+    FREE( areas );
 
     if( clip_search != NULL ) {
         delete_clip_search( clip_search );

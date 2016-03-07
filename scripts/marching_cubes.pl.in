@@ -39,8 +39,8 @@ McGill University
 LICENSE
 
 my $usage = <<USAGE;
-Usage: $ProgramName t1.mnc cls.mnc wm_mask.mnc white.obj surf_reg_model 
-       white_surf_mask.txt 
+Usage: $ProgramName t1.mnc cls.mnc skull_mask.mnc wm_mask.mnc white.obj 
+       surf_reg_model white_surf_mask.txt 
        [-left] [-right] [-refine] [-subsample] [-calibrate]
        $ProgramName -help to list options
 
@@ -72,11 +72,12 @@ my @options = (
   );
 
 GetOptions( \@options, \@ARGV ) or exit 1;
-die "$usage\n" unless @ARGV == 6;
+die "$usage\n" unless @ARGV == 7;
 
 my $t1 = shift;
 my $cls = shift;
-my $white_matter_mask = shift;
+my $skull_mask = shift;
+my $original_white_matter_mask = shift;
 my $white_surface = shift;
 my $surfreg_model = shift;
 my $white_surf_mask = shift;
@@ -93,7 +94,11 @@ if( !( -e $cls ) ) {
   print "$usage\n";
   die "Tissue classification image must exist.\n";
 }
-if( !( -e $white_matter_mask ) ) {
+if( !( -e $skull_mask ) ) {
+  print "$usage\n";
+  die "Brain mask must exist.\n";
+}
+if( !( -e $original_white_matter_mask ) ) {
   print "$usage\n";
   die "White matter mask must exist.\n";
 }
@@ -131,7 +136,7 @@ if( $side eq "Left" ) {
 
 # Make sure that the mask is not empty.
 
-my $sum = `mincstats -quiet -sum $white_matter_mask`;
+my $sum = `mincstats -quiet -sum $original_white_matter_mask`;
 chomp( $sum );
 die "Empty white matter mask.\n" if( $sum == 0 );
 
@@ -151,29 +156,32 @@ print KRNL " 0.0  0.0 -1.0  0.0  0.0  1.0;\n";
 close KRNL;
 
 my $ngh_count = "${tmpdir}/ngh_count.mnc";
-my $old_wm_mask = "${tmpdir}/old_wm_mask.mnc";
-my $new_wm_mask = "${tmpdir}/new_wm_mask.mnc";
+my $white_matter_mask = "${tmpdir}/wm_mask_clean.mnc";
+my $tmp_wm_mask = "${tmpdir}/tmp_wm_mask.mnc";
 
-&run( 'cp', '-f', $white_matter_mask, $old_wm_mask );
-my $ret = `mincstats -sum $old_wm_mask`; chomp( $ret );
+&run( 'cp', '-f', $original_white_matter_mask, $white_matter_mask );
+my $ret = `mincstats -sum $white_matter_mask`; chomp( $ret );
 print "Connectivity iteration 0: $ret\n";
 
-my $lower = 1.5;
+# We will use a white matter mask with simplified connectivity
+# for the raw marching-cubes surface, but we will later fit the
+# surface to the original white matter mask.
+
+my $lower = 2.5;   ## 1.5;
 for( my $iter = 1; $iter <= 5; $iter++ ) {
   &run( 'mincmorph', '-clobber', '-unsigned', '-byte', '-convolve', '-kernel', 
-        "${tmpdir}/ngh_count.kernel", $old_wm_mask, $ngh_count );
+        "${tmpdir}/ngh_count.kernel", $white_matter_mask, $ngh_count );
   &run( 'minccalc', '-clob', '-quiet', '-expr', 
         "if(A[1]<$lower){0}else{if(A[1]>4.5){1}else{A[0]}}",
-        $old_wm_mask, $ngh_count, $new_wm_mask );
-  &run( 'mv', '-f', $new_wm_mask, $old_wm_mask );
-  my $ret = `mincstats -sum $old_wm_mask`; chomp( $ret );
+        $white_matter_mask, $ngh_count, $tmp_wm_mask );
+  &run( 'mv', '-f', $tmp_wm_mask, $white_matter_mask );
+  my $ret = `mincstats -sum $white_matter_mask`; chomp( $ret );
   print "Connectivity iteration $iter: $ret\n";
-  $lower = 0.5;
+  ## $lower = 0.5;
 }
 
 unlink( $ngh_count );
 unlink( "${tmpdir}/ngh_count.kernel" );
-$white_matter_mask = $old_wm_mask;
 
 # Preparation of the white matter mask for extraction of the surface
 # using marching cubes.
@@ -203,6 +211,7 @@ unlink( "${tmpdir}/s1.mnc" );
 
 my $dx = `mincinfo -attvalue xspace:step $white_matter_mask`; chomp($dx);
 $subsample = 0 if( $dx < 0.90 );
+unlink( $white_matter_mask );
 
 # Crop volume to smallest extents to speed up marching-cubes.
 my @crop = split( ' ', `mincbbox ${tmpdir}/s0.mnc -mincreshape` );
@@ -219,7 +228,7 @@ unlink( "${tmpdir}/s1.mnc" );
 # Coarsen and smooth the original marching-cubes surface.
 
 my $white_surface_sm = "${tmpdir}/white_surf_sm.obj";
-&run( 'adapt_object_mesh', $white_surface, $white_surface_sm, 120000 );
+&run( 'adapt_object_mesh', $white_surface, $white_surface_sm, 120000, 1, 50, 1 );
 
 # Inflate the white surface onto a unit sphere.
 
@@ -250,7 +259,7 @@ if( $side eq "Right" ) {
 
 if( $surfreg_model ne "none" ) {
 
-  &run( 'adapt_object_mesh', $white_surface, $white_surface, 9999999, 10 );
+  &run( 'adapt_object_mesh', $white_surface, $white_surface, 0, 10, 0, 0 );
 
   &run( $surfreg, '-clobber', '-min_control_mesh', 320, '-max_control_mesh',
         20480, '-blur_coef', '1.0', '-neighbourhood_radius', '2.8', 
@@ -349,25 +358,30 @@ for( my $i = 1; $i <= 500; $i++ ) {
   last if( $increasing >= 5 && $i > 50 );
 }
 if( $prev_num_inter > 0 ) {
-  unlink( $white_surface );   ## is this desirable???
+  my $failed_surface = $white_surface;
+  $failed_surface =~ s/\.obj$/-failed\.obj/;
+  `mv -f $white_surface $failed_surface`;
+  # unlink( $white_surface );   ## is this desirable???
   die "Failed interpolation of marching-cubes surface with $prev_num_inter self-intersections.\n";
 }
 
 # Run ASP on the resampled white surface to converge it fully
 # to the white matter mask. The ICBM model is used by ASP to
 # define the distribution of the edge lengths for the stretch
-# constraint.
+# constraint. Here, we use the original white matter mask 
+# without the changes for dangling white voxels.
 
-&run_asp( $white_surface, $white_matter_mask, 0.5, $initial_model,
+&run_asp( $white_surface, $original_white_matter_mask, 0.5, $initial_model,
           ($refine && !$calibrate), $tmpdir );
 
 # Run ASP on the resampled white surface to move the surface to
-# the maximum gm-wm gradient.
+# the maximum gm-wm gradient. cls must be pve_classify, without
+# ventricles filled.
 
 if( $calibrate ) {
-  &calibrate_white( $t1, $cls, $white_matter_mask, $white_surface, 
-                    $white_surf_mask, $initial_model, $refine,
-                    $tmpdir );
+  &calibrate_white( $t1, $cls, $skull_mask, $white_surface, 
+                    $white_surf_mask, $initial_model, 
+                    $refine, $tmpdir );
 }
 
 # Resample the white surface from a standard sphere from the 
@@ -482,6 +496,7 @@ sub run_asp {
   my $tmpdir = shift;
 
   my $self_dist2 = 0.01;
+  my $self_weight2 = 1e06;
   my $n_selfs = 9;
 
   my $stop_threshold = 1e-3;
@@ -538,8 +553,8 @@ sub run_asp {
     }
 
     $oversample *= $oo_scale;
-    my $self2 = get_self_intersect( $self_weight, $n_selfs, $self_dist,
-                                    $self_dist2 );
+    my $self2 = get_self_intersect( $self_weight, $self_weight2, $n_selfs, 
+                                    $self_dist, $self_dist2 );
   
     my $b2 = " -boundary $offo $offi $wm_mask " .
              " $isovalue - $out_dist $in_dist 0 0 $oversample ";
@@ -549,6 +564,9 @@ sub run_asp {
 
       my $ni = $n_iters - $iter;
       if( $ni > $iter_inc )  { $ni = $iter_inc; }
+
+      # Add a little bit of Taubin smoothing between cycles.
+      &taubinize_surface( $white, 3 );
     
       my $command = "surface_fit -mode two -surface $white $white " .
                     " -stretch $sw $white_model -.9 0 0 0 " .
@@ -569,7 +587,7 @@ sub calibrate_white {
 
   my $t1 = shift;
   my $cls = shift;
-  my $white_matter_mask = shift;
+  my $skull_mask = shift;
   my $white = shift;
   my $white_surf_mask = shift;
   my $white_model = shift;
@@ -577,6 +595,7 @@ sub calibrate_white {
   my $tmpdir = shift;
 
   my $self_dist2 = 0.01;
+  my $self_weight2 = 1e06;
   my $n_selfs = 9;
 
   my $stop_threshold = 1e-3;
@@ -590,17 +609,16 @@ sub calibrate_white {
   my @schedule = (
   #  size   blur   sw  n_itr  inc  gdist  ginc  gwgt over   si   sw   self
   #  -----  ----  ---- -----  ---- -----  ----  ---- ----   --  ----  ----
-    81920,  2.0,  100,  150,   50,  5.0,  0.1,  1.0,  1,   1.0,  1e0,  .25,
-    81920,  0.0,   20,   50,   50,  4.0,  0.1,  1.0,  1,   0.5,  1e0,  .25,
-    81920,  0.0,    5,   50,   50,  4.0,  0.1,  1.0,  1,   0.5,  1e0,  .25,
-    81920,  0.0,    2,   50,   50,  3.0, 0.05,  1.0,  1,   0.5,  1e0,  .25,
-    81920,  0.0,    1,   50,   50,  3.0, 0.05,  1.0,  1,   0.5,  1e0,  .25,
-   327680,  0.0,  5e4,   50,   50,  3.0, 0.05,  1.0,  1,   0.25, 1e0, .125,
-   327680,  0.0,  2e4,   50,   50,  3.0, 0.05,  1.0,  1,   0.25, 1e0, .125,
-   327680,  0.0,  1e4,   50,   50,  3.0, 0.05,  1.0,  1,   0.25, 1e0, .125,
-   327680,  0.0,  5e3,   50,   50,  3.0, 0.05,  1.0,  1,   0.25, 1e0, .125,
-   327680,  0.0,  2e3,   50,   50,  3.0, 0.05,  1.0,  1,   0.25, 1e0, .125,
-   327680,  0.0,  1e3,   50,   50,  3.0, 0.05,  1.0,  1,   0.25, 1e0, .125,
+    81920,   90,  100,  150,   50,  5.0,  0.1,  1.0,  1,   1.0,  1e0,  .25,
+    81920,   50,   20,  200,   50,  5.0,  0.1,  2.0,  1,   0.5,  1e0,  .25,
+    81920,   20,   10,  200,   50,  5.0, 0.05,  5.0,  1,   0.5,  1e0,  .25,
+    81920,   10,   10,  200,   50,  5.0, 0.05, 10.0,  1,   0.5,  1e0,  .25,
+   327680,   10,  5e4,   50,   50,  5.0, 0.05, 10.0,  1,   0.25, 1e0, .125,
+   327680,   10,  2e4,   50,   50,  5.0, 0.05, 10.0,  1,   0.25, 1e0, .125,
+   327680,   10,  1e4,   50,   50,  5.0, 0.05, 10.0,  1,   0.25, 1e0, .125,
+   327680,   10,  5e3,   50,   50,  5.0, 0.05, 10.0,  1,   0.25, 1e0, .125,
+   327680,   10,  2e3,   50,   50,  5.0, 0.05, 10.0,  1,   0.25, 1e0, .125,
+   327680,   10,  1e3,   50,   50,  5.0, 0.05, 10.0,  1,   0.25, 1e0, .125,
   );
 
   my $sched_size =  12;
@@ -610,14 +628,17 @@ sub calibrate_white {
   ## TO DO: clean-up t1 image to remove local min/max
   ##
 
-  # Combine white matter mask into classified image for WM.
+  # Apply skull mask on the cls image. We want to preserve the original
+  # classification with CSF in the ventricles, not filled with WM, so
+  # that the gradient correction can compute good tissue thresholds.
+
   my $cls_rsl = "${tmpdir}/cls_rsl.mnc";
   my $cls_mc = "${tmpdir}/cls_rsl_mc.mnc";
-  &run( 'mincresample', '-clobber', '-quiet', '-like', $white_matter_mask,
+  &run( 'mincresample', '-clobber', '-quiet', '-like', $skull_mask,
         $cls, $cls_rsl );
   &run( 'minccalc', '-clobber', '-quiet', '-expression',
-        "if(A[1]>0.5){out=3}else{out=A[0]}", $cls_rsl,
-        $white_matter_mask, $cls_mc );
+        "if(A[1]>0.5){out=A[0]}else{0}", $cls_rsl,
+        $skull_mask, $cls_mc );
   unlink( $cls_rsl );
 
   # Create surface mask for medial plane and brainstem.
@@ -638,12 +659,10 @@ sub calibrate_white {
     }
 
     my $t1_blur = $t1;
-    if( $blur > 0.0 ) {
+    if( $blur > 0 ) {
       $t1_blur = &basename( $t1, ".mnc" );
-      $t1_blur = "${tmpdir}/${t1_blur}";   # need prefix only
-      &run( 'mincblur', '-quiet', '-clobber', '-fwhm', $blur, '-no_apodize',
-            $t1, $t1_blur );
-      $t1_blur .= "_blur.mnc";
+      $t1_blur = "${tmpdir}/${t1_blur}" . "_blur.mnc";
+      &run( 'geo_smooth', 0.004, $blur, $t1, $t1_blur );
     }
 
     my $prev_size = `print_n_polygons $white`;
@@ -659,8 +678,8 @@ sub calibrate_white {
       subdivide_mesh( $white_model, $size, $white_model );
     }
 
-    my $self2 = get_self_intersect( $self_weight, $n_selfs, $self_dist,
-                                    $self_dist2 );
+    my $self2 = get_self_intersect( $self_weight, $self_weight2, $n_selfs,
+                                    $self_dist, $self_dist2 );
 
     for( my $iter = 0;  $iter < $n_iters;  $iter += $iter_inc ) {
       print "echo Step ${size}: $iter / $n_iters    $sw\n";
@@ -668,6 +687,9 @@ sub calibrate_white {
       my $ni = $n_iters - $iter;
       if( $ni > $iter_inc )  { $ni = $iter_inc; }
 
+      # Add a little bit of Taubin smoothing between cycles.
+      &taubinize_surface( $white, 3 );
+    
       my $command = "surface_fit -mode two -surface $white $white " .
                     " -stretch $sw $white_model -.9 0 0 0 " .
                     " $self2 -step $si_step " .
@@ -684,26 +706,55 @@ sub calibrate_white {
   unlink( $cls_mc );
 }
 
+# Add a little bit of Taubin smoothing between cycles. This
+# can introduce self-intersections, so try to fix those as
+# well, in any. If the surface cannot be improved, return the
+# original.
+
+sub taubinize_surface {
+
+  my $surf = shift;
+  my $iter = shift;
+
+  my $tmp_surf = "${tmpdir}/surface_taubin.obj";
+
+  &run( 'adapt_object_mesh', $surf, $tmp_surf, 0, $iter, 0, 0 );
+  my $tries = 0;
+  do {
+    &run( 'check_self_intersect', $tmp_surf, '-fix', $tmp_surf );
+    my @ret = `check_self_intersect $tmp_surf`;
+    $ret[1] =~ /Number of self-intersecting triangles = (\d+)/;
+    if( $1 == 0 ) {
+      `mv -f $tmp_surf $surf`;
+      $tries = 9999;
+    }
+    $tries++;
+  } while( $tries < 10 );
+  unlink( $tmp_surf ) if( -e $tmp_surf );
+}
+
 # from surface-extraction/deform_utils.pl
 
-sub get_self_intersect( $$$$ ) {
+sub  get_self_intersect( $$$$$ ) {
 
-    my( $self_weight, $n_selfs, $self_dist, $self_dist2 ) = @_;
-    my( $self, $weight, $s, $dist );
+    my( $self_weight, $self_weight2, $n_selfs, $self_dist, $self_dist2 ) = @_;
+    my( $self, $weight, $weight_factor, $s, $dist );
 
     if( $self_weight > 0.0 ) {
         $self = "";
         $weight = $self_weight;
+        $weight_factor = ( $self_weight2 / $self_weight ) **
+                         ( 1.0 / $n_selfs );
 
         for( $s = 0;  $s < $n_selfs;  ++$s ) {
             $dist = $self_dist + ($self_dist2 - $self_dist) *
                     $s / $n_selfs;
             $self = $self . " -self_intersect $weight $dist ";
-            $weight *= 10.0;
+            $weight *= $weight_factor;
         }
-        $self = $self . " -self_intersect 1e8 $self_dist2 ";
-    } else { 
-        $self = ""; 
+        $self = $self . " -self_intersect $self_weight2 $self_dist2 ";
+    } else {
+        $self = "";
     }
     $self;
 }

@@ -125,8 +125,9 @@ if( $method eq "tlaplace" ) {
           "${TmpDir}/laplace_initial.mnc" );
   }
   &run( "laplacian_thickness", "-h", "0.1", "-convergence", "0.00001", "-2nd_rk",
-        "-max_iterations", "300", "-object_eval", $midSurface, "-from_grid", 
-        "${TmpDir}/laplace_initial.mnc", "${TmpDir}/thickness_uncleaned.txt" );
+        "-max_iterations", "300", "-object_eval", $midSurface, "-from_grid",
+        "${TmpDir}/laplace_initial.mnc", $gray, $white,
+        "${TmpDir}/thickness_uncleaned.txt" );
   &run( "vertex_stats", "-replace_nans", "${TmpDir}/thickness_uncleaned.txt",
         $output );
 }

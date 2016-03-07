@@ -1,3 +1,15 @@
+New in Release 3.0.3
+--------------------
+        * extend search radius for gray-white gradient correction
+        * fix weights for self-intersections
+        * normalize oversampling weight by local area for find_image_boundaries
+          for improved convergence rate on non-uniform meshes
+        * extension of gray-white gradient for histology (BigBrain)
+        * support for fitting of white surface using chamfer map for Laplacian field
+        * improved mesh adaptation (convergence, swapping, shrinkage-free
+          Taubin smoothing)
+        * add surf_surf_interpolate.c and surface_angles.c
+
 New in Release 3.0.2
 --------------------
         * improve surface registration of white surface to avoid

@@ -445,6 +445,8 @@ int  main(
             return( 1 );
           }
           laplacian.direction = (surface_total_number==1) ? -1 : 1;
+          laplacian.type = surface_total_number - 2;
+     
           ADD_ELEMENT_TO_ARRAY(
               deform.surfaces[0].laplacian,
               deform.surfaces[0].n_laplacian, laplacian, 1 );

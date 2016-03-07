@@ -374,7 +374,7 @@ int make_sphere( int sizes[MAX_DIMENSIONS], short * val ) {
 	    }
 	  }
           if( count ) {
-            levels2[ii] = rint( (float)sum / count );
+            levels2[ii] = (short)rint( (float)sum / count );
           }   
         }
       }

@@ -128,6 +128,7 @@ typedef  struct
     Real                    search_increment;
     Real                    image_weight;
     int                     oversample;
+    int                     image_type;
     Real *                  t1grad;
     int                     update;
     int *                   mask;
@@ -295,6 +296,7 @@ typedef  struct
     Real                   deriv_factor;
     Real                   oversample;
     int                    direction; // -1: inward, 1: outward
+    int                    type;      // 0: white, 1: gray
 }laplacian_struct;
 
 typedef  struct

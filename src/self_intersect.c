@@ -748,6 +748,11 @@ public  Real   get_self_intersect_deriv_factor(
 #define USE_CUBE
       factor = -1.5 * diff * diff * weight / ( dist * min_distance );
 #else
+      // This 1/dist term probably comes from taking the derivative
+      // of the distance squared. Claude
+      //   d/dx(D^2) = 2*D*dD/dx = ...
+      // so dD/dx = 1/(2*D)*(...)
+
       if( use_square_flag ) {
         factor = -diff * weight / dist;
       } else {

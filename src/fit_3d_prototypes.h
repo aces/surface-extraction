@@ -99,7 +99,9 @@ public void adjust_gm_wm_gradient(
     int                         n_ngh[], 
     int                       * ngh[],
     Real                      * coords,
-    Real                      * t1grad );
+    int                       * mask,
+    Real                      * t1grad,
+    int                       * image_type );
 
 public  void  print_fit_info(
     fit_eval_struct  *f );

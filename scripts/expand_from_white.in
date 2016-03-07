@@ -25,6 +25,7 @@ MNI::Spawn::RegisterPrograms
      cp
      param2xfm
      transform_objects
+     convert_object
      subdivide_polygons
      surface_fit
      set_object_colour/ ] )
@@ -132,15 +133,16 @@ die "$usage\n" unless @ARGV >= 3;
     @schedule = (
       #size   sw   n_it  inc  si     sw  self  iso   l_s  l_w
       #----- ----  ----  ---  --    ---  ----  ---   ---  ----
-       81920, 5e2,  100, 50, 1.0,   1e1,  .25,   5,  1.0, 5e-3,
-       81920, 5e2,  200, 50, 1.0,   1e1,  .25,   5,  1.0, 2e-2,
-       81920, 5e2,  300, 50, 0.5,   1e1,  .25,   6,  1.0, 2e-2,
+       81920, 5e3,  100, 50, 1.0,   1e1,  .25,   5,  1.0, 5e-3,
+       81920, 5e3,  200, 50, 1.0,   1e1,  .25,   5,  1.0, 2e-2,
+       81920, 5e3,  300, 50, 0.5,   1e1,  .25,   6,  1.0, 2e-2,
        81920, 5e2,  300, 50, 0.5,   1e1,  .25,   7,  1.0, 2e-2,
        81920, 5e2,  400, 50, 0.5,   1e1,  .25,   8,  1.0, 2e-2,
        81920, 5e2,  500, 50, 0.5,   1e1,  .25,   9,  1.0, 2e-2,
        81920, 5e2,  550, 50, 0.5,   1e1, .125, 9.5,  1.0, 2e-2,
        81920, 5e2,  250, 50, 0.5,   1e1, .125,  10,  1.0, 2e-2,
-       81920, 5e2,  500, 50, 0.25,  1e1, .125,  10,  0.0, 5e-2,
+       81920, 5e2,  400, 50, 0.25,  1e1, .125,  10,  0.0, 5e-2,
+       81920, 5e2,  500, 50, 0.25,  1e1, .0625, 10,  0.0, 1e-1,
       327680, 5e2,  500, 50, 0.25,  1e1, .125,  10,  0.0, 5e-2,
       327680, 5e2, 1000, 50, 0.125, 1e1, .0625, 10,  0.0, 5e-2,
     );
@@ -213,7 +215,8 @@ die "$usage\n" unless @ARGV >= 3;
 
     my $fit = "surface_fit ";
 
-    my $self_dist2 = 0.01;
+    my $self_dist2 = 0.005;   # was 0.01
+    my $self_weight2 = 1e07;
     my $n_selfs = 9;
     my $self_factor = 1.0;
 
@@ -307,8 +310,8 @@ die "$usage\n" unless @ARGV >= 3;
         $sw *= $stretch_scale;
         $self_weight *= $self_factor;
 
-        $self2 = get_self_intersect( $self_weight, $n_selfs, $self_dist,
-                                     $self_dist2 );
+        $self2 = get_self_intersect( $self_weight, $self_weight2, $n_selfs,
+                                     $self_dist, $self_dist2 );
 
         #--- if the schedule size is greater than the current number of
         #--- polygons in the deforming surface, subdivide the deforming surface
@@ -357,6 +360,17 @@ die "$usage\n" unless @ARGV >= 3;
 
         $n_failures = 0;
 
+
+        # Make sure the gray surface is in binary mode.
+        if( -e $gray_surface ) {
+          my $ret = `convert_object $gray_surface ${TmpDir}/gray_surf_test.obj`;
+          if( $ret =~ /ASCII to BINARY/ ) {
+            `mv ${TmpDir}/gray_surf_test.obj $gray_surface`;
+          } else {
+            unlink( "${TmpDir}/gray_surf_test.obj" );
+          }
+        }
+
         for( $iter = 0;  $iter < $n_iters;  $iter += $iter_inc ) {
             system( "echo Step ${size}: $iter / $n_iters    $sw  $laplacian_isovalue" );
 
@@ -384,6 +398,8 @@ die "$usage\n" unless @ARGV >= 3;
             }
         }
     }
+
+    Spawn( ["convert_object", $gray_surface, $gray_surface] );
 
     print( "Surface extraction finished.\n" );
 

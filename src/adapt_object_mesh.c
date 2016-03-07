@@ -24,6 +24,8 @@
 #include <volume_io.h>
 #include <bicpl.h>
 
+#define NBINS 100
+
 // Prototypes of functions in this file.
 
 static void usage( char * );
@@ -31,17 +33,19 @@ static Status read_surface_obj( STRING, int *, Point *[],
                                 Vector *[], int *, int *[] );
 static void compute_triangle_angles( int, int *, Point * );
 static void compute_surface_normals( int, int, int *, Point *, Vector * );
+static Real compute_aspect_ratio( Point, Point, Point );
 static int compute_triangle_normal( Point, Point, Point, Real [3] );
-void smooth( int, int, int, Real, int *, Point *, float );
+void smooth( int, int, int, Real, int *, Point *, Vector * );
+void taubin( int, int, int, int *, Point *, Vector * );
 
 // Main program.
 
 int main( int argc, char * argv[] ) {
 
   int      i, j, k, jj, kk, pp, v1, v2, opp1, opp2, t1, t2, count, found3;
-  int      target_nodes, max_num_iters, max_sm_iters, changed, 
-           num_swapped, histo[101];
-  Real     thresholdlen, minlen, maxlen, factor;
+  int      target_nodes, max_num_iters, max_sm_iters, max_num_sm_iters, changed, 
+           num_swapped, histo[NBINS+1];
+  Real     thresholdlen, minlen, maxlen;
 
   int      n_points;           // number of grid points per object
   int      n_elems;            // number of triangles per object
@@ -66,10 +70,22 @@ int main( int argc, char * argv[] ) {
   }
 
   target_nodes = atoi( argv[3] );
-  if( argc == 5 ) {
+  if( argc >= 5 ) {
     max_sm_iters = atoi( argv[4] );
   } else {
     max_sm_iters = 10;
+  }
+
+  if( argc >= 6 ) {
+    max_num_iters = atoi( argv[5] );
+  } else {
+    max_num_iters = 100;
+  }
+
+  if( argc >= 7 ) {
+    max_num_sm_iters = atoi( argv[6] );
+  } else {
+    max_num_sm_iters = 25;
   }
 
   // Read the surface file.
@@ -80,12 +96,7 @@ int main( int argc, char * argv[] ) {
   printf( "Initial number of nodes = %d\n", n_points );
   printf( "Initial number of triangles = %d\n", n_elems );
 
-  factor = 1.0;
-  max_num_iters = 100;
-
-  if( n_points > target_nodes ) {
-
-  do {
+  while( max_num_iters > 0 ) {
 
     printf( "Iteration %d...\n", max_num_iters );
 
@@ -261,27 +272,34 @@ int main( int argc, char * argv[] ) {
     }
 
     // Make histogram of edge lengths to find coarsening threshold.
-    Real delta = ( maxlen - minlen ) / 100.0;
-    for( i = 0; i < 101; i++ ) {
-      histo[i] = 0;
-    }
-    for( i = 0; i < n_edges; i++ ) {
-      j = (int)( ( edgelen[i] - minlen ) / delta );
-      histo[j]++;
-    }
-    int target_edges = (int)( (float)n_edges * (float)target_nodes / (float)n_points );
-    target_edges = ( n_edges - target_edges ) / 2;
 
-    for( i = 0; i < 101; i++ ) {
-      target_edges -= histo[i];
-      if( target_edges < 0 ) break;
-    }
-    thresholdlen = minlen + ((Real)i+0.5) * delta * factor;   // close enough
+    if( n_points > target_nodes ) {
 
-    printf( "Found %d internal edges\n", n_edges );
-    printf( "Edge length threshold = %g  factor = %g\n", thresholdlen, factor );
-    printf( "Minimum edge length   = %g\n", minlen );
-    printf( "Maximum edge length   = %g\n", maxlen );
+      Real delta = ( maxlen - minlen ) / (float)NBINS;
+      for( i = 0; i <= NBINS; i++ ) {
+        histo[i] = 0;
+      }
+      for( i = 0; i < n_edges; i++ ) {
+        j = (int)( ( edgelen[i] - minlen ) / delta );
+        histo[j]++;
+      }
+      int target_edges = (int)( (float)n_edges * (float)target_nodes / (float)n_points );
+      target_edges = 0.10 * n_edges + 0.90 * target_edges;  // a little relaxation
+
+      // find edge length for which we have target_edges above it. This
+      // means coarsen all edges below this threshold and keep all edges
+      // above it.
+      for( i = NBINS; i >= 0; i-- ) {
+        target_edges -= histo[i];
+        if( target_edges < 0 ) break;
+      }
+      thresholdlen = minlen + ((Real)i+0.5) * delta;   // close enough
+
+      printf( "Found %d internal edges\n", n_edges );
+      printf( "Edge length threshold = %g\n", thresholdlen );
+      printf( "Minimum edge length   = %g\n", minlen );
+      printf( "Maximum edge length   = %g\n", maxlen );
+    }
 
     // Loop over edges to coarsen.
 
@@ -509,7 +527,6 @@ int main( int argc, char * argv[] ) {
             }
           }
         }
-
       }
 
       int coarsen = 0;
@@ -518,8 +535,11 @@ int main( int argc, char * argv[] ) {
       } else {
         if( countNgh[v1] <= 4 || countNgh[v2] <= 4 ) coarsen = 1;
         // Coarsen if surface is flat enough and edgelen < threshold.
-        if( !coarsen ) {
-          if( edgelen[i] <= thresholdlen ) {
+        if( !coarsen && n_points > target_nodes ) {
+          if( edgelen[i] <= 0.25 * thresholdlen ) {
+            coarsen = 1;   // always coarsen very short edges
+          } else if( edgelen[i] <= thresholdlen ) {
+            // coarsen other edges if the surface is mostly flat
             Real n1x = normals[v1].coords[0];
             Real n1y = normals[v1].coords[1];
             Real n1z = normals[v1].coords[2];
@@ -639,108 +659,71 @@ int main( int argc, char * argv[] ) {
       //    - connectivity (get closer to 6 neighbours per node)
       //    - eliminate obtuse angles (> 90 deg)
       if( !coarsen ) {
-      // if( !coarsen && !found3 ) {
+
         int swap = 0;
         Real a1x, a1y, a1z, a2x, a2y, a2z, mag, cc1, cc2, cc3, cc4, nn1, nn2;
         Real n1x, n1y, n1z, n2x, n2y, n2z;
         Real norm1[3], norm2[3];
 
         // check if connectivity would benefit from a swap.
-        if( 4 + countNgh[opp1] + countNgh[opp2] <= countNgh[v1] + countNgh[v2] ) swap = 1;
+        if( 4 + countNgh[opp1] + countNgh[opp2] < countNgh[v1] + countNgh[v2] ) swap = 1;
         if( ( countNgh[opp1] <= 4 || countNgh[opp2] <= 4 ) &&
             ( countNgh[v1] > 4 && countNgh[v2] > 4 ) ) swap = 1;
 
-        // Check if triangles have obtuse angles (> 120 deg) before swap.
-        if( !swap ) {
-          a1x = coords[v1].coords[0] - coords[opp1].coords[0];
-          a1y = coords[v1].coords[1] - coords[opp1].coords[1];
-          a1z = coords[v1].coords[2] - coords[opp1].coords[2];
-          a2x = coords[v2].coords[0] - coords[opp1].coords[0];
-          a2y = coords[v2].coords[1] - coords[opp1].coords[1];
-          a2z = coords[v2].coords[2] - coords[opp1].coords[2];
-          mag = sqrt( ( a1x * a1x + a1y * a1y + a1z * a1z ) * 
-                      ( a2x * a2x + a2y * a2y + a2z * a2z ) );
-          cc1 = ( a1x * a2x + a1y * a2y + a1z * a2z ) / mag;
-  
-          a1x = coords[v1].coords[0] - coords[opp2].coords[0];
-          a1y = coords[v1].coords[1] - coords[opp2].coords[1];
-          a1z = coords[v1].coords[2] - coords[opp2].coords[2];
-          a2x = coords[v2].coords[0] - coords[opp2].coords[0];
-          a2y = coords[v2].coords[1] - coords[opp2].coords[1];
-          a2z = coords[v2].coords[2] - coords[opp2].coords[2];
-          mag = sqrt( ( a1x * a1x + a1y * a1y + a1z * a1z ) * 
-                      ( a2x * a2x + a2y * a2y + a2z * a2z ) );
-          cc2 = ( a1x * a2x + a1y * a2y + a1z * a2z ) / mag;
-          if( cc1 <= -0.5 || cc2 <= -0.5 ) swap = 1;
-        }
-
         // Make sure than new edge (opp1,opp2) does not exist.
-        if( swap ) {
-          for( j = cumulNgh[opp1]; j < cumulNgh[opp1+1]; j++ ) {
-            int tt = triNgh[j];
-            for( k = 0; k < 3; k++ ) {
-              pp = connec[3*tt+k];
-              if( renum[pp] == renum[opp2] ) swap = 0;
-            }
+        for( j = cumulNgh[opp1]; j < cumulNgh[opp1+1]; j++ ) {
+          int tt = triNgh[j];
+          for( k = 0; k < 3; k++ ) {
+            pp = connec[3*tt+k];
+            if( renum[pp] == renum[opp2] ) swap = 0;
           }
         }
 
         // Make sure that swap does not introduce a vertex with
         // only 3 vertices.
-        if( swap ) {
-          if( countNgh[v1] <= 4 || countNgh[v2] <= 4 ) swap = 0;
-        }
+        if( countNgh[v1] <= 4 || countNgh[v2] <= 4 ) swap = 0;
 
-        // Check triangle angles after. Are there worse obtuse angles than before? 
-        // Ignore improvement in angles if an opp node has only 4 neighbours, in
-        // which case, swap it.
-        if( swap && countNgh[opp1] > 4 && countNgh[opp2] > 4 ) {
-          a1x = coords[opp1].coords[0] - coords[v1].coords[0];
-          a1y = coords[opp1].coords[1] - coords[v1].coords[1];
-          a1z = coords[opp1].coords[2] - coords[v1].coords[2];
-          a2x = coords[opp2].coords[0] - coords[v1].coords[0];
-          a2y = coords[opp2].coords[1] - coords[v1].coords[1];
-          a2z = coords[opp2].coords[2] - coords[v1].coords[2];
-          mag = sqrt( ( a1x * a1x + a1y * a1y + a1z * a1z ) * 
-                      ( a2x * a2x + a2y * a2y + a2z * a2z ) );
-          cc3 = ( a1x * a2x + a1y * a2y + a1z * a2z ) / mag;
+        // connectivity configuration permits swapping (in terms of
+        // number of edges connected to the edges). Now check that 
+        // the geometric properties benefit from swapping.
 
-          a1x = coords[opp1].coords[0] - coords[v2].coords[0];
-          a1y = coords[opp1].coords[1] - coords[v2].coords[1];
-          a1z = coords[opp1].coords[2] - coords[v2].coords[2];
-          a2x = coords[opp2].coords[0] - coords[v2].coords[0];
-          a2y = coords[opp2].coords[1] - coords[v2].coords[1];
-          a2z = coords[opp2].coords[2] - coords[v2].coords[2];
-          mag = sqrt( ( a1x * a1x + a1y * a1y + a1z * a1z ) * 
-                      ( a2x * a2x + a2y * a2y + a2z * a2z ) );
-          cc4 = ( a1x * a2x + a1y * a2y + a1z * a2z ) / mag;
-
-          if( cc2 < cc1 ) cc1 = cc2;  // worse angle before
-          if( cc4 < cc3 ) cc3 = cc4;  // worse angle after
-          if( cc3 <= -0.5 && cc3 < cc1 ) swap = 0;
-        }
-
-        // Make sure swap does not create a bad configuration. Check
-        // the normals of the swapped triangles. Both normals must be
-        // in the same direction and no worse than 60 deg. We cannot
-        // have flipped triangles which will lead to self-intersections.
         if( swap ) {
           // surface normals before and after. is it worse?
+          int NormalsAreGood = 1;
           if( compute_triangle_normal( coords[v1], coords[v2], coords[opp1], norm1 ) &&
               compute_triangle_normal( coords[v1], coords[opp2], coords[v2], norm2 ) ) {
             nn1 = norm1[0] * norm2[0] + norm1[1] * norm2[1] + norm1[2] * norm2[2];
             if( compute_triangle_normal( coords[v1], coords[opp2], coords[opp1], norm1 ) &&
                 compute_triangle_normal( coords[v2], coords[opp1], coords[opp2], norm2 ) ) {
               nn2 = norm1[0] * norm2[0] + norm1[1] * norm2[1] + norm1[2] * norm2[2];
-              // faces are inverted after, but allow if it makes the surface less worse.
-              // (60 deg).
-              if( nn2 <= 0.5 && nn2 < nn1 ) swap = 0;
+              // accept if nn2 >= nn1 since this is an improvement in surface normals.
+              // in the case when nn2 < nn1, accept for moderate angles only
+              // (30 deg).
+              if( nn2 <= 0.8660254 && nn2 < nn1 ) NormalsAreGood = 0;
             } else {
-              swap = 0;
+              NormalsAreGood = 0;
             }
           } else {
-            swap = 0;
+            NormalsAreGood = 0;
           }
+
+          // Check that aspect ratio is improved after swap (this removes slivers).
+          // Don't swap if aspect ratio gets worse, unless it's above 0.5. 
+
+          Real AR1 = compute_aspect_ratio( coords[v1], coords[v2], coords[opp1] );
+          Real AR2 = compute_aspect_ratio( coords[v1], coords[opp2], coords[v2] );
+          Real AR3 = compute_aspect_ratio( coords[v1], coords[opp2], coords[opp1] );
+          Real AR4 = compute_aspect_ratio( coords[v2], coords[opp1], coords[opp2] );
+
+          int AspectRatioGood = 1;
+          if( AR2 < AR1 ) AR1 = AR2;
+          if( AR4 < AR3 ) AR3 = AR4;
+          if( AR3 < AR1 && AR3 < 0.5 ) AspectRatioGood = 0;
+
+          // Make sure swap does not create a worse configuration based
+          // on surface normals and aspect ratio.
+
+          if( !( AspectRatioGood && NormalsAreGood ) ) swap = 0;
         }
 
         if( swap ) {
@@ -809,11 +792,11 @@ int main( int argc, char * argv[] ) {
         printf( "No change while removing nodes with 3 neighbours.\n" );
         // return 1;
       }
-      factor *= 1.05;
     }
 
-    // Smoothing on triangles with aspect ratio less than 0.10.
-    smooth( n_points, n_elems, 25, 0.25, connec, coords, 0.20 );
+    // Taubin-smoothing on current mesh.
+    taubin( n_points, n_elems, max_num_sm_iters, connec, 
+            coords, normals );
 
     compute_surface_normals( n_elems, n_points, connec, coords, normals );
     compute_triangle_angles( n_elems, connec, coords );
@@ -822,24 +805,16 @@ int main( int argc, char * argv[] ) {
     free( cumulNgh );
     free( triNgh );
     free( edges );
+    free( edgelen );
     free( flags );
     free( renum );
-    free( edgelen );
 
     max_num_iters--;
-    if( max_num_iters <= 0 ) break;
+  }
 
-    if( (float)changed / (float)target_nodes < 0.05 ) {
-      if( n_points > target_nodes ) {
-        factor *= ( 1.0 + 0.05 * (float)( n_points - target_nodes ) / target_nodes );
-      }
-    }
-
-  } while( ( n_points > target_nodes ) /* || ( n_points <= target_nodes && changed ) */ ); }
 
   // Do a little bit of smoothing on the coordinates (simple averaging).
-  Real   relax = 0.75;
-  smooth( n_points, n_elems, max_sm_iters, relax, connec, coords, 1000.0 );
+  taubin( n_points, n_elems, max_sm_iters, connec, coords, normals );
 
   compute_surface_normals( n_elems, n_points, connec, coords, normals );
   compute_triangle_angles( n_elems, connec, coords );
@@ -891,23 +866,47 @@ int main( int argc, char * argv[] ) {
   return 0;
 }
 
+// Do Taubin smoothing.
+// Reference: G. Taubin, "Geometric Signal Processing on Polygonal Meshes",
+//            EuroGraphics 2000 conference, 2000.
+
+void taubin( int n_points, int n_elems, int n_iters,
+             int * connec, Point * coords, Vector * normals ) {
+
+  int i, j, k, kk;
+
+  // Stable fast filter:
+  // At .05, there is a little bit shrinkage as n_iters is increased.
+  // At .10, there is a little bit anti-shrinkage as n_iters is increased.
+  // At .25, there is lots of anti-shrinkage as n_iters is increased.
+  // The results are better on hi-res mesh vs low-res mesh.
+
+  Real kPB = 0.075;
+  Real mu = ( -kPB - sqrt( kPB * kPB + 20.0 - 12.0 * kPB ) ) /
+            ( 2.0 * ( 5.0 - 3.0 * kPB ) );
+  Real lambda = mu / ( kPB * mu - 1.0 );
+
+  // For non-fast filter (this is Roberto's 0.50/-0.53 scheme):
+  // lambda = 0.50;
+  // mu = lambda / ( kPB * lambda - 1.0 );
+
+  for( kk = 0; kk < n_iters; kk++ ) {
+    smooth( n_points, n_elems, 1, 1.0 - lambda, connec, coords, normals );
+    smooth( n_points, n_elems, 1, 1.0 - mu, connec, coords, normals );
+  }
+
+}
+
 // Do smoothing on the coordinates (simple averaging).
 
 void smooth( int n_points, int n_elems, int n_iters, Real relax, 
-             int * connec, Point * coords, float minAR ) {
-
+             int * connec, Point * coords, Vector * normals ) {
 
   int i, j, k, kk;
   Real edgeLen[3];
   Real * new_coords = (Real *)malloc( 3 * n_points * sizeof( Real ) );
   if( !new_coords ) {
     printf( "Error allocating memory for new_coords.\n" );
-    exit( 1 );
-  }
-
-  char * countNgh = (char *)malloc( n_points * sizeof( char ) );
-  if( !countNgh ) {
-    printf( "Error allocating memory for countNgh.\n" );
     exit( 1 );
   }
 
@@ -923,54 +922,7 @@ void smooth( int n_points, int n_elems, int n_iters, Real relax,
     exit( 1 );
   }
 
-  for( i = 0; i < n_points; i++ ) {
-    countNgh[i] = 0;
-  }
-  for( i = 0; i < n_elems; i++ ) {
-    countNgh[connec[3*i]]++;
-    countNgh[connec[3*i+1]]++;
-    countNgh[connec[3*i+2]]++;
-  }
-
-  int num_active = n_points;
-  if( minAR < 1.0 ) {
-    Real invminAR = 1.0 / minAR;
-    char * flag = (char *)malloc( n_points * sizeof( char ) );
-    if( !flag ) {
-      printf( "Error allocating memory for flag.\n" );
-      exit( 1 );
-    }
-    for( i = 0; i < n_points; i++ ) {
-      flag[i] = 0;
-    }
-
-    for( i = 0; i < n_elems; i++ ) {
-      for( j = 0; j < 3; j++ ) {
-        Real dx = coords[connec[3*i+j]].coords[0] - coords[connec[3*i+(j+1)%3]].coords[0];
-        Real dy = coords[connec[3*i+j]].coords[1] - coords[connec[3*i+(j+1)%3]].coords[1];
-        Real dz = coords[connec[3*i+j]].coords[2] - coords[connec[3*i+(j+1)%3]].coords[2];
-        edgeLen[j] = sqrt( dx * dx + dy * dy + dz * dz );
-      }
-      Real s = 0.5 * ( edgeLen[0] + edgeLen[1] + edgeLen[2] );
-      Real invAR = 0.125 * ( edgeLen[0] * edgeLen[1] * edgeLen[2] ) /
-                   ( ( s - edgeLen[0] ) * ( s - edgeLen[1] ) * ( s - edgeLen[2] ) );
-      if( invAR > invminAR ) {
-        for( j = 0; j < 3; j++ ) {
-          flag[connec[3*i+j]] = 1;
-        }
-      }
-    }
-
-    num_active = 0;
-    for( i = 0; i < n_points; i++ ) {
-      countNgh[i] *= flag[i];
-      num_active += flag[i];
-    }
-    free( flag );
-    printf( "Smoothing for AR on %d vertices.\n", num_active );
-  }
-
-  for( kk = 0; kk < n_iters && num_active > 0; kk++ ) {
+  for( kk = 0; kk < n_iters; kk++ ) {
     for( i = 0; i < n_points; i++ ) {
       weight[i] = 0.0;
       sumweight[i] = 0.0;
@@ -1011,20 +963,48 @@ void smooth( int n_points, int n_elems, int n_iters, Real relax,
     }
 
     for( i = 0; i < n_points; i++ ) {
-      if( countNgh[i] > 0 ) {
-        for( j = 0; j < 3; j++ ) {
-          new_coords[3*i+j] = new_coords[3*i+j] / (Real)(sumweight[i]);
-          coords[i].coords[j] = relax * coords[i].coords[j] + ( 1.0 - relax ) * new_coords[3*i+j];
-        }
+      for( j = 0; j < 3; j++ ) {
+        coords[i].coords[j] = relax * coords[i].coords[j] + 
+                              ( 1.0 - relax ) * new_coords[3*i+j] /
+                              (Real)(sumweight[i]);
       }
     }
   }
-  free( countNgh );
   free( new_coords );
   free( weight );
   free( sumweight );
 }
 
+// Compute the aspect ratio of triangle (v1,v2,v3).
+
+static Real compute_aspect_ratio( Point v1, Point v2, Point v3 ) {
+
+  Real dx = v1.coords[0] - v2.coords[0];
+  Real dy = v1.coords[1] - v2.coords[1];
+  Real dz = v1.coords[2] - v2.coords[2];
+  Real len12 = sqrt( dx * dx + dy * dy + dz * dz );
+
+  dx = v3.coords[0] - v2.coords[0];
+  dy = v3.coords[1] - v2.coords[1];
+  dz = v3.coords[2] - v2.coords[2];
+  Real len23 = sqrt( dx * dx + dy * dy + dz * dz );
+
+  dx = v1.coords[0] - v3.coords[0];
+  dy = v1.coords[1] - v3.coords[1];
+  dz = v1.coords[2] - v3.coords[2];
+  Real len13 = sqrt( dx * dx + dy * dy + dz * dz );
+
+  Real s = 0.5 * ( len12 + len23 + len13 );
+  Real thresh = 1.0e-08 * s;
+
+  if( len12 < thresh || len23 < thresh || len13 < thresh ) {
+    return ( 0.0 );
+  } else {
+    Real AR = 8.0 * ( s - len12 ) * ( s - len23 ) * ( s - len13 ) / 
+              ( len12 * len23 * len13 );
+    return( AR );
+  }
+}
 
 // Recompute the surface normals at the nodes. Simply average the normal
 // vector of the neighbouring faces at each node.
@@ -1145,11 +1125,13 @@ static void compute_triangle_angles( int n_elems, int * connec, Point * coords )
 static void usage( char * executable_name ) {
 
   STRING  usage_format = "\
-Usage: %s in.obj out.obj target_points [n_iterations]\n\
+Usage: %s in.obj out.obj target_points [n_iterations] [n_adapt] [n_adapt_smooth]\n\
 Values: in.obj = input object file\n\
         out.obj = output object file\n\
         target_points = target number of points\n\
-        n_iterations = number of iterations\n\n\
+        n_iterations = number of post-adaptation smoothing iterations\n\n\
+        n_adapt = number of global adaptation iterations\n\n\
+        n_adapt_smooth = number of smoothing iterations per adaptation iteration\n\n\
 Copyright Alan C. Evans\n\
 Professor of Neurology\n\
 McGill University\n\n";
