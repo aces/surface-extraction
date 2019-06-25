@@ -3,7 +3,9 @@ ACLOCAL_AMFLAGS = -I m4
 
 SUBDIRS = src
 
-pkglib_SCRIPTS = \
+perllibdir = ${pkglibdir}
+
+perllib_SCRIPTS = \
    scripts/utils.pl \
    scripts/deform_utils.pl
 
@@ -72,5 +74,5 @@ EXTRA_DIST = \
    scripts/utils.pl.in \
    scripts/deform_utils.pl.in
 
-CLEANFILES = $(bin_SCRIPTS) $(pkglib_SCRIPTS)
+CLEANFILES = $(bin_SCRIPTS) $(perllib_SCRIPTS)
 
